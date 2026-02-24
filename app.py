@@ -24,7 +24,14 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
     .stApp { background-color: #0b0e14; color: #e0e0e0; font-family: 'Inter', sans-serif; }
     .logo-text { font-weight: 800; background: linear-gradient(to right, #3b82f6, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3.5rem; text-align: center; margin-bottom: 20px; }
-    .asist-card { background: rgba(255, 255, 255, 0.05); padding: 10px; border-radius: 8px; margin-bottom: 5px; border-left: 5px solid #3b82f6; }
+    .asist-card { 
+        background: rgba(255, 255, 255, 0.05); 
+        padding: 15px; 
+        border-radius: 10px; 
+        margin-bottom: 10px; 
+        border-left: 5px solid #a855f7;
+    }
+    .stButton>button { border-radius: 8px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -45,6 +52,7 @@ if st.session_state.user is None:
 
 else:
     user = st.session_state.user
+    st.sidebar.markdown(f"<h2 style='color: #3b82f6;'>CT360</h2>", unsafe_allow_html=True)
     st.sidebar.write(f"Profe: {user['email']}")
     if st.sidebar.button("CERRAR SESIÓN"):
         st.session_state.user = None
@@ -52,57 +60,51 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "🏗️ Cursos", "🔍 Historial"])
 
-    # Consulta de cursos
+    # Consulta de cursos (Carga base para todas las pestañas)
     res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
     df_cursos = pd.DataFrame(res_c.data) if res_c.data else pd.DataFrame()
 
-    # --- TAB 2: ASISTENCIA (LÓGICA DIFERENCIAL) ---
+    # --- TAB 2: ASISTENCIA (LÓGICA DAGUERRE VS CAMBRIDGE) ---
     with tabs[2]:
         st.subheader("Control de Asistencia")
         if not df_cursos.empty:
             opciones = [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()]
-            curso_asist = st.selectbox("Seleccionar Curso", opciones)
+            curso_asist = st.selectbox("Seleccionar Curso para pasar lista", opciones)
             
-            # Determinamos institución por el email del profesor
-            es_daguerre = "daguerre" in user['email'].lower()
-            inst_label = "DAGUERRE (Por Hora Cátedra)" if es_daguerre else "CAMBRIDGE (Por Día)"
-            st.info(f"Sistema configurado para: **{inst_label}**")
+            # Determinamos institución por palabras clave en el curso o perfil
+            # Si el curso contiene "Daguerre" o el mail es de allí
+            es_daguerre = "daguerre" in curso_asist.lower() or "daguerre" in user['email'].lower()
+            
+            st.markdown(f"**Sistema de cómputo:** {'📚 Daguerre (Por Horas Cátedra)' if es_daguerre else '🎓 Cambridge (Por Día)'}")
 
             c_nom, c_hor = curso_asist.split(" | ")
             res_a = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("profesor_id", user['id']).eq("nombre_curso_materia", c_nom).eq("horario", c_hor).not_.is_("alumno_id", "null").execute()
             
             if res_a.data:
-                horas_totales = 1
                 if es_daguerre:
-                    horas_totales = st.number_input("Cantidad de horas cátedra hoy:", min_value=1, max_value=8, value=3)
-
-                with st.form("form_asistencia"):
+                    h_totales = st.number_input("Horas Cátedra totales de hoy:", min_value=1, max_value=12, value=4)
+                
+                with st.form("form_asistencia_final"):
                     st.write("### Lista de Alumnos")
-                    datos_asistencia = []
                     for item in res_a.data:
                         alu = item['alumnos']
-                        st.markdown(f'<div class="asist-card">👤 {alu["apellido"]}, {alu["nombre"]}</div>', unsafe_allow_html=True)
+                        st.markdown(f'<div class="asist-card"><b>{alu["apellido"]}, {alu["nombre"]}</b></div>', unsafe_allow_html=True)
                         
                         if es_daguerre:
-                            # Para Daguerre: Elegir cuántas horas estuvo presente
-                            h_pres = st.slider(f"Horas presente para {alu['nombre']}", 0, horas_totales, horas_totales, key=f"h_{alu['id']}")
-                            datos_asistencia.append({"id": alu['id'], "valor": h_pres, "total": horas_totales})
+                            st.slider(f"Horas Presente (de {h_totales}hs totales)", 0, h_totales, h_totales, key=f"asist_{alu['id']}")
                         else:
-                            # Para Cambridge: Presente/Ausente/Tarde
-                            estado = st.radio(f"Estado", ["Presente", "Ausente", "Tarde"], key=f"st_{alu['id']}", horizontal=True)
-                            datos_asistencia.append({"id": alu['id'], "valor": estado})
+                            st.radio("Estado:", ["Presente", "Ausente", "Tarde"], horizontal=True, key=f"asist_{alu['id']}")
                     
-                    if st.form_submit_button("Guardar Lista de Hoy"):
-                        # Aquí iría el insert a la tabla asistencia_logs
-                        st.success(f"Asistencia de {inst_label} registrada correctamente.")
+                    if st.form_submit_button("Guardar Asistencia de Hoy"):
+                        st.success("Asistencia registrada. (Mañana conectaremos esto a la base de datos de reportes)")
             else:
                 st.info("No hay alumnos inscritos en este curso.")
         else:
-            st.warning("Primero creá un curso en la pestaña 'Cursos'.")
+            st.warning("Cargá un curso primero.")
 
     # --- TAB 0: AGENDA ---
     with tabs[0]:
-        st.subheader("Registro de Clase")
+        st.subheader("Registro de Clase Diaria")
         if not df_cursos.empty:
             opciones_c = [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()]
             c_agenda = st.selectbox("Materia", opciones_c, key="sel_agenda")
@@ -115,15 +117,15 @@ else:
                 doc_final = f"Suplente: {n_sup} {a_sup}"
             
             with st.form("form_agenda"):
-                temas = st.text_area("Temas dictados")
-                tarea = st.text_area("Tarea")
-                venc = st.date_input("Vencimiento", datetime.date.today() + datetime.timedelta(days=7))
-                if st.form_submit_button("Procesar Registro"):
+                temas = st.text_area("Contenidos dictados")
+                tarea = st.text_area("Tarea para el hogar")
+                venc = st.date_input("Fecha de entrega", datetime.date.today() + datetime.timedelta(days=7))
+                if st.form_submit_button("Guardar en Bitácora"):
                     st.session_state.confirm_agenda = {"temas": temas, "tarea": tarea, "venc": str(venc), "doc": doc_final, "curso_str": c_agenda}
 
             if st.session_state.get('confirm_agenda'):
-                st.warning("¿Confirmás el guardado en Bitácora?")
-                if st.button("✅ GUARDAR"):
+                st.warning("¿Confirmás el guardado?")
+                if st.button("✅ SÍ, GUARDAR"):
                     c_info = df_cursos[df_cursos['nombre_curso_materia'] == st.session_state.confirm_agenda['curso_str'].split(" | ")[0]].iloc[0]
                     supabase.table("bitacora").insert({
                         "curso_id": int(c_info['id']), "profesor_id": user['id'], "fecha": str(datetime.date.today()),
@@ -131,53 +133,24 @@ else:
                         "tarea_descripcion": st.session_state.confirm_agenda['tarea'], "tarea_vencimiento": st.session_state.confirm_agenda['venc']
                     }).execute()
                     del st.session_state.confirm_agenda
+                    st.success("Guardado correctamente.")
                     st.rerun()
 
     # --- TAB 1: ALUMNOS ---
     with tabs[1]:
-        st.subheader("Inscripción de Estudiantes")
+        st.subheader("Gestión de Alumnos")
         if not df_cursos.empty:
             with st.form("form_ins_alu", clear_on_submit=True):
                 opciones = [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()]
-                c_sel = st.selectbox("Asignar a Curso", opciones, key="sel_ins")
-                nom_a = st.text_input("Nombre del Alumno")
-                ape_a = st.text_input("Apellido del Alumno")
-                if st.form_submit_button("Inscribir"):
+                c_sel = st.selectbox("Asignar a Curso", opciones, key="sel_ins_alu")
+                nom_a = st.text_input("Nombre")
+                ape_a = st.text_input("Apellido")
+                if st.form_submit_button("Inscribir Alumno"):
                     if nom_a and ape_a:
                         st.session_state.confirm_alu = {"nom": nom_a, "ape": ape_a, "curso": c_sel}
             
             if st.session_state.get('confirm_alu'):
-                st.warning(f"¿Inscribir a {st.session_state.confirm_alu['nom']}?")
-                if st.button("✅ SÍ, INSCRIBIR"):
+                st.warning(f"¿Inscribir a {st.session_state.confirm_alu['nom']} {st.session_state.confirm_alu['ape']}?")
+                if st.button("✅ CONFIRMAR INSCRIPCIÓN"):
                     nuevo = supabase.table("alumnos").insert({"nombre": st.session_state.confirm_alu['nom'], "apellido": st.session_state.confirm_alu['ape']}).execute()
-                    c_n, c_h = st.session_state.confirm_alu['curso'].split(" | ")
-                    supabase.table("inscripciones").insert({"alumno_id": nuevo.data[0]['id'], "profesor_id": user['id'], "nombre_curso_materia": c_n, "horario": c_h, "anio_lectivo": 2026}).execute()
-                    del st.session_state.confirm_alu
-                    st.rerun()
-
-    # --- TAB 3: CURSOS ---
-    with tabs[3]:
-        st.subheader("Mis Cursos")
-        if not df_cursos.empty:
-            for _, cur in df_cursos.iterrows():
-                col_c1, col_c2 = st.columns([4, 1])
-                col_c1.write(f"📘 **{cur['nombre_curso_materia']}** ({cur['horario']})")
-                if col_c2.button("Borrar", key=f"del_cur_{cur['id']}"):
-                    supabase.table("inscripciones").delete().eq("id", cur['id']).execute()
-                    st.rerun()
-        with st.form("nuevo_c"):
-            nc = st.text_input("Materia")
-            hc = st.text_input("Horario")
-            if st.form_submit_button("Añadir"):
-                supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": nc, "horario": hc, "anio_lectivo": 2026}).execute()
-                st.rerun()
-
-    # --- TAB 4: HISTORIAL ---
-    with tabs[4]:
-        st.subheader("Historial")
-        try:
-            res_h = supabase.table("bitacora").select("*").eq("profesor_id", user['id']).order("fecha", desc=True).execute()
-            if res_h.data:
-                st.table(pd.DataFrame(res_h.data)[['fecha', 'docente_nombre', 'temas']])
-            else: st.info("Sin registros.")
-        except: st.info("Listo para el primer registro.")
+                    c_n, c_
