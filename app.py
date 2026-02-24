@@ -9,84 +9,81 @@ supabase = create_client(st.secrets["SUPABASE_URL"], st.secrets["SUPABASE_KEY"])
 
 if 'user' not in st.session_state: st.session_state.user = None
 
-# --- LOGIN (Simplificado) ---
+# --- LOGIN ---
 if st.session_state.user is None:
     st.markdown("<h1 style='text-align: center;'>🚀 ClassTrack 360</h1>", unsafe_allow_html=True)
     u = st.text_input("Usuario")
     p = st.text_input("Contraseña", type="password")
-    if st.button("Ingresar"):
+    if st.button("Entrar"):
         res = supabase.table("usuarios").select("*").eq("email", u).eq("password_text", p).execute()
         if res.data: 
             st.session_state.user = res.data[0]
             st.rerun()
 else:
     user = st.session_state.user
-    st.sidebar.write(f"👤 {user['email']}")
+    st.sidebar.write(f"👤 **{user['email']}**")
     if st.sidebar.button("Cerrar Sesión"):
         st.session_state.user = None
         st.rerun()
 
-    # --- VISTA PROFESOR ---
-    if user['rol'] != 'admin':
-        st.title(f"📚 Gestión de Cursos y Alumnos 2026")
-        
-        tab_cursos, tab_alumnos, tab_agenda = st.tabs(["🏗️ Mis Cursos", "👥 Inscribir Alumnos", "📅 Agenda"])
+    st.title(f"📚 Gestión Académica")
+    
+    tabs = st.tabs(["🏗️ Definir Cursos", "👥 Cargar Alumnos", "📅 Agenda Diaria"])
 
-        # --- SECCIÓN 1: CREAR CURSOS ---
-        with tab_cursos:
-            st.subheader("Crear Nueva Materia / Curso")
-            with st.form("nuevo_curso"):
-                nombre_materia = st.text_input("Nombre de la Materia (ej: Qui3015online)")
-                horario_materia = st.text_input("Días y Horarios")
-                anio = st.number_input("Año Lectivo", value=2026)
-                if st.form_submit_button("Crear Curso"):
-                    # Usamos la tabla 'inscripciones' para definir el curso (sin alumno aún)
-                    data = {
+    # 1. DEFINIR CURSOS (Ahora valida por Nombre + Horario)
+    with tabs[0]:
+        st.subheader("Configuración de Materias/Cursos")
+        with st.form("crear_curso"):
+            nom_c = st.text_input("Nombre del Curso (ej: FCE Ready)").strip()
+            hor_c = st.text_input("Horario (ej: Lun-Mie 18:00)").strip()
+            anio_c = st.number_input("Año Lectivo", value=2026)
+            
+            if st.form_submit_button("Dar de Alta Curso"):
+                # VALIDACIÓN MEJORADA: Verificamos nombre Y horario para el mismo profe y año
+                check = supabase.table("inscripciones").select("*").eq("profesor_id", user['id']).eq("nombre_curso_materia", nom_c).eq("horario", hor_c).eq("anio_lectivo", anio_c).execute()
+                
+                if check.data:
+                    st.warning(f"⚠️ Ya existe el curso '{nom_c}' en el horario '{hor_c}' para el {anio_c}.")
+                else:
+                    supabase.table("inscripciones").insert({
                         "profesor_id": user['id'],
-                        "nombre_curso_materia": nombre_materia,
-                        "horario": horario_materia,
-                        "anio_lectivo": anio
-                    }
-                    supabase.table("inscripciones").insert(data).execute()
-                    st.success(f"Curso '{nombre_materia}' creado para el ciclo {anio}")
-            
-            st.divider()
-            st.subheader("Cursos Activos")
-            mis_cursos = supabase.table("inscripciones").select("nombre_curso_materia, horario, anio_lectivo").eq("profesor_id", user['id']).execute()
-            if mis_cursos.data:
-                df_cursos = pd.DataFrame(mis_cursos.data).drop_duplicates()
-                st.table(df_cursos)
+                        "nombre_curso_materia": nom_c,
+                        "horario": hor_c,
+                        "anio_lectivo": anio_c
+                    }).execute()
+                    st.success(f"✅ Curso '{nom_c}' ({hor_c}) creado con éxito.")
 
-        # --- SECCIÓN 2: INSCRIBIR ALUMNOS EN CURSOS EXISTENTES ---
-        with tab_alumnos:
-            st.subheader("Inscribir Alumno en un Curso")
-            # Traer solo los cursos que el profe creó
-            cursos_lista = [c['nombre_curso_materia'] for c in mis_cursos.data] if mis_cursos.data else []
+    # 2. CARGAR ALUMNOS (Selector combinado)
+    with tabs[1]:
+        st.subheader("Inscripción de Estudiantes")
+        # Traemos todos los cursos
+        mis_cursos_raw = supabase.table("inscripciones").select("nombre_curso_materia, horario, anio_lectivo").eq("profesor_id", user['id']).execute()
+        
+        if not mis_cursos_raw.data:
+            st.info("Aún no tienes cursos creados.")
+        else:
+            # Creamos una lista de opciones que muestre Nombre + Horario para diferenciar
+            df_mostrar = pd.DataFrame(mis_cursos_raw.data).drop_duplicates()
+            opciones_cursos = [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_mostrar.iterrows()]
             
-            if not cursos_lista:
-                st.warning("Primero debés crear un curso en la pestaña anterior.")
-            else:
-                with st.form("form_alumno"):
-                    curso_sel = st.selectbox("Seleccionar Curso", list(set(cursos_lista)))
-                    nom_alu = st.text_input("Nombre del Alumno")
-                    ape_alu = st.text_input("Apellido")
+            with st.form("inscripcion_alu"):
+                seleccion = st.selectbox("Elegir Curso y Horario", opciones_cursos)
+                n_alu = st.text_input("Nombre")
+                a_alu = st.text_input("Apellido")
+                
+                if st.form_submit_button("Registrar Alumno"):
+                    # Separamos la selección para buscar en la base de datos
+                    c_nombre, c_horario = seleccion.split(" | ")
+                    c_data = next(item for item in mis_cursos_raw.data if item["nombre_curso_materia"] == c_nombre and item["horario"] == c_horario)
                     
-                    if st.form_submit_button("Inscribir"):
-                        # 1. Crear el alumno
-                        alu_res = supabase.table("alumnos").insert({"nombre": nom_alu, "apellido": ape_alu}).execute()
-                        if alu_res.data:
-                            # 2. Buscar datos del curso para clonar la fila con el alumno
-                            c_info = next(item for item in mis_cursos.data if item["nombre_curso_materia"] == curso_sel)
-                            ins_data = {
-                                "alumno_id": alu_res.data[0]['id'],
-                                "profesor_id": user['id'],
-                                "nombre_curso_materia": curso_sel,
-                                "horario": c_info['horario'],
-                                "anio_lectivo": c_info['anio_lectivo']
-                            }
-                            supabase.table("inscripciones").insert(ins_data).execute()
-                            st.success(f"✅ {nom_alu} {ape_alu} agregado a {curso_sel}")
-
-        # --- SECCIÓN 3: AGENDA (Bitácora) ---
-        with tab_agenda:
-            st.info("Aquí seleccionarás el curso y verás la lista de alumnos para pasar los temas del día.")
+                    nuevo_alu = supabase.table("alumnos").insert({"nombre": n_alu, "apellido": a_alu}).execute()
+                    
+                    if nuevo_alu.data:
+                        supabase.table("inscripciones").insert({
+                            "alumno_id": nuevo_alu.data[0]['id'],
+                            "profesor_id": user['id'],
+                            "nombre_curso_materia": c_nombre,
+                            "horario": c_horario,
+                            "anio_lectivo": c_data['anio_lectivo']
+                        }).execute()
+                        st.success(f"✅ {n_alu} {a_alu} inscrito en {c_nombre} ({c_horario}).")
