@@ -6,7 +6,7 @@ import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="ClassTrack 360", layout="wide")
 
-# --- CONEXIÓN A SUPABASE ---
+# --- CONEXIÓN A SUPABASE (breckfab@gmail.com) ---
 @st.cache_resource
 def init_connection():
     url = "https://tzevdylabtradqmcqldx.supabase.co"
@@ -143,7 +143,7 @@ else:
                 supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": nc, "horario": hc, "anio_lectivo": 2026}).execute()
                 st.rerun()
 
-    # --- TAB 3: HISTORIAL (CON PROTECCIÓN DE ERRORES) ---
+    # --- TAB 3: HISTORIAL ---
     with tabs[3]:
         st.subheader("Consultar Bitácora Histórica")
         try:
@@ -155,6 +155,6 @@ else:
                     df_h = df_h[df_h['temas'].str.contains(busqueda, case=False, na=False) | df_h['docente_nombre'].str.contains(busqueda, case=False, na=False)]
                 st.table(df_h[['fecha', 'docente_nombre', 'temas', 'tarea_descripcion']])
             else:
-                st.info("Aún no hay registros en la bitácora. ¡Cargá tu primera clase en la pestaña Agenda!")
+                st.info("Aún no hay registros en la bitácora.")
         except Exception:
             st.info("La bitácora está lista para recibir tu primer registro.")
