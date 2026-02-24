@@ -36,7 +36,6 @@ st.markdown("""
 # --- CONEXIÓN A SUPABASE ---
 @st.cache_resource
 def init_connection():
-    # Usando tus credenciales vinculadas a breckfab@gmail.com
     url = "https://tzevdylabtradqmcqldx.supabase.co"
     key = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
     return create_client(url, key)
@@ -45,7 +44,7 @@ supabase = init_connection()
 
 if 'user' not in st.session_state: st.session_state.user = None
 
-# --- LOGIN ---
+# --- PANTALLA DE LOGIN (CON FUNCIÓN ENTER) ---
 if st.session_state.user is None:
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
@@ -65,14 +64,21 @@ if st.session_state.user is None:
         
         with st.container():
             st.markdown('<div class="card">', unsafe_allow_html=True)
-            u = st.text_input("Usuario (Email)").strip()
-            p = st.text_input("Contraseña", type="password")
-            if st.button("Ingresar al Sistema"):
-                res = supabase.table("usuarios").select("*").eq("email", u).eq("password_text", p).execute()
-                if res.data:
-                    st.session_state.user = res.data[0]
-                    st.rerun()
-                else: st.error("Acceso denegado.")
+            # USAMOS st.form PARA HABILITAR LA TECLA ENTER
+            with st.form("login_form"):
+                u = st.text_input("Usuario (Email)").strip()
+                p = st.text_input("Contraseña", type="password")
+                submit = st.form_submit_button("Ingresar al Sistema")
+                
+                if submit:
+                    try:
+                        res = supabase.table("usuarios").select("*").eq("email", u).eq("password_text", p).execute()
+                        if res.data:
+                            st.session_state.user = res.data[0]
+                            st.rerun()
+                        else: st.error("Acceso denegado. Verifique sus datos.")
+                    except Exception:
+                        st.error("Error de conexión.")
             st.markdown('</div>', unsafe_allow_html=True)
 
 # --- PANEL INTERNO ---
@@ -86,7 +92,7 @@ else:
 
     if user['rol'] == 'admin':
         st.title("🛡️ Consola Admin")
-        st.write("Bienvenido Fabián. Las tablas están activas en Supabase.")
+        st.write(f"Bienvenido Fabián. Las tablas están activas en Supabase bajo la cuenta breckfab@gmail.com.")
     else:
         st.title("📑 Mi Gestión")
         tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "🏗️ Cursos"])
@@ -100,21 +106,38 @@ else:
                     if n_c and h_c:
                         supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": n_c, "horario": h_c, "anio_lectivo": 2026}).execute()
                         st.success("Curso creado.")
+                        st.rerun()
                     else: st.error("Completa los campos.")
 
         with tabs[1]: # Pestaña de Alumnos
             st.subheader("Inscripción")
             res_c = supabase.table("inscripciones").select("nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
             if res_c.data:
-                cursos = list(set([f"{c['nombre_curso_materia']} | {c['horario']}" for c in res_c.data]))
+                # Eliminamos duplicados de cursos para el selector
+                df_c = pd.DataFrame(res_c.data).drop_duplicates()
+                cursos = [f"{row['nombre_curso_materia']} | {row['horario']}" for idx, row in df_c.iterrows()]
+                
                 with st.form("c_alu"):
-                    sel = st.selectbox("Curso", cursos)
+                    sel = st.selectbox("Elegir Curso", cursos)
                     nom = st.text_input("Nombre")
                     ape = st.text_input("Apellido")
-                    if st.form_submit_button("Inscribir"):
-                        # Lógica de inserción simplificada
-                        st.success(f"Inscrito en {sel}")
-            else: st.info("Crea un curso primero.")
+                    if st.form_submit_button("Inscribir Alumno"):
+                        if nom and ape:
+                            # 1. Crear alumno
+                            nuevo_alu = supabase.table("alumnos").insert({"nombre": nom, "apellido": ape}).execute()
+                            if nuevo_alu.data:
+                                # 2. Vincular con el curso (desglosando la selección)
+                                c_nom, c_hor = sel.split(" | ")
+                                supabase.table("inscripciones").insert({
+                                    "alumno_id": nuevo_alu.data[0]['id'],
+                                    "profesor_id": user['id'],
+                                    "nombre_curso_materia": c_nom,
+                                    "horario": c_hor,
+                                    "anio_lectivo": 2026
+                                }).execute()
+                                st.success(f"✅ {nom} {ape} inscrito correctamente.")
+                        else: st.error("Faltan datos del alumno.")
+            else: st.info("Crea un curso primero en la pestaña 'Cursos'.")
 
         with tabs[0]: # Agenda
-            st.write("Próximamente: Bitácora de clases.")
+            st.info("Próximamente: Bitácora de clases y rastreo de tareas.")
