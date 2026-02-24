@@ -24,8 +24,8 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
     .stApp { background-color: #0b0e14; color: #e0e0e0; font-family: 'Inter', sans-serif; }
     .logo-text { font-weight: 800; background: linear-gradient(to right, #3b82f6, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3.5rem; text-align: center; margin-bottom: 20px; }
-    .nota-card { background: rgba(255, 255, 255, 0.05); padding: 15px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-bottom: 10px; }
-    .promedio-box { background: #3b82f6; color: white; padding: 5px 10px; border-radius: 8px; font-weight: bold; font-size: 1.1rem; }
+    .promedio-box { background: #3b82f6; color: white; padding: 5px 12px; border-radius: 8px; font-weight: bold; font-size: 1.2rem; display: inline-block; }
+    .riesgo-alto { color: #ef4444; font-weight: bold; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -46,6 +46,9 @@ if st.session_state.user is None:
 
 else:
     user = st.session_state.user
+    hoy = datetime.date.today()
+    cuatrimestre_actual = 1 if hoy.month <= 7 else 2
+    
     st.sidebar.title("CT360")
     st.sidebar.write(f"Profe: {user['email']}")
     if st.sidebar.button("CERRAR SESIÓN"):
@@ -58,16 +61,16 @@ else:
     res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
     df_cursos = pd.DataFrame(res_c.data) if res_c.data else pd.DataFrame()
 
-    # --- TAB 3: NOTAS (DIFERENCIAL DAGUERRE VS CAMBRIDGE) ---
+    # --- TAB 3: NOTAS (CON LÍMITE DE 10 Y PROMEDIO AUTOMÁTICO) ---
     with tabs[3]:
         st.subheader("Calificaciones Académicas")
         if not df_cursos.empty:
             c_notas = st.selectbox("Materia:", [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()], key="sel_notas")
             
             es_daguerre = "daguerre" in c_notas.lower() or "daguerre" in user['email'].lower()
-            tipo_eval = "Trabajo Práctico" if es_daguerre else "Writing"
+            tipo_eval = "TP" if es_daguerre else "Writing"
             
-            st.info(f"Sistema evaluativo para: **{tipo_eval}s**")
+            st.info(f"Evaluando: **{tipo_eval}s**. (Máximo permitido: 10)")
 
             c_n, c_h = c_notas.split(" | ")
             res_p = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_n).eq("horario", c_h).not_.is_("alumno_id", "null").execute()
@@ -75,35 +78,22 @@ else:
             if res_p.data:
                 for item in res_p.data:
                     alu = item['alumnos']
-                    with st.container():
-                        st.markdown(f"**{alu['apellido']}, {alu['nombre']}**")
-                        col1, col2, col3, col_prom = st.columns([1, 1, 1, 1.2])
-                        
-                        # Tres casilleros de notas (pueden ser más si lo deseás)
-                        n1 = col1.number_input(f"{tipo_eval} 1", 0.0, 10.0, 0.0, step=0.5, key=f"n1_{alu['id']}")
-                        n2 = col2.number_input(f"{tipo_eval} 2", 0.0, 10.0, 0.0, step=0.5, key=f"n2_{alu['id']}")
-                        n3 = col3.number_input(f"{tipo_eval} 3", 0.0, 10.0, 0.0, step=0.5, key=f"n3_{alu['id']}")
-                        
-                        # Cálculo del promedio automático (solo promedia si la nota es mayor a 0)
-                        notas_reales = [n for n in [n1, n2, n3] if n > 0]
-                        promedio = sum(notas_reales) / len(notas_reales) if notas_reales else 0.0
-                        
-                        col_prom.markdown(f"<div style='margin-top:25px;'>Promedio: <span class='promedio-box'>{promedio:.2f}</span></div>", unsafe_allow_html=True)
-                        st.divider()
-                
-                if st.button("Guardar todas las Notas"):
-                    st.success("Notas actualizadas en la base de datos.")
-            else: st.info("Sin alumnos inscritos.")
-        else: st.warning("Cargá un curso primero.")
-
-    # --- TAB 2: ASISTENCIA (MANTIENE LÓGICA PREVIA) ---
-    with tabs[2]:
-        st.subheader("Control de Asistencia")
-        # (Aquí se mantiene el código de asistencia que ya probamos)
-
-    # --- TAB 1: ALUMNOS (MANTIENE SEMÁFORO DE ALERTAS) ---
-    with tabs[1]:
-        st.subheader("Estado de Alumnos")
-        # (Aquí se mantiene el código de alumnos con el semáforo)
-
-    # (El resto de las pestañas Agenda, Cursos e Historial siguen igual)
+                    st.markdown(f"### 👤 {alu['apellido']}, {alu['nombre']}")
+                    
+                    col1, col2, col3, col_prom = st.columns([1, 1, 1, 1.2])
+                    
+                    # Límite estricto de 10.0
+                    n1 = col1.number_input(f"{tipo_eval} 1", 0.0, 10.0, 0.0, step=0.5, key=f"n1_{alu['id']}")
+                    n2 = col2.number_input(f"{tipo_eval} 2", 0.0, 10.0, 0.0, step=0.5, key=f"n2_{alu['id']}")
+                    n3 = col3.number_input(f"{tipo_eval} 3", 0.0, 10.0, 0.0, step=0.5, key=f"n3_{alu['id']}")
+                    
+                    # Lógica de Promedio
+                    notas = [n for n in [n1, n2, n3] if n > 0]
+                    promedio = sum(notas) / len(notas) if notas else 0.0
+                    
+                    color_prom = "#4ade80" if promedio >= 7 else "#fbbf24" if promedio >= 4 else "#ef4444"
+                    
+                    col_prom.markdown(f"""
+                        <div style='margin-top:10px;'>
+                            <small>PROMEDIO</small><br>
+                            <div class='promedio
