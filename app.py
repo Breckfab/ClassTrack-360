@@ -23,30 +23,28 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
     .stApp { background-color: #0b0e14; color: #e0e0e0; font-family: 'Inter', sans-serif; }
-    .logo-text { font-weight: 800; background: linear-gradient(to right, #3b82f6, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3rem; text-align: center; margin-bottom: 20px; }
-    .reminder-box { 
-        background: rgba(59, 130, 246, 0.1); 
-        border-left: 5px solid #3b82f6; 
-        padding: 15px; 
-        border-radius: 8px; 
-        margin-bottom: 20px;
-    }
+    .logo-text { font-weight: 800; background: linear-gradient(to right, #3b82f6, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3.5rem; text-align: center; margin-bottom: 20px; }
+    .reminder-box { background: rgba(59, 130, 246, 0.1); border-left: 5px solid #3b82f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
     .empty-msg { padding: 20px; border-radius: 10px; background: rgba(255, 255, 255, 0.05); border: 1px dashed rgba(255, 255, 255, 0.2); text-align: center; color: #888; }
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGIN DISCRETO ---
+# --- LOGIN (CORREGIDO PARA ENTER) ---
 if st.session_state.user is None:
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
         st.markdown("<br><br><div class='logo-text'>ClassTrack 360</div>", unsafe_allow_html=True)
+        # Usamos un formulario para capturar el ENTER correctamente
         with st.form("login_form"):
             u_input = st.text_input("Sede").strip().lower()
             p = st.text_input("Clave", type="password")
-            if st.form_submit_button("Entrar"):
+            submit = st.form_submit_button("Entrar")
+            
+            if submit:
                 email_real = ""
                 if u_input == "cambridge": email_real = "cambridge.fabianbelledi@gmail.com"
                 elif u_input == "daguerre": email_real = "daguerre.fabianbelledi@gmail.com"
+                
                 if email_real != "":
                     try:
                         res = supabase.table("usuarios").select("*").eq("email", email_real).eq("password_text", p).execute()
@@ -54,7 +52,7 @@ if st.session_state.user is None:
                             st.session_state.user = res.data[0]
                             st.rerun()
                         else: st.error("Clave incorrecta.")
-                    except: st.error("Error de red.")
+                    except: st.error("Error de red. Verificá la conexión.")
                 else: st.error("Sede no válida.")
 
 else:
@@ -67,64 +65,49 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # --- CARGA DE DATOS BASE ---
+    # Consulta de materias
     df_cursos = pd.DataFrame()
     try:
         res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
         if res_c.data: df_cursos = pd.DataFrame(res_c.data)
     except: pass
 
-    # --- TAB 0: AGENDA (CON RECORDATORIO DE TAREA) ---
+    # --- TAB 0: AGENDA (CON RECORDATORIOS) ---
     with tabs[0]:
-        st.subheader("Bitácora de Clases")
+        st.subheader("Registro de Clase")
         if not df_cursos.empty:
             opciones_a = [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()]
-            c_agenda = st.selectbox("Seleccionar Materia", opciones_a)
-            c_info = df_cursos[df_cursos['nombre_curso_materia'] == c_agenda.split(" | ")[0]].iloc[0]
+            c_agenda = st.selectbox("Materia de hoy", opciones_a)
+            c_id = df_cursos[df_cursos['nombre_curso_materia'] == c_agenda.split(" | ")[0]].iloc[0]['id']
             
-            # 1. BUSCAR TAREA PARA HOY
+            # BUSCAR RECORDATORIO DE TAREA
             try:
-                res_t = supabase.table("bitacora").select("tarea_descripcion").eq("curso_id", c_info['id']).eq("tarea_vencimiento", str(hoy)).execute()
+                # Buscamos en la bitácora si hay tareas que venzan HOY para este curso
+                res_t = supabase.table("bitacora").select("tarea_descripcion").eq("curso_id", c_id).eq("tarea_vencimiento", str(hoy)).execute()
                 if res_t.data:
-                    st.markdown('<div class="reminder-box">', unsafe_allow_html=True)
-                    st.markdown("#### 🔔 RECORDATORIO: Tarea para hoy")
-                    for t in res_t.data:
-                        st.write(f"• {t['tarea_descripcion']}")
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown('<div class="reminder-box">🔔 <b>RECORDATORIO:</b> Tarea para revisar hoy:<br>' + 
+                                f"{res_t.data[0]['tarea_descripcion']}</div>", unsafe_allow_html=True)
                 else:
                     st.info("No hay tareas programadas para revisar hoy.")
             except: pass
 
-            st.divider()
-
-            # 2. CARGAR CLASE DE HOY
-            st.markdown("#### 📝 Registrar clase de hoy")
-            with st.form("form_agenda_hoy", clear_on_submit=True):
-                temas_dictados = st.text_area("Contenidos vistos en la fecha:")
-                proxima_tarea = st.text_area("Tarea para la clase siguiente:")
-                vencimiento_tarea = st.date_input("Fecha en que deben entregar esta tarea:", hoy + datetime.timedelta(days=7))
-                
-                if st.form_submit_button("Guardar en Bitácora"):
-                    if temas_dictados:
-                        try:
-                            supabase.table("bitacora").insert({
-                                "curso_id": int(c_info['id']),
-                                "profesor_id": user['id'],
-                                "fecha": str(hoy),
-                                "temas": temas_dictados,
-                                "tarea_descripcion": proxima_tarea,
-                                "tarea_vencimiento": str(vencimiento_tarea),
-                                "docente_nombre": user['email']
-                            }).execute()
-                            st.success("Clase y tarea guardadas correctamente.")
-                        except Exception as e:
-                            st.error(f"Error al guardar: {e}")
-                    else:
-                        st.warning("Por favor, completá los temas dictados.")
+            with st.form("registro_hoy"):
+                temas = st.text_area("Contenidos dictados hoy:")
+                tarea_nueva = st.text_area("Tarea para la próxima clase:")
+                fecha_venc = st.date_input("¿Para qué día es la tarea?", hoy + datetime.timedelta(days=7))
+                if st.form_submit_button("Guardar Clase"):
+                    if temas:
+                        supabase.table("bitacora").insert({
+                            "curso_id": int(c_id), "profesor_id": user['id'], "fecha": str(hoy),
+                            "temas": temas, "tarea_descripcion": tarea_nueva, "tarea_vencimiento": str(fecha_venc),
+                            "docente_nombre": user['email']
+                        }).execute()
+                        st.success("✅ Guardado en bitácora.")
+                    else: st.warning("Completá los temas dictados.")
         else:
-            st.markdown('<div class="empty-msg">📅 Primero creá una materia en la pestaña "Cursos".</div>', unsafe_allow_html=True)
+            st.markdown('<div class="empty-msg">Primero creá una materia en la pestaña "Cursos".</div>', unsafe_allow_html=True)
 
-    # --- TAB 4: CURSOS (MANTIENE LÓGICA) ---
+    # --- TAB 4: CURSOS (PARA LIMPIAR LOS REPETIDOS DE LA IMAGEN 06) ---
     with tabs[4]:
         st.subheader("Tus Materias")
         if not df_cursos.empty:
@@ -135,17 +118,11 @@ else:
                     supabase.table("inscripciones").delete().eq("id", cur['id']).execute()
                     st.rerun()
         
-        st.divider()
         with st.form("nuevo_c"):
             st.write("➕ Añadir Materia")
-            nc = st.text_input("Nombre (Ej: Psicología General I)")
-            hc = st.text_input("Días y Horario")
-            if st.form_submit_button("Crear Curso"):
+            nc = st.text_input("Nombre")
+            hc = st.text_input("Horario")
+            if st.form_submit_button("Añadir"):
                 if nc and hc:
                     supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": nc, "horario": hc, "anio_lectivo": 2026}).execute()
                     st.rerun()
-
-    # --- PESTAÑAS RESTANTES (MANTENIENDO LEYENDAS) ---
-    with tabs[1]: st.subheader("Alumnos"); st.info("Inscribí alumnos seleccionando un curso arriba.")
-    with tabs[2]: st.subheader("Asistencia"); st.info("Se habilitará al tener alumnos inscritos.")
-    with tabs[3]: st.subheader("Notas"); st.info("Se habilitará al tener alumnos inscritos.")
