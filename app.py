@@ -6,7 +6,7 @@ import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="ClassTrack 360", layout="wide")
 
-# --- ESTILO CSS ---
+# --- ESTILO CSS (SOFISTICADO) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
@@ -64,77 +64,74 @@ else:
         st.session_state.user = None
         st.rerun()
 
-    if user['rol'] == 'admin':
-        st.title("🛡️ Consola Admin")
-        st.write("Gestionando breckfab@gmail.com")
-    else:
-        st.title("📑 Mi Gestión Académica")
-        tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "🏗️ Cursos"])
+    st.title("📑 Mi Gestión Académica")
+    tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "🏗️ Cursos"])
 
-        # TAB 2 Y 3: MANTIENEN LA LÓGICA DE CARGA QUE YA HICIMOS
-        with tabs[2]:
-            st.subheader("Cursos 2026")
-            with st.form("c_curso"):
-                n_c = st.text_input("Materia")
-                h_c = st.text_input("Horario")
-                if st.form_submit_button("Crear"):
-                    supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": n_c, "horario": h_c, "anio_lectivo": 2026}).execute()
-                    st.success("Curso creado.")
-                    st.rerun()
+    # TAB 2: CURSOS (Mismo flujo anterior)
+    with tabs[2]:
+        st.subheader("Cursos 2026")
+        with st.form("c_curso"):
+            n_c = st.text_input("Materia")
+            h_c = st.text_input("Horario")
+            if st.form_submit_button("Crear"):
+                supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": n_c, "horario": h_c, "anio_lectivo": 2026}).execute()
+                st.success("Curso creado.")
+                st.rerun()
 
-        with tabs[1]:
-            st.subheader("Alumnos")
-            res_c = supabase.table("inscripciones").select("nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
-            if res_c.data:
-                df_c = pd.DataFrame(res_c.data).drop_duplicates()
-                cursos = [f"{row['nombre_curso_materia']} | {row['horario']}" for idx, row in df_c.iterrows()]
-                with st.form("c_alu"):
-                    sel = st.selectbox("Curso", cursos)
-                    nom = st.text_input("Nombre")
-                    ape = st.text_input("Apellido")
-                    if st.form_submit_button("Inscribir"):
-                        nuevo_alu = supabase.table("alumnos").insert({"nombre": nom, "apellido": ape}).execute()
-                        if nuevo_alu.data:
-                            c_nom, c_hor = sel.split(" | ")
-                            supabase.table("inscripciones").insert({"alumno_id": nuevo_alu.data[0]['id'], "profesor_id": user['id'], "nombre_curso_materia": c_nom, "horario": c_hor, "anio_lectivo": 2026}).execute()
-                            st.success("Registrado.")
-            else: st.info("Crea un curso primero.")
+    # TAB 1: ALUMNOS (Mismo flujo anterior)
+    with tabs[1]:
+        st.subheader("Alumnos")
+        res_c = supabase.table("inscripciones").select("nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
+        if res_c.data:
+            df_c = pd.DataFrame(res_c.data).drop_duplicates()
+            cursos = [f"{row['nombre_curso_materia']} | {row['horario']}" for idx, row in df_c.iterrows()]
+            with st.form("c_alu"):
+                sel = st.selectbox("Curso", cursos)
+                nom = st.text_input("Nombre")
+                ape = st.text_input("Apellido")
+                if st.form_submit_button("Inscribir"):
+                    nuevo_alu = supabase.table("alumnos").insert({"nombre": nom, "apellido": ape}).execute()
+                    if nuevo_alu.data:
+                        c_nom, c_hor = sel.split(" | ")
+                        supabase.table("inscripciones").insert({"alumno_id": nuevo_alu.data[0]['id'], "profesor_id": user['id'], "nombre_curso_materia": c_nom, "horario": c_hor, "anio_lectivo": 2026}).execute()
+                        st.success("Registrado.")
+        else: st.info("Crea un curso primero.")
 
-        # --- TAB 0: AGENDA (CON FUNCIÓN DE SUPLENTE) ---
-        with tabs[0]:
-            st.subheader("Registro de Clase Diaria")
-            res_c = supabase.table("inscripciones").select("nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
+    # --- TAB 0: AGENDA (CON NOMBRE Y APELLIDO DE SUPLENTE) ---
+    with tabs[0]:
+        st.subheader("Registro de Clase Diaria")
+        res_c = supabase.table("inscripciones").select("nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
+        
+        if res_c.data:
+            df_c = pd.DataFrame(res_c.data).drop_duplicates()
+            lista_cursos = [f"{row['nombre_curso_materia']} | {row['horario']}" for idx, row in df_c.iterrows()]
             
-            if res_c.data:
-                df_c = pd.DataFrame(res_c.data).drop_duplicates()
-                lista_cursos = [f"{row['nombre_curso_materia']} | {row['horario']}" for idx, row in df_c.iterrows()]
+            with st.form("bitacora_hoy"):
+                col_info1, col_info2 = st.columns(2)
+                curso_hoy = col_info1.selectbox("Materia", lista_cursos)
+                fecha_hoy = col_info2.date_input("Fecha", datetime.date.today())
                 
-                with st.form("bitacora_hoy"):
-                    col_info1, col_info2 = st.columns(2)
-                    curso_hoy = col_info1.selectbox("Materia", lista_cursos)
-                    fecha_hoy = col_info2.date_input("Fecha", datetime.date.today())
-                    
-                    # --- NUEVA FUNCIÓN: PROFESOR / SUPLENTE ---
-                    st.markdown("---")
-                    col_doc1, col_doc2 = st.columns(2)
-                    tipo_docente = col_doc1.selectbox("Docente a cargo", ["PROFESOR TITULAR", "SUPLENTE"])
-                    
-                    # Si elige suplente, habilitamos el campo de nombre
-                    nombre_docente = user['email'] # Por defecto el titular
-                    if tipo_docente == "SUPLENTE":
-                        nombre_docente = col_doc2.text_input("Nombre del Suplente", placeholder="Escriba aquí...")
-                    else:
-                        col_doc2.info(f"Titular: {user['email']}")
-                    st.markdown("---")
+                st.markdown("---")
+                col_doc1, col_doc2, col_doc3 = st.columns([1.5, 2, 2])
+                tipo_docente = col_doc1.selectbox("Docente a cargo", ["PROFESOR TITULAR", "SUPLENTE"])
+                
+                # Campos dinámicos para el suplente
+                if tipo_docente == "SUPLENTE":
+                    nombre_sup = col_doc2.text_input("Nombre del Suplente")
+                    apellido_sup = col_doc3.text_input("Apellido del Suplente")
+                    docente_final = f"Suplente: {nombre_sup} {apellido_sup}"
+                else:
+                    col_doc2.info(f"Titular: {user['email']}")
+                    docente_final = f"Titular: {user['email']}"
+                st.markdown("---")
 
-                    temas = st.text_area("Temas dictados hoy")
-                    proxima_tarea = st.text_area("Tarea para la próxima clase")
-                    
-                    if st.form_submit_button("Guardar Registro de Clase"):
-                        if tipo_docente == "SUPLENTE" and not nombre_docente:
-                            st.error("Por favor, ingrese el nombre del suplente.")
-                        else:
-                            # Aquí el sistema guardará en la tabla 'bitacora'
-                            st.success(f"Clase guardada. Docente registrado: {nombre_docente}")
-            else:
-                st.warning("No tienes cursos para registrar clases.")
+                temas = st.text_area("Temas dictados hoy")
+                proxima_tarea = st.text_area("Tarea para la próxima clase")
+                
+                if st.form_submit_button("Guardar Registro de Clase"):
+                    if tipo_docente == "SUPLENTE" and (not nombre_sup or not apellido_sup):
+                        st.error("Por favor, ingrese nombre y apellido del suplente.")
+                    else:
+                        st.success(f"Clase guardada correctamente bajo: {docente_final}")
+        else:
+            st.warning("No tienes cursos creados para registrar clases.")
