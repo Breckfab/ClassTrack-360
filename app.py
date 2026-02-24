@@ -6,7 +6,7 @@ import datetime
 # --- CONFIGURACIÓN DE PÁGINA ---
 st.set_page_config(page_title="ClassTrack 360", layout="wide")
 
-# --- ESTILO CSS (SOFISTICADO) ---
+# --- ESTILO CSS ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
@@ -67,7 +67,7 @@ else:
     st.title("📑 Mi Gestión Académica")
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "🏗️ Cursos"])
 
-    # TAB 2: CURSOS (Mismo flujo anterior)
+    # TAB 2: CURSOS
     with tabs[2]:
         st.subheader("Cursos 2026")
         with st.form("c_curso"):
@@ -78,7 +78,7 @@ else:
                 st.success("Curso creado.")
                 st.rerun()
 
-    # TAB 1: ALUMNOS (Mismo flujo anterior)
+    # TAB 1: ALUMNOS
     with tabs[1]:
         st.subheader("Alumnos")
         res_c = supabase.table("inscripciones").select("nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
@@ -97,7 +97,7 @@ else:
                         st.success("Registrado.")
         else: st.info("Crea un curso primero.")
 
-    # --- TAB 0: AGENDA (CON NOMBRE Y APELLIDO DE SUPLENTE) ---
+    # --- TAB 0: AGENDA (CON CALENDARIO DE TAREAS) ---
     with tabs[0]:
         st.subheader("Registro de Clase Diaria")
         res_c = supabase.table("inscripciones").select("nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
@@ -109,13 +109,12 @@ else:
             with st.form("bitacora_hoy"):
                 col_info1, col_info2 = st.columns(2)
                 curso_hoy = col_info1.selectbox("Materia", lista_cursos)
-                fecha_hoy = col_info2.date_input("Fecha", datetime.date.today())
+                fecha_clase = col_info2.date_input("Fecha de la clase", datetime.date.today())
                 
                 st.markdown("---")
                 col_doc1, col_doc2, col_doc3 = st.columns([1.5, 2, 2])
                 tipo_docente = col_doc1.selectbox("Docente a cargo", ["PROFESOR TITULAR", "SUPLENTE"])
                 
-                # Campos dinámicos para el suplente
                 if tipo_docente == "SUPLENTE":
                     nombre_sup = col_doc2.text_input("Nombre del Suplente")
                     apellido_sup = col_doc3.text_input("Apellido del Suplente")
@@ -123,15 +122,21 @@ else:
                 else:
                     col_doc2.info(f"Titular: {user['email']}")
                     docente_final = f"Titular: {user['email']}"
+                
                 st.markdown("---")
-
-                temas = st.text_area("Temas dictados hoy")
-                proxima_tarea = st.text_area("Tarea para la próxima clase")
+                temas = st.text_area("Temas dictados hoy", placeholder="Ej: Present Simple, Vocabulary Unit 1...")
+                
+                # --- SECCIÓN DE TAREA CON CALENDARIO PROPIO ---
+                st.markdown("#### 📝 Asignación de Tarea")
+                col_t1, col_t2 = st.columns([2, 1])
+                proxima_tarea = col_t1.text_area("Descripción de la tarea", placeholder="Ej: Ejercicios 1 al 5 de la pág. 10")
+                fecha_entrega = col_t2.date_input("Fecha de entrega/vencimiento", datetime.date.today() + datetime.timedelta(days=7))
                 
                 if st.form_submit_button("Guardar Registro de Clase"):
                     if tipo_docente == "SUPLENTE" and (not nombre_sup or not apellido_sup):
                         st.error("Por favor, ingrese nombre y apellido del suplente.")
                     else:
-                        st.success(f"Clase guardada correctamente bajo: {docente_final}")
+                        # La lógica de guardado incluirá la 'fecha_entrega'
+                        st.success(f"Clase guardada. Tarea programada para el {fecha_entrega.strftime('%d/%m/%Y')}")
         else:
             st.warning("No tienes cursos creados para registrar clases.")
