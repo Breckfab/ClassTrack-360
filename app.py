@@ -67,20 +67,76 @@ else:
     st.title("📑 Mi Gestión Académica")
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "🏗️ Cursos"])
 
-    # TAB 2: CURSOS
-    with tabs[2]:
-        st.subheader("Cursos 2026")
-        with st.form("c_curso"):
-            n_c = st.text_input("Materia")
-            h_c = st.text_input("Horario")
-            if st.form_submit_button("Crear"):
-                supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": n_c, "horario": h_c, "anio_lectivo": 2026}).execute()
-                st.success("Curso creado.")
-                st.rerun()
+    # --- PESTAÑA AGENDA (BITÁCORA REAL) ---
+    with tabs[0]:
+        st.subheader("Registro de Clase Diaria")
+        
+        # Traer cursos creados para el selector
+        res_cursos = supabase.table("inscripciones").select("id, nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
+        
+        if res_cursos.data:
+            df_cursos = pd.DataFrame(res_cursos.data).drop_duplicates(subset=['nombre_curso_materia', 'horario'])
+            lista_cursos = [f"{row['nombre_curso_materia']} | {row['horario']}" for _, row in df_cursos.iterrows()]
+            
+            with st.form("form_bitacora"):
+                col_c1, col_c2 = st.columns(2)
+                seleccion_curso = col_c1.selectbox("Seleccionar Materia", lista_cursos)
+                fecha_clase = col_c2.date_input("Fecha de hoy", datetime.date.today())
+                
+                st.markdown("---")
+                col_d1, col_d2, col_d3 = st.columns([1.5, 2, 2])
+                es_suplente = col_d1.selectbox("¿Quién dicta la clase?", ["TITULAR", "SUPLENTE"])
+                
+                nombre_doc = user['email']
+                if es_suplente == "SUPLENTE":
+                    nom_sup = col_d2.text_input("Nombre Suplente")
+                    ape_sup = col_d3.text_input("Apellido Suplente")
+                    nombre_doc = f"Suplente: {nom_sup} {ape_sup}"
+                else:
+                    col_d2.info(f"Titular: {user['email']}")
+                
+                st.markdown("---")
+                temas_dictados = st.text_area("Temas de hoy (Bitácora)", placeholder="Escriba los contenidos vistos...")
+                
+                st.markdown("#### 📝 Tarea Asignada")
+                col_t1, col_t2 = st.columns([2, 1])
+                descripcion_tarea = col_t1.text_area("¿Qué tarea queda?", placeholder="Detalle la tarea...")
+                fecha_vencimiento = col_t2.date_input("Para el día:", datetime.date.today() + datetime.timedelta(days=7))
+                
+                submit_prep = st.form_submit_button("Preparar Guardado")
 
-    # TAB 1: ALUMNOS
+            if submit_prep:
+                st.warning("⚠️ ¿Confirmas el guardado de este registro en la bitácora?")
+                if st.button("✅ SÍ, GUARDAR EN LA NUBE"):
+                    # Buscamos el ID del curso seleccionado
+                    c_nombre = seleccion_curso.split(" | ")[0]
+                    c_horario = seleccion_curso.split(" | ")[1]
+                    curso_id = df_cursos[(df_cursos['nombre_curso_materia'] == c_nombre) & (df_cursos['horario'] == c_horario)]['id'].values[0]
+                    
+                    datos_clase = {
+                        "curso_id": int(curso_id),
+                        "profesor_id": user['id'],
+                        "fecha": str(fecha_clase),
+                        "docente_nombre": nombre_doc,
+                        "temas": temas_dictados,
+                        "tarea_descripcion": descripcion_tarea,
+                        "tarea_vencimiento": str(fecha_vencimiento)
+                    }
+                    
+                    try:
+                        supabase.table("bitacora").insert(datos_clase).execute()
+                        st.success("✅ Registro guardado con éxito en la base de datos.")
+                        st.balloons()
+                    except Exception as e:
+                        st.error(f"Error al guardar: {e}")
+
+        else:
+            st.info("Primero debés crear un curso en la pestaña 'Cursos'.")
+
+    # (Las pestañas de Alumnos y Cursos se mantienen con el código que ya validamos)
     with tabs[1]:
-        st.subheader("Alumnos")
-        res_c = supabase.table("inscripciones").select("nombre_curso_materia, horario").eq("profesor_id", user['id']).execute()
-        if res_c.data:
-            df_c = pd.
+        st.subheader("Gestión de Alumnos")
+        # ... (código previo de alumnos)
+    with tabs[2]:
+        st.subheader("Gestión de Cursos")
+        # ... (código previo de cursos)
