@@ -24,11 +24,16 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
     .stApp { background-color: #0b0e14; color: #e0e0e0; font-family: 'Inter', sans-serif; }
     .logo-text { font-weight: 800; background: linear-gradient(to right, #3b82f6, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3rem; text-align: center; margin-bottom: 20px; }
-    .print-area { background-color: white; color: black; padding: 20px; border-radius: 10px; margin-top: 20px; }
-    @media print {
-        .no-print { display: none !important; }
-        .stApp { background-color: white !important; color: black !important; }
+    .warning-card { 
+        background: rgba(255, 184, 0, 0.1); 
+        border-left: 5px solid #ffb800; 
+        padding: 20px; 
+        border-radius: 10px; 
+        margin: 10px 0;
+        color: #ffb800;
     }
+    .print-area { background-color: white; color: black; padding: 25px; border-radius: 10px; margin-top: 20px; border: 1px solid #ddd; }
+    @media print { .no-print { display: none !important; } .stApp { background-color: white !important; } }
     </style>
     """, unsafe_allow_html=True)
 
@@ -62,65 +67,64 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # Carga base de datos
+    # --- CARGA BASE DE DATOS ---
     df_cursos = pd.DataFrame()
     try:
         res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario, anio_lectivo").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
         if res_c.data: df_cursos = pd.DataFrame(res_c.data)
     except: pass
 
-    # --- TAB 3: NOTAS (FILTROS, PROMEDIOS E IMPRESIÓN) ---
+    # --- TAB 3: NOTAS (CON PROTECCIÓN Y ADVERTENCIAS) ---
     with tabs[3]:
         st.subheader("Planilla de Calificaciones")
-        if not df_cursos.empty:
+        if df_cursos.empty:
+            st.markdown('<div class="warning-card">⚠️ <b>No hay cursos creados.</b><br>Primero debes ir a la pestaña <b>Cursos</b> y añadir una materia para poder cargar notas.</div>', unsafe_allow_html=True)
+        else:
             col_n1, col_n2 = st.columns([2, 1])
-            curso_n = col_n1.selectbox("Seleccionar Curso para Notas", df_cursos['nombre_curso_materia'].unique())
-            anio_n = col_n2.selectbox("Año", sorted(df_cursos['anio_lectivo'].unique(), reverse=True), key="n_anio")
+            curso_n = col_n1.selectbox("Seleccionar Curso:", df_cursos['nombre_curso_materia'].unique())
+            anio_n = col_n2.selectbox("Año Lectivo:", sorted(df_cursos['anio_lectivo'].unique(), reverse=True))
 
-            # Obtener alumnos del curso
             res_a = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("nombre_curso_materia", curso_n).eq("anio_lectivo", anio_n).not_.is_("alumno_id", "null").execute()
             
-            if res_a.data:
-                # Simulación de carga de notas (esto se conectará a la tabla 'notas' en el siguiente paso)
-                # Por ahora, armamos la estructura de la planilla para impresión
-                data_notas = []
-                for r in res_a.data:
-                    data_notas.append({
-                        "Alumno": f"{r['alumnos']['apellido']}, {r['alumnos']['nombre']}",
-                        "Nota 1": 0.0,
-                        "Nota 2": 0.0,
-                        "Promedio": 0.0
-                    })
-                
+            if not res_a.data:
+                st.markdown(f'<div class="warning-card">⚠️ <b>No hay alumnos inscritos en {curso_n}.</b><br>Para ver la planilla de notas, primero debes inscribir alumnos en este curso desde la pestaña <b>Alumnos</b>.</div>', unsafe_allow_html=True)
+            else:
+                data_notas = [{"Alumno": f"{r['alumnos']['apellido']}, {r['alumnos']['nombre']}", "Nota 1": 0.0, "Nota 2": 0.0, "Promedio": 0.0} for r in res_a.data]
                 df_notas = pd.DataFrame(data_notas)
-                st.data_editor(df_notas, use_container_width=True, disabled=["Alumno", "Promedio"], key="editor_notas")
+                st.data_editor(df_notas, use_container_width=True, disabled=["Alumno", "Promedio"])
                 
-                st.divider()
                 if st.button("🖨️ Generar Acta de Notas para Imprimir"):
                     st.markdown('<div class="print-area">', unsafe_allow_html=True)
                     st.markdown(f"## Acta de Calificaciones - {curso_n}")
-                    st.markdown(f"**Docente:** {user['email']} | **Año Lectivo:** {anio_n}")
+                    st.markdown(f"**Institución:** {'Cambridge' if 'cambridge' in user['email'] else 'Daguerre'} | **Año:** {anio_n}")
                     st.table(df_notas)
                     st.markdown('</div>', unsafe_allow_html=True)
-                    st.info("💡 Presioná Ctrl+P para imprimir esta acta.")
-            else:
-                st.info("No hay alumnos inscritos en este curso para calificar.")
-        else:
-            st.info("Cargá una materia en 'Cursos' para habilitar las notas.")
 
-    # --- TAB 1: ALUMNOS (FILTROS) ---
+    # --- TAB 1: ALUMNOS (CON PROTECCIÓN) ---
     with tabs[1]:
-        st.subheader("Búsqueda de Alumnos")
-        if not df_cursos.empty:
-            busq = st.text_input("🔍 Buscar por apellido")
-            # Mostrar tabla filtrada... (Mantenemos la lógica anterior)
-            st.write("Escribe el apellido para filtrar la lista.")
+        st.subheader("Gestión de Alumnos")
+        if df_cursos.empty:
+            st.markdown('<div class="warning-card">⚠️ <b>¡Atención Profe!</b><br>Para poder inscribir alumnos, primero necesitas crear una materia en la pestaña <b>Cursos</b>.</div>', unsafe_allow_html=True)
         else:
-            st.info("Sin cursos registrados.")
+            col_f1, col_f2 = st.columns([2, 1])
+            busq = col_f1.text_input("🔍 Buscar Alumno por Apellido")
+            curso_f = col_f2.selectbox("Filtrar por Materia:", ["Todas"] + list(df_cursos['nombre_curso_materia'].unique()))
+            
+            st.info("Escribe el nombre arriba para buscar o usa el botón de abajo para añadir uno nuevo.")
+            with st.expander("➕ Inscribir Nuevo Estudiante"):
+                with st.form("nuevo_alu_form", clear_on_submit=True):
+                    c_ins = st.selectbox("Materia:", [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()])
+                    n_a, a_a = st.text_input("Nombre"), st.text_input("Apellido")
+                    if st.form_submit_button("Inscribir"):
+                        if n_a and a_a:
+                            nuevo = supabase.table("alumnos").insert({"nombre": n_a, "apellido": a_a}).execute()
+                            c_nom, c_hor = c_ins.split(" | ")
+                            supabase.table("inscripciones").insert({"alumno_id": nuevo.data[0]['id'], "profesor_id": user['id'], "nombre_curso_materia": c_nom, "horario": c_hor, "anio_lectivo": 2026}).execute()
+                            st.success("Alumno inscrito."); st.rerun()
 
     # --- TAB 4: CURSOS ---
     with tabs[4]:
-        st.subheader("Tus Materias")
+        st.subheader("Configuración de Materias")
         if not df_cursos.empty:
             for _, cur in df_cursos.iterrows():
                 col_n, col_b = st.columns([4, 1])
@@ -131,13 +135,14 @@ else:
         
         with st.form("nuevo_curso"):
             st.write("➕ Añadir Materia")
-            nc = st.text_input("Nombre")
-            hc = st.text_input("Horario")
-            if st.form_submit_button("Crear"):
+            nc, hc = st.text_input("Nombre de Materia"), st.text_input("Horario")
+            if st.form_submit_button("Crear Curso"):
                 if nc and hc:
                     supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": nc, "horario": hc, "anio_lectivo": 2026}).execute()
                     st.rerun()
 
-    # Pestañas pendientes
-    with tabs[0]: st.subheader("Agenda"); st.info("Registro de clases disponible al seleccionar curso.")
-    with tabs[2]: st.subheader("Asistencia"); st.info("Control de presentismo por curso.")
+    # Mensajes informativos para Agenda y Asistencia
+    for i, label in [(0, "Agenda"), (2, "Asistencia")]:
+        with tabs[i]:
+            st.subheader(label)
+            st.markdown(f'<div class="warning-card">📝 <b>Sección en preparación.</b><br>Primero asegúrate de tener cursos y alumnos cargados.</div>', unsafe_allow_html=True)
