@@ -31,7 +31,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGIN (CORREGIDO PARA ENTER) ---
+# --- LOGIN ---
 if st.session_state.user is None:
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
@@ -50,7 +50,7 @@ if st.session_state.user is None:
                             st.session_state.user = res.data[0]
                             st.rerun()
                         else: st.error("Credenciales incorrectas.")
-                    except: st.error("Error de red. Intenta nuevamente.")
+                    except: st.error("Error de conexión.")
                 else: st.error("Usuario no reconocido.")
 else:
     user = st.session_state.user
@@ -64,65 +64,69 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # --- CARGA MAESTRA DE CURSOS ---
+    # Carga de materias
     df_cursos = pd.DataFrame()
     try:
         res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario, anio_lectivo").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
         if res_c.data: df_cursos = pd.DataFrame(res_c.data)
     except: pass
 
-    # --- TAB 1: ALUMNOS (CONTADORES Y GESTIÓN) ---
-    with tabs[1]:
-        st.subheader("Gestión de Alumnos")
-        if df_cursos.empty:
-            st.markdown('<div class="warning-card">⚠️ Crea una materia primero para inscribir alumnos.</div>', unsafe_allow_html=True)
-        else:
-            # Lógica de conteo
-            try:
-                # Total Sede (Año 2026)
-                res_total = supabase.table("inscripciones").select("alumno_id", count="exact").eq("profesor_id", user['id']).eq("anio_lectivo", 2026).not_.is_("alumno_id", "null").execute()
-                total_sede = res_total.count if res_total.count else 0
-                
-                # Selector de curso para ver total específico
-                c_filtro = st.selectbox("Ver estadísticas del curso:", df_cursos['nombre_curso_materia'].unique())
-                res_curso = supabase.table("inscripciones").select("alumno_id", count="exact").eq("profesor_id", user['id']).eq("nombre_curso_materia", c_filtro).eq("anio_lectivo", 2026).not_.is_("alumno_id", "null").execute()
-                total_curso = res_curso.count if res_curso.count else 0
-                
-                # Visualización de contadores
-                col_m1, col_m2 = st.columns(2)
-                with col_m1:
-                    st.markdown(f'<div class="metric-card">Alumnos en {c_filtro}<br><span class="metric-value">{total_curso}</span></div>', unsafe_allow_html=True)
-                with col_m2:
-                    st.markdown(f'<div class="metric-card">Total Matrícula {sede_nombre} (2026)<br><span class="metric-value">{total_sede}</span></div>', unsafe_allow_html=True)
-            except:
-                st.error("Error al calcular estadísticas.")
-
-            st.write("---")
-            with st.expander("➕ Inscribir Estudiante", expanded=True):
-                with st.form("ins_alu_f", clear_on_submit=True):
-                    c_sel = st.selectbox("Asignar a:", [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()])
-                    nom, ape = st.text_input("Nombre"), st.text_input("Apellido")
-                    if st.form_submit_button("Inscribir"):
-                        if nom and ape:
-                            nuevo = supabase.table("alumnos").insert({"nombre": nom, "apellido": ape}).execute()
-                            c_nom, _ = c_sel.split(" | ")
-                            supabase.table("inscripciones").insert({"alumno_id": nuevo.data[0]['id'], "profesor_id": user['id'], "nombre_curso_materia": c_nom, "anio_lectivo": 2026}).execute()
-                            st.success("Alumno anotado."); st.rerun()
-
-    # --- TAB 0: AGENDA (CON MEMORIA) ---
+    # --- TAB 0: AGENDA (CON MANEJO DE ERROR DE TABLA) ---
     with tabs[0]:
         st.subheader("Registro de Clase")
         if df_cursos.empty:
             st.markdown('<div class="warning-card">⚠️ No hay materias creadas.</div>', unsafe_allow_html=True)
         else:
             c_agenda = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique())
-            res_b = supabase.table("bitacora").select("*").eq("profesor_id", user['id']).eq("materia", c_agenda).order("fecha", desc=True).limit(1).execute()
-            if res_b.data:
-                st.markdown(f'<div class="reminder-box">🔔 <b>Tarea para hoy:</b><br>{res_b.data[0].get("tarea_proxima", "No hay")}</div>', unsafe_allow_html=True)
+            
+            # Bloque seguro para evitar el error de API
+            try:
+                res_b = supabase.table("bitacora").select("*").eq("profesor_id", user['id']).eq("materia", c_agenda).order("fecha", desc=True).limit(1).execute()
+                if res_b.data:
+                    st.markdown(f'<div class="reminder-box">🔔 <b>Tarea para revisar hoy:</b><br>{res_b.data[0].get("tarea_proxima", "No hay")}</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="reminder-box">✅ No hay registros previos.</div>', unsafe_allow_html=True)
+            except Exception:
+                st.markdown('<div class="warning-card">⚙️ <b>Configuración pendiente:</b> La tabla de Bitácora se activará automáticamente al guardar tu primera clase.</div>', unsafe_allow_html=True)
+
             with st.form("f_agenda"):
-                t = st.text_area("Temas de hoy")
-                if st.form_submit_button("Guardar"):
-                    if t: st.success("Guardado."); st.rerun()
+                temas = st.text_area("Temas dictados hoy")
+                tarea = st.text_area("Tarea para la próxima clase")
+                if st.form_submit_button("Guardar Clase"):
+                    if temas:
+                        try:
+                            supabase.table("bitacora").insert({
+                                "profesor_id": user['id'], "materia": c_agenda, "fecha": str(hoy.date()),
+                                "temas_dictados": temas, "tarea_proxima": tarea
+                            }).execute()
+                            st.success("Guardado correctamente.")
+                            st.rerun()
+                        except: st.error("Falta crear la tabla 'bitacora' en Supabase.")
+
+    # --- TAB 1: ALUMNOS (CONTADORES) ---
+    with tabs[1]:
+        st.subheader("Gestión de Alumnos")
+        if df_cursos.empty:
+            st.markdown('<div class="warning-card">⚠️ Crea una materia primero.</div>', unsafe_allow_html=True)
+        else:
+            # Estadísticas rápidas
+            res_total = supabase.table("inscripciones").select("alumno_id", count="exact").eq("profesor_id", user['id']).eq("anio_lectivo", 2026).not_.is_("alumno_id", "null").execute()
+            count_total = res_total.count if res_total.count else 0
+            
+            st.markdown(f'<div class="metric-card">Total Matrícula {sede_nombre} 2026: <span class="metric-value">{count_total}</span></div>', unsafe_allow_html=True)
+            
+            with st.expander("➕ Inscribir Estudiante", expanded=True):
+                with st.form("ins_alu"):
+                    c_sel = st.selectbox("Asignar a:", df_cursos['nombre_curso_materia'].unique())
+                    n, a = st.text_input("Nombre"), st.text_input("Apellido")
+                    if st.form_submit_button("Inscribir"):
+                        if n and a:
+                            nuevo = supabase.table("alumnos").insert({"nombre": n, "apellido": a}).execute()
+                            supabase.table("inscripciones").insert({
+                                "alumno_id": nuevo.data[0]['id'], "profesor_id": user['id'], 
+                                "nombre_curso_materia": c_sel, "anio_lectivo": 2026
+                            }).execute()
+                            st.success("Alumno anotado."); st.rerun()
 
     # --- TABS ASISTENCIA Y NOTAS ---
     for i, label in [(2, "Asistencia"), (3, "Notas")]:
@@ -131,7 +135,7 @@ else:
             if df_cursos.empty: st.markdown("⚠️ Crea un curso primero.")
             else:
                 mat = st.selectbox(f"Materia:", df_cursos['nombre_curso_materia'].unique(), key=f"s_{i}")
-                st.markdown(f'<div class="warning-card">📝 No hay {label} cargadas aún para {mat}.</div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="warning-card">📝 No hay {label} disponibles para mostrar todavía en {mat}.</div>', unsafe_allow_html=True)
 
     # --- TAB 4: CURSOS ---
     with tabs[4]:
