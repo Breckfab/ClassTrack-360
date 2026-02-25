@@ -37,7 +37,7 @@ if st.session_state.user is None:
     _, col_login, _ = st.columns([1, 1.8, 1])
     with col_login:
         st.markdown('<div class="login-box"><div class="logo-text">ClassTrack 360</div></div>', unsafe_allow_html=True)
-        with st.form("login_v44"):
+        with st.form("login_v45"):
             u_in = st.text_input("Sede").strip().lower()
             p_in = st.text_input("Clave", type="password")
             if st.form_submit_button("Entrar", use_container_width=True):
@@ -83,23 +83,33 @@ else:
         if r_c and r_c.data: df_cursos = pd.DataFrame(r_c.data)
     except: pass
 
-    # --- TAB 0: AGENDA (CON EDICIÓN) ---
+    # --- TAB 0: AGENDA (CORRECCIÓN ERROR API) ---
     with tabs[0]:
         st.subheader("Registro de Clase")
         if df_cursos.empty: st.markdown('<div class="info-card">🏗️ No hay materias creadas para registrar agenda.</div>', unsafe_allow_html=True)
         else:
-            m_age = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_age_v44")
+            m_age = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_age_v45")
             c1, c2 = st.columns(2)
             with c1:
-                with st.form("f_age_v44", clear_on_submit=True):
+                with st.form("f_age_v45", clear_on_submit=True):
                     t1 = st.text_area("Temas dictados hoy")
                     t2 = st.text_area("Tarea próxima")
                     f2 = st.date_input("Fecha de la tarea:", value=ahora + datetime.timedelta(days=7))
                     if st.form_submit_button("Guardar"):
                         if t1:
-                            txt_tarea = f"[{f2.strftime('%d/%m/%Y')}] {t2}" if t2 else ""
-                            supabase.table("bitacora").insert({"profesor_id": u_data['id'], "materia": m_age, "fecha": str(ahora.date()), "temas_dictados": t1, "tarea_proxima": txt_tarea}).execute()
-                            st.success("Registro guardado."); st.rerun()
+                            try:
+                                txt_tarea = f"[{f2.strftime('%d/%m/%Y')}] {t2}" if t2 else ""
+                                # Cambio preventivo de nombre de columna 'materia' por compatibilidad
+                                supabase.table("bitacora").insert({
+                                    "profesor_id": u_data['id'], 
+                                    "materia": m_age, 
+                                    "fecha": str(ahora.date()), 
+                                    "temas_dictados": t1, 
+                                    "tarea_proxima": txt_tarea
+                                }).execute()
+                                st.success("Registro guardado."); st.rerun()
+                            except Exception as e:
+                                st.error(f"Error al guardar en Agenda: No se pudo conectar con la tabla 'bitacora'. Por favor verifica la conexión.")
             with c2:
                 st.write("### Historial y Edición")
                 try:
@@ -109,26 +119,26 @@ else:
                             with st.expander(f"📅 {entry['fecha']}"):
                                 st.write(f"**Temas:** {entry['temas_dictados']}")
                                 st.write(f"**Tarea:** {entry['tarea_proxima'] if entry['tarea_proxima'] else 'Sin tarea'}")
-                                if st.button("Editar Registro", key=f"ed_age_{entry['id']}"):
+                                if st.button("Editar", key=f"ed_age_{entry['id']}"):
                                     st.session_state[f"active_ed_age_{entry['id']}"] = True
                                 
                                 if st.session_state.get(f"active_ed_age_{entry['id']}", False):
                                     with st.form(f"f_edit_age_{entry['id']}"):
                                         new_t1 = st.text_area("Corregir Temas:", value=entry['temas_dictados'])
                                         new_t2 = st.text_area("Corregir Tarea:", value=entry['tarea_proxima'])
-                                        if st.form_submit_button("Actualizar Agenda"):
+                                        if st.form_submit_button("Actualizar"):
                                             supabase.table("bitacora").update({"temas_dictados": new_t1, "tarea_proxima": new_t2}).eq("id", entry['id']).execute()
                                             st.session_state[f"active_ed_age_{entry['id']}"] = False
                                             st.rerun()
-                    else: st.info("No hay registros previos de agenda para esta materia.")
-                except: st.info("No hay registros previos de agenda.")
+                    else: st.info("Sin historial hasta el día de la fecha.")
+                except: st.info("Sin historial hasta el día de la fecha.")
 
     # --- TAB 1: ALUMNOS ---
     with tabs[1]:
         st.subheader("Alumnos")
         if df_cursos.empty: st.markdown('<div class="info-card">⚠️ Crea una materia primero para gestionar alumnos.</div>', unsafe_allow_html=True)
         else:
-            m_alu = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_alu_v44")
+            m_alu = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_alu_v45")
             r_alu = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_alu).not_.is_("alumno_id", "null").execute()
             if r_alu and r_alu.data:
                 for x in r_alu.data:
@@ -141,7 +151,7 @@ else:
             else: st.info("No hay alumnos inscriptos para consultar en esta materia.")
 
             with st.expander("➕ Inscribir Alumno"):
-                with st.form("f_ins_v44", clear_on_submit=True):
+                with st.form("f_ins_v45", clear_on_submit=True):
                     n, a = st.text_input("Nombre"), st.text_input("Apellido")
                     if st.form_submit_button("Inscribir"):
                         res_a = supabase.table("alumnos").insert({"nombre": n, "apellido": a}).execute()
@@ -149,23 +159,23 @@ else:
                             supabase.table("inscripciones").insert({"alumno_id": res_a.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": m_alu, "anio_lectivo": 2026}).execute()
                             st.rerun()
 
-    # --- TAB 2: ASISTENCIA (CON EDICIÓN) ---
+    # --- TAB 2: ASISTENCIA ---
     with tabs[2]:
         st.subheader("Asistencia")
         if df_cursos.empty: st.markdown('<div class="info-card">⚠️ Debes crear una materia para habilitar el control de asistencia.</div>', unsafe_allow_html=True)
         else:
-            m_as = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_as_v44")
+            m_as = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_as_v45")
             sub_asis = st.tabs(["📝 Tomar", "📊 Consultar por Fecha", "🔍 Buscar y Editar"])
             
             with sub_asis[0]:
                 r_as = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_as).not_.is_("alumno_id", "null").execute()
                 if not r_as or not r_as.data: st.info("No hay alumnos inscriptos para tomar asistencia.")
                 else:
-                    with st.form("f_as_v44"):
+                    with st.form("f_as_v45"):
                         as_list = []
                         for it in r_as.data:
                             alu = it['alumnos']
-                            est = st.radio(f"{alu['apellido']}", ["Presente", "Ausente"], key=f"as_v44_{alu['id']}", horizontal=True)
+                            est = st.radio(f"{alu['apellido']}", ["Presente", "Ausente"], key=f"as_v45_{alu['id']}", horizontal=True)
                             as_list.append({"id": alu['id'], "est": est})
                         if st.form_submit_button("Guardar"):
                             for r in as_list:
@@ -173,7 +183,7 @@ else:
                             st.success("Guardado."); st.rerun()
 
             with sub_asis[1]:
-                f_q = st.date_input("Elegir fecha:", value=ahora.date(), key="f_as_v44")
+                f_q = st.date_input("Elegir fecha:", value=ahora.date(), key="f_as_v45")
                 try:
                     r_v = supabase.table("asistencia").select("estado, alumnos(nombre, apellido)").eq("materia", m_as).eq("fecha", str(f_q)).execute()
                     if r_v and r_v.data:
@@ -185,7 +195,7 @@ else:
                 r_al_as = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_as).not_.is_("alumno_id", "null").execute()
                 if r_al_as and r_al_as.data:
                     op_as = {f"{it['alumnos']['apellido']}, {it['alumnos']['nombre']}": it['alumnos']['id'] for it in r_al_as.data}
-                    sel_as = st.selectbox("Seleccionar Alumno:", list(op_as.keys()), key="sel_as_v44")
+                    sel_as = st.selectbox("Alumno:", list(op_as.keys()), key="sel_as_v45")
                     id_al = op_as[sel_as]
                     r_hist = supabase.table("asistencia").select("id, fecha, estado").eq("alumno_id", id_al).eq("materia", m_as).order("fecha", desc=True).execute()
                     if r_hist and r_hist.data:
@@ -201,26 +211,26 @@ else:
                                         supabase.table("asistencia").update({"estado": n_est}).eq("id", h['id']).execute()
                                         st.session_state[f"active_ed_as_{h['id']}"] = False
                                         st.rerun()
-                    else: st.info("No hay registros de asistencia para este alumno.")
+                    else: st.info("No hay alumnos para consultar registros de asistencia.")
                 else: st.info("No hay alumnos inscriptos para buscar registros.")
 
-    # --- TAB 3: NOTAS (CON EDICIÓN) ---
+    # --- TAB 3: NOTAS ---
     with tabs[3]:
         st.subheader("Notas")
         if df_cursos.empty: st.markdown('<div class="info-card">⚠️ Debes crear una materia para habilitar la carga de notas.</div>', unsafe_allow_html=True)
         else:
-            m_nt = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_nt_v44")
+            m_nt = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_nt_v45")
             sub_nt = st.tabs(["📝 Cargar", "🔍 Buscar y Editar"])
 
             with sub_nt[0]:
                 r_nt = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_nt).not_.is_("alumno_id", "null").execute()
                 if r_nt and r_nt.data:
-                    with st.form("f_nt_v44", clear_on_submit=True):
+                    with st.form("f_nt_v45", clear_on_submit=True):
                         inst = st.selectbox("Instancia", ["Parcial 1", "Parcial 2", "TP", "Final"])
                         nt_list = []
                         for it in r_nt.data:
                             alu = it['alumnos']
-                            v = st.number_input(f"{alu['apellido']}", 1, 10, key=f"n_v44_{alu['id']}")
+                            v = st.number_input(f"{alu['apellido']}", 1, 10, key=f"n_v45_{alu['id']}")
                             nt_list.append({"id": alu['id'], "v": v})
                         if st.form_submit_button("Guardar"):
                             for n in nt_list:
@@ -232,7 +242,7 @@ else:
                 r_al_nt = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_nt).not_.is_("alumno_id", "null").execute()
                 if r_al_nt and r_al_nt.data:
                     op_nt = {f"{it['alumnos']['apellido']}, {it['alumnos']['nombre']}": it['alumnos']['id'] for it in r_al_nt.data}
-                    sel_nt = st.selectbox("Alumno:", list(op_nt.keys()), key="sel_nt_v44")
+                    sel_nt = st.selectbox("Alumno:", list(op_nt.keys()), key="sel_nt_v45")
                     id_al_nt = op_nt[sel_nt]
                     r_h_nt = supabase.table("notas").select("id, fecha, tipo_nota, calificacion").eq("alumno_id", id_al_nt).eq("materia", m_nt).order("fecha", desc=True).execute()
                     if r_h_nt and r_h_nt.data:
@@ -248,7 +258,7 @@ else:
                                         supabase.table("notas").update({"calificacion": nv}).eq("id", h['id']).execute()
                                         st.session_state[f"active_ed_nt_{h['id']}"] = False
                                         st.rerun()
-                    else: st.info("No hay registros de notas para este alumno.")
+                    else: st.info("No hay alumnos para consultar registros de notas.")
                 else: st.info("No hay alumnos inscriptos para buscar registros.")
 
     # --- TAB 4: CURSOS ---
@@ -258,12 +268,12 @@ else:
             for _, r in df_cursos.iterrows():
                 c1, c2 = st.columns([4, 1])
                 c1.write(f"📘 **{r['nombre_curso_materia']}** | {r['horario']}")
-                if c2.button("Borrar", key=f"br_v44_{r['id']}"):
+                if c2.button("Borrar", key=f"br_v45_{r['id']}"):
                     supabase.table("inscripciones").delete().eq("id", r['id']).execute()
                     st.rerun()
         else: st.info("🏗️ No tienes materias creadas hasta el momento.")
         
-        with st.form("f_cur_v44", clear_on_submit=True):
+        with st.form("f_cur_v45", clear_on_submit=True):
             nc, hc = st.text_input("Materia"), st.text_input("Horario")
             if st.form_submit_button("Crear Materia"):
                 if nc and hc:
