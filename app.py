@@ -35,7 +35,7 @@ if st.session_state.user is None:
     _, col_login, _ = st.columns([1, 1.8, 1])
     with col_login:
         st.markdown('<div class="login-box"><div class="logo-text">ClassTrack 360</div></div>', unsafe_allow_html=True)
-        with st.form("login_v69"):
+        with st.form("login_v71"):
             u_in = st.text_input("Sede").strip().lower()
             p_in = st.text_input("Clave", type="password")
             if st.form_submit_button("Entrar", use_container_width=True):
@@ -74,99 +74,78 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # Carga de Materias
+    # Carga de Materias (Capturamos el ID de la inscripción)
     df_cursos = pd.DataFrame()
     try:
-        r_c = supabase.table("inscripciones").select("*").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
+        r_c = supabase.table("inscripciones").select("id, nombre_curso_materia").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
         if r_c and r_c.data: df_cursos = pd.DataFrame(r_c.data)
     except: pass
 
-    # --- TAB 0: AGENDA (SISTEMA DE SINCRONIZACIÓN TOTAL) ---
+    # --- TAB 0: AGENDA (CORRECCIÓN SEGÚN CAPTURA DE BASE DE DATOS) ---
     with tabs[0]:
         st.subheader("Registro de Clase")
         if df_cursos.empty: 
             st.info("🏗️ No hay materias creadas.")
         else:
-            opts = ["--- Seleccione Materia ---"] + list(df_cursos['nombre_curso_materia'].unique())
-            m_age = st.selectbox("Materia:", opts, key="sb_age_v69")
+            # Diccionario para mapear nombre a ID
+            mapa_cursos = {row['nombre_curso_materia']: row['id'] for _, row in df_cursos.iterrows()}
+            opts = ["--- Seleccione Materia ---"] + list(mapa_cursos.keys())
+            m_age = st.selectbox("Materia:", opts, key="sb_age_v71")
             
             if m_age == "--- Seleccione Materia ---":
-                st.info("💡 Por favor, elija una materia para operar.")
+                st.info("💡 Elija una materia para operar.")
             else:
                 c1, c2 = st.columns(2)
                 with c1:
-                    with st.form("f_age_v69", clear_on_submit=True):
-                        t1 = st.text_area("Temas dictados hoy")
+                    with st.form("f_age_v71", clear_on_submit=True):
+                        t1 = st.text_area("Temas dictados hoy (contenido_clase)")
                         t2 = st.text_area("Tarea próxima")
                         f2 = st.date_input("Fecha tarea:", value=ahora + datetime.timedelta(days=7))
                         if st.form_submit_button("Guardar"):
                             if t1:
                                 try:
-                                    # DETECCIÓN DE COLUMNAS EN TIEMPO REAL
-                                    # Consultamos el esquema de la tabla bitacora
-                                    test_q = supabase.table("bitacora").select("*").limit(1).execute()
-                                    db_cols = test_q.data[0].keys() if test_q.data else []
-                                    
-                                    # Mapeo dinámico de la columna de materia ( Cambridge o Daguerre )
-                                    target_col = next((c for c in db_cols if "materia" in c.lower() or "curso" in c.lower()), "materia")
-                                    
-                                    txt_t = f"[{f2.strftime('%d/%m/%Y')}] {t2}" if t2 else ""
+                                    # Usamos los nombres exactos de tu captura:
+                                    # inscripcion_id, fecha, contenido_clase, tarea_proxima
                                     payload = {
-                                        "profesor_id": u_data['id'],
+                                        "inscripcion_id": mapa_cursos[m_age],
                                         "fecha": str(ahora.date()),
-                                        "temas_dictados": t1,
-                                        "tarea_proxima": txt_t,
-                                        target_col: m_age
+                                        "contenido_clase": t1,
+                                        "tarea_proxima": t2 if t2 else ""
                                     }
                                     supabase.table("bitacora").insert(payload).execute()
-                                    st.success("✅ Clase guardada con éxito."); st.rerun()
+                                    st.success("✅ Guardado en bitácora."); st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error de sincronización con la tabla bitacora. Informe este detalle: {str(e)}")
+                                    st.error(f"Error al guardar. Detalle: {str(e)}")
                 with c2:
-                    st.write("### Historial Reciente")
+                    st.write("### Historial")
                     try:
-                        # Recuperación flexible del historial
-                        r_h = supabase.table("bitacora").select("*").execute()
+                        ins_id = mapa_cursos[m_age]
+                        r_h = supabase.table("bitacora").select("*").eq("inscripcion_id", ins_id).order("fecha", desc=True).limit(5).execute()
                         if r_h and r_h.data:
-                            df_h = pd.DataFrame(r_h.data)
-                            col_f = next((c for c in df_h.columns if "materia" in c.lower() or "curso" in c.lower()), None)
-                            if col_f:
-                                df_f = df_h[df_h[col_f] == m_age].sort_values("fecha", ascending=False).head(5)
-                                if not df_f.empty:
-                                    for _, row in df_f.iterrows():
-                                        with st.expander(f"📅 {row['fecha']}"):
-                                            st.write(f"**Temas:** {row['temas_dictados']}")
-                                else: st.info("ℹ️ Sin historial hasta el día de la fecha.")
-                            else: st.info("ℹ️ Sin historial.")
-                        else: st.info("ℹ️ Sin historial.")
+                            for entry in r_h.data:
+                                with st.expander(f"📅 {entry['fecha']}"):
+                                    st.write(f"**Temas:** {entry['contenido_clase']}")
+                        else: st.info("ℹ️ Sin historial hasta el día de la fecha.")
                     except: st.info("ℹ️ Sin historial.")
 
     # --- TAB 1: ALUMNOS ---
     with tabs[1]:
-        st.subheader("Gestión de Alumnos")
+        st.subheader("Alumnos")
         if df_cursos.empty: st.warning("Crea una materia primero.")
         else:
-            m_alu = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_alu_v69")
+            m_alu = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_alu_v71")
             r_alu = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_alu).not_.is_("alumno_id", "null").execute()
             if r_alu and r_alu.data:
                 for x in r_alu.data:
                     if x.get('alumnos'):
                         alu = x['alumnos']
                         with st.expander(f"👤 {alu.get('apellido')}, {alu.get('nombre')}"):
-                            if st.button("Baja", key=f"bj_v69_{x['id']}"):
+                            if st.button("Baja", key=f"bj_v71_{x['id']}"):
                                 supabase.table("inscripciones").delete().eq("id", x['id']).execute()
                                 st.rerun()
             else: st.info("ℹ️ No hay alumnos inscriptos.")
 
-    # --- RESTO DE PESTAÑAS (ASISTENCIA, NOTAS, CURSOS) CON LEYENDAS INFORMATIVAS ---
-    with tabs[2]:
-        st.subheader("Asistencia")
-        st.info("ℹ️ Seleccione una materia arriba para visualizar la planilla de asistencia.")
-    
-    with tabs[3]:
-        st.subheader("Notas")
-        st.info("ℹ️ No hay registros de notas para la materia seleccionada.")
-
+    # --- TAB 4: CURSOS ---
     with tabs[4]:
         st.subheader("Mis Materias")
         if not df_cursos.empty:
