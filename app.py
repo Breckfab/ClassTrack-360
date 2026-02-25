@@ -39,7 +39,7 @@ if st.session_state.user is None:
     _, col_login, _ = st.columns([1, 1.8, 1])
     with col_login:
         st.markdown('<div class="login-box"><div class="logo-text">ClassTrack 360</div></div>', unsafe_allow_html=True)
-        with st.form("login_final"):
+        with st.form("login_v18"):
             u_in = st.text_input("Sede").strip().lower()
             p_in = st.text_input("Clave", type="password")
             if st.form_submit_button("Entrar", use_container_width=True):
@@ -69,7 +69,8 @@ else:
         </script>
     """, height=35)
 
-    sede = 'Daguerre' if 'daguerre' in st.session_state.user['email'].lower() else 'Cambridge'
+    u_data = st.session_state.user
+    sede = 'Daguerre' if 'daguerre' in u_data['email'].lower() else 'Cambridge'
     with st.sidebar:
         st.write(f"📍 Sede: {sede}")
         if st.button("SALIR"):
@@ -81,7 +82,7 @@ else:
     # Carga de Cursos
     df_c = pd.DataFrame()
     try:
-        r_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario").eq("profesor_id", st.session_state.user['id']).is_("alumno_id", "null").execute()
+        r_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
         if r_c.data: df_c = pd.DataFrame(r_c.data)
     except: pass
 
@@ -90,20 +91,20 @@ else:
         st.subheader("Registro de Clase")
         if df_c.empty: st.warning("Crea una materia primero.")
         else:
-            mat = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique())
+            mat = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="sb_agenda")
             try:
                 r_b = supabase.table("bitacora").select("tarea_proxima").eq("materia", mat).order("fecha", desc=True).limit(1).execute()
                 if r_b.data: st.markdown(f'<div class="reminder-box">🔔 <b>Tarea para Hoy:</b><br>{r_b.data[0]["tarea_proxima"]}</div>', unsafe_allow_html=True)
             except: pass
 
-            with st.form("f_age"):
+            with st.form("f_age_v18"):
                 t1 = st.text_area("Temas de hoy")
                 t2 = st.text_area("Tarea próxima")
                 f2 = st.date_input("Fecha:", value=ahora + datetime.timedelta(days=7))
                 if st.form_submit_button("Guardar"):
                     if t1:
                         txt = f"[{f2.strftime('%d/%m/%Y')}] {t2}"
-                        supabase.table("bitacora").insert({"profesor_id": st.session_state.user['id'], "materia": mat, "fecha": str(ahora.date()), "temas_dictados": t1, "tarea_proxima": txt}).execute()
+                        supabase.table("bitacora").insert({"profesor_id": u_data['id'], "materia": mat, "fecha": str(ahora.date()), "temas_dictados": t1, "tarea_proxima": txt}).execute()
                         st.success("Guardado."); st.rerun()
 
     # --- TAB 1: ALUMNOS ---
@@ -112,10 +113,10 @@ else:
         if df_c.empty: st.warning("Crea una materia.")
         else:
             try:
-                r_mat = supabase.table("inscripciones").select("alumno_id", count="exact").eq("profesor_id", st.session_state.user['id']).not_.is_("alumno_id", "null").execute()
+                r_mat = supabase.table("inscripciones").select("alumno_id", count="exact").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
                 st.markdown(f'<div class="metric-card">Matrícula: <span class="metric-value">{r_mat.count if r_mat.count else 0}</span></div>', unsafe_allow_html=True)
                 
-                m_f = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="m_f")
+                m_f = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="sb_alumnos")
                 r_a = supabase.table("inscripciones").select("alumnos(nombre, apellido)").eq("nombre_curso_materia", m_f).not_.is_("alumno_id", "null").execute()
                 if r_a.data:
                     for x in r_a.data:
@@ -123,53 +124,58 @@ else:
             except: st.error("Error al cargar.")
 
             with st.expander("➕ Inscribir"):
-                with st.form("f_ins"):
-                    m_i = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="m_i")
+                with st.form("f_ins_v18"):
+                    m_i = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="sb_ins")
                     n, a = st.text_input("Nombre"), st.text_input("Apellido")
                     if st.form_submit_button("Inscribir"):
                         if n and a:
                             alu = supabase.table("alumnos").insert({"nombre": n, "apellido": a}).execute()
-                            supabase.table("inscripciones").insert({"alumno_id": alu.data[0]['id'], "profesor_id": st.session_state.user['id'], "nombre_curso_materia": m_i, "anio_lectivo": 2026}).execute()
+                            supabase.table("inscripciones").insert({"alumno_id": alu.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": m_i, "anio_lectivo": 2026}).execute()
                             st.success("Listo."); st.rerun()
 
-    # --- TAB 2: ASISTENCIA ---
+    # --- TAB 2: ASISTENCIA (CORRECCIÓN LÍNEA 175) ---
     with tabs[2]:
         st.subheader("Asistencia")
         if not df_c.empty:
-            m_a = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="m_a")
+            m_a = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="sb_asis")
             r_as = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_a).not_.is_("alumno_id", "null").execute()
+            
             if r_as.data:
-                with st.form("f_as"):
+                with st.form("f_as_v18"):
+                    st.write(f"Control para el {ahora.strftime('%d/%m/%Y')}")
                     for item in r_as.data:
                         if item.get('alumnos'):
-                            alu = item['alumnos']
-                            c1, c2 = st.columns([3, 1])
-                            c1.write(f"{alu['apellido']}, {alu['nombre']}")
-                            c2.radio("Estado", ["P", "A"], key=f"as_{alu['id']}", horizontal=True, label_visibility="collapsed")
-                    if st.form_submit_button("Guardar"): st.success("Asistencia tomada.")
-            else: st.write("No hay alumnos.")
+                            alu_obj = item['alumnos']
+                            # Simplificamos para evitar errores de columnas anidadas en línea 175
+                            st.radio(f"{alu_obj['apellido']}, {alu_obj['nombre']}", ["Presente", "Ausente"], key=f"as_r_{alu_obj['id']}", horizontal=True)
+                    if st.form_submit_button("Guardar Asistencia"):
+                        st.success("Asistencia registrada localmente.")
+            else: st.write("No hay alumnos inscritos.")
 
     # --- TAB 3: NOTAS ---
     with tabs[3]:
         st.subheader("Notas")
         if not df_c.empty:
-            m_n = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="m_n")
+            m_n = st.selectbox("Materia:", df_c['nombre_curso_materia'].unique(), key="sb_notas")
             r_ns = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_n).not_.is_("alumno_id", "null").execute()
+            
             if r_ns.data:
-                with st.form("f_ns"):
+                with st.form("f_ns_v18"):
                     for item in r_ns.data:
                         if item.get('alumnos'):
-                            alu = item['alumnos']
-                            st.number_input(f"{alu['apellido']}", 1, 10, key=f"nt_{alu['id']}")
-                    if st.form_submit_button("Guardar"): st.success("Notas guardadas.")
+                            alu_obj = item['alumnos']
+                            st.number_input(f"Nota: {alu_obj['apellido']}", 1, 10, key=f"nt_v_{alu_obj['id']}")
+                    if st.form_submit_button("Guardar Notas"):
+                        st.success("Notas guardadas.")
 
     # --- TAB 4: CURSOS ---
     with tabs[4]:
         st.subheader("Cursos")
         if not df_c.empty:
             for _, r in df_c.iterrows(): st.write(f"📘 **{r['nombre_curso_materia']}** | {r['horario']}")
-        with st.form("f_c"):
+        with st.form("f_c_v18"):
             nc, hc = st.text_input("Materia"), st.text_input("Horario")
             if st.form_submit_button("Crear"):
                 if nc and hc:
-                    supabase.table("inscripciones").insert({"profesor_id": st.session_state.user['id'], "nombre_curso_materia": nc, "horario":
+                    supabase.table("inscripciones").insert({"profesor_id": u_data['id'], "nombre_curso_materia": nc, "horario": hc, "anio_lectivo": 2026}).execute()
+                    st.rerun()
