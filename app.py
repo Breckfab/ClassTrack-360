@@ -35,7 +35,7 @@ if st.session_state.user is None:
     _, col_login, _ = st.columns([1, 1.8, 1])
     with col_login:
         st.markdown('<div class="login-box"><div class="logo-text">ClassTrack 360</div></div>', unsafe_allow_html=True)
-        with st.form("login_v67"):
+        with st.form("login_v68"):
             u_in = st.text_input("Sede").strip().lower()
             p_in = st.text_input("Clave", type="password")
             if st.form_submit_button("Entrar", use_container_width=True):
@@ -88,14 +88,14 @@ else:
             st.info("🏗️ No hay materias creadas.")
         else:
             opts = ["--- Seleccione Materia ---"] + list(df_cursos['nombre_curso_materia'].unique())
-            m_age = st.selectbox("Materia:", opts, key="sb_age_v67")
+            m_age = st.selectbox("Materia:", opts, key="sb_age_v68")
             
             if m_age == "--- Seleccione Materia ---":
                 st.info("💡 Seleccione una materia para operar.")
             else:
                 c1, c2 = st.columns(2)
                 with c1:
-                    with st.form("f_age_v67", clear_on_submit=True):
+                    with st.form("f_age_v68", clear_on_submit=True):
                         t1 = st.text_area("Temas dictados hoy")
                         t2 = st.text_area("Tarea próxima")
                         f2 = st.date_input("Fecha tarea:", value=ahora + datetime.timedelta(days=7))
@@ -104,24 +104,36 @@ else:
                                 try:
                                     # PASO 1: Inspeccionar columnas reales de la tabla bitacora en Supabase
                                     inspect = supabase.table("bitacora").select("*").limit(1).execute()
-                                    # Si no hay datos, intentamos un RPC o usamos una lista de fallback segura
-                                    db_cols = inspect.data[0].keys() if inspect.data else ["profesor_id", "fecha", "temas_dictados", "tarea_proxima", "nombre_materia"]
+                                    db_cols = inspect.data[0].keys() if inspect.data else []
                                     
                                     # PASO 2: Identificar dinámicamente la columna de materia
-                                    target_col = "materia"
+                                    # Buscamos nombres que contengan 'materia' o 'curso'
+                                    target_col = None
                                     for c_name in db_cols:
                                         if "materia" in c_name.lower() or "curso" in c_name.lower():
                                             target_col = c_name
                                             break
+                                    
+                                    # Fallback manual si la tabla está vacía y no podemos inspeccionar llaves
+                                    if not target_col:
+                                        # Probamos las variantes conocidas en orden
+                                        for fallback in ["nombre_materia", "materia", "materia_nombre"]:
+                                            try:
+                                                supabase.table("bitacora").select(fallback).limit(1).execute()
+                                                target_col = fallback
+                                                break
+                                            except: continue
                                     
                                     txt_t = f"[{f2.strftime('%d/%m/%Y')}] {t2}" if t2 else ""
                                     payload = {
                                         "profesor_id": u_data['id'],
                                         "fecha": str(ahora.date()),
                                         "temas_dictados": t1,
-                                        "tarea_proxima": txt_t,
-                                        target_col: m_age
+                                        "tarea_proxima": txt_t
                                     }
+                                    if target_col: payload[target_col] = m_age
+                                    else: payload["materia"] = m_age # Ultimo recurso
+                                    
                                     supabase.table("bitacora").insert(payload).execute()
                                     st.success("✅ Guardado."); st.rerun()
                                 except Exception as e:
@@ -129,21 +141,20 @@ else:
                 with c2:
                     st.write("### Historial")
                     try:
-                        # Buscamos historial usando el nombre de columna detectado arriba
+                        # Buscamos historial filtrando en memoria para evitar errores de columna en el servidor
                         r_h = supabase.table("bitacora").select("*").execute()
                         if r_h and r_h.data:
-                            # Filtramos en memoria para evitar errores de query compleja
                             df_h = pd.DataFrame(r_h.data)
-                            col_f = "materia"
-                            for cf in df_h.columns:
-                                if "materia" in cf.lower() or "curso" in cf.lower():
-                                    col_f = cf; break
+                            # Buscamos la columna de materia en el DataFrame
+                            col_f = next((c for c in df_h.columns if "materia" in c.lower() or "curso" in c.lower()), None)
                             
-                            df_f = df_h[df_h[col_f] == m_age].sort_values("fecha", ascending=False).head(5)
-                            if not df_f.empty:
-                                for _, row in df_f.iterrows():
-                                    with st.expander(f"📅 {row['fecha']}"):
-                                        st.write(f"**Temas:** {row['temas_dictados']}")
+                            if col_f:
+                                df_f = df_h[df_h[col_f] == m_age].sort_values("fecha", ascending=False).head(5)
+                                if not df_f.empty:
+                                    for _, row in df_f.iterrows():
+                                        with st.expander(f"📅 {row['fecha']}"):
+                                            st.write(f"**Temas:** {row['temas_dictados']}")
+                                else: st.info("ℹ️ Sin historial.")
                             else: st.info("ℹ️ Sin historial.")
                         else: st.info("ℹ️ Sin historial.")
                     except: st.info("ℹ️ Sin historial.")
@@ -153,14 +164,14 @@ else:
         st.subheader("Alumnos")
         if df_cursos.empty: st.warning("Crea una materia primero.")
         else:
-            m_alu = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_alu_v67")
+            m_alu = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_alu_v68")
             r_alu = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_alu).not_.is_("alumno_id", "null").execute()
             if r_alu and r_alu.data:
                 for x in r_alu.data:
                     if x.get('alumnos'):
                         alu = x['alumnos']
                         with st.expander(f"👤 {alu.get('apellido')}, {alu.get('nombre')}"):
-                            if st.button("Baja", key=f"bj_v67_{x['id']}"):
+                            if st.button("Baja", key=f"bj_v68_{x['id']}"):
                                 supabase.table("inscripciones").delete().eq("id", x['id']).execute()
                                 st.rerun()
             else: st.info("ℹ️ No hay alumnos inscriptos.")
@@ -170,12 +181,12 @@ else:
         st.subheader("Asistencia")
         if df_cursos.empty: st.warning("Crea una materia.")
         else:
-            m_as = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_as_v67")
+            m_as = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_as_v68")
             sub_asis = st.tabs(["📝 Tomar", "📊 Consultar"])
             with sub_asis[1]:
-                f_q = st.date_input("Fecha:", value=ahora.date(), key="f_as_v67")
+                f_q = st.date_input("Fecha:", value=ahora.date(), key="f_as_v68")
                 try:
-                    rv = supabase.table("asistencia").select("estado, alumnos(nombre, apellido)").eq("materia" if "materia" in df_cursos.columns else "materia", m_as).eq("fecha", str(f_q)).execute()
+                    rv = supabase.table("asistencia").select("estado, alumnos(nombre, apellido)").eq("materia", m_as).eq("fecha", str(f_q)).execute()
                     if rv and rv.data:
                         for r in rv.data: st.write(f"• {r['alumnos']['apellido']}: {r['estado']}")
                     else: st.info("ℹ️ Sin registros.")
@@ -186,13 +197,13 @@ else:
         st.subheader("Notas")
         if df_cursos.empty: st.warning("Crea una materia.")
         else:
-            m_nt = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_nt_v67")
+            m_nt = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_nt_v68")
             sub_nt = st.tabs(["📝 Cargar", "🔍 Consultar"])
             with sub_nt[1]:
                 r_al_n = supabase.table("inscripciones").select("alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_nt).not_.is_("alumno_id", "null").execute()
                 if r_al_n and r_al_n.data:
                     op_n = {f"{it['alumnos']['apellido']}, {it['alumnos']['nombre']}": it['alumnos']['id'] for it in r_al_n.data}
-                    sel_n = st.selectbox("Alumno:", list(op_n.keys()), key="sel_nt_v67")
+                    sel_n = st.selectbox("Alumno:", list(op_n.keys()), key="sel_nt_v68")
                     if st.button("Buscar"):
                         id_a_n = op_n[sel_n]
                         rh_n = supabase.table("notas").select("id, fecha, tipo_nota, calificacion").eq("alumno_id", id_a_n).order("fecha", desc=True).execute()
@@ -208,6 +219,6 @@ else:
             for _, r in df_cursos.iterrows():
                 c1, c2 = st.columns([4, 1])
                 c1.write(f"📘 **{r['nombre_curso_materia']}**")
-                if c2.button("Borrar", key=f"br_v67_{r['id']}"):
+                if c2.button("Borrar", key=f"br_v68_{r['id']}"):
                     supabase.table("inscripciones").delete().eq("id", r['id']).execute()
                     st.rerun()
