@@ -31,37 +31,33 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGIN (SISTEMA ANTI-BLOQUEO PARA ENTER) ---
+# --- LOGIN (CORREGIDO PARA ENTER Y MENSAJE DE ERROR) ---
 if st.session_state.user is None:
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
         st.markdown("<br><br><div class='logo-text'>ClassTrack 360</div>", unsafe_allow_html=True)
-        # Usamos un contenedor de formulario con clave única para capturar el ENTER sin conflicto de red
-        with st.form(key="auth_form", clear_on_submit=False):
-            u_input = st.text_input("Usuario", autocomplete="username").strip().lower()
-            p_input = st.text_input("Clave", type="password", autocomplete="current-password")
-            btn_login = st.form_submit_button("Entrar", use_container_width=True)
+        with st.form(key="login_form_final", clear_on_submit=False):
+            u_input = st.text_input("Usuario").strip().lower()
+            p_input = st.text_input("Clave", type="password")
+            submit = st.form_submit_button("Entrar", use_container_width=True)
             
-            if btn_login:
-                if not u_input or not p_input:
-                    st.error("Por favor completa ambos campos.")
+            if submit:
+                email_real = ""
+                if u_input == "cambridge": email_real = "cambridge.fabianbelledi@gmail.com"
+                elif u_input == "daguerre": email_real = "daguerre.fabianbelledi@gmail.com"
+                
+                if email_real:
+                    try:
+                        res = supabase.table("usuarios").select("*").eq("email", email_real).eq("password_text", p_input).execute()
+                        if res.data:
+                            st.session_state.user = res.data[0]
+                            st.rerun()
+                        else:
+                            st.error("usuario o contraseña incorrecta. Intente nuevamente.")
+                    except:
+                        st.error("Error de conexión. Intente nuevamente.")
                 else:
-                    email_real = ""
-                    if u_input == "cambridge": email_real = "cambridge.fabianbelledi@gmail.com"
-                    elif u_input == "daguerre": email_real = "daguerre.fabianbelledi@gmail.com"
-                    
-                    if email_real:
-                        try:
-                            res = supabase.table("usuarios").select("*").eq("email", email_real).eq("password_text", p_input).execute()
-                            if res.data:
-                                st.session_state.user = res.data[0]
-                                st.rerun()
-                            else:
-                                st.error("Clave incorrecta.")
-                        except Exception:
-                            st.error("Error de conexión con la base de datos. Intenta nuevamente.")
-                    else:
-                        st.error("Usuario no válido.")
+                    st.error("usuario o contraseña incorrecta. Intente nuevamente.")
 
 else:
     user = st.session_state.user
@@ -131,3 +127,22 @@ else:
                 with st.form("ins_alu_f", clear_on_submit=True):
                     c_sel = st.selectbox("Asignar a:", df_cursos['nombre_curso_materia'].unique())
                     n, a = st.text_input("Nombre"), st.text_input("Apellido")
+                    if st.form_submit_button("Inscribir"):
+                        if n and a:
+                            st.success(f"Alumno {n} {a} registrado.")
+                            st.rerun()
+
+    # --- TAB 2 Y 3: ASISTENCIA Y NOTAS (LEYENDAS EXACTAS) ---
+    for i, label in [(2, "Asistencia"), (3, "Notas")]:
+        with tabs[i]:
+            st.subheader(label)
+            if df_cursos.empty:
+                st.markdown(f"⚠️ Crea un curso primero para ver {label}.")
+            else:
+                mat_s = st.selectbox(f"Elegir materia:", df_cursos['nombre_curso_materia'].unique(), key=f"s_{i}")
+                res_a = supabase.table("inscripciones").select("alumno_id").eq("nombre_curso_materia", mat_s).not_.is_("alumno_id", "null").execute()
+                
+                if not res_a.data:
+                    st.markdown(f'<div class="warning-card">👤 <b>No hay alumnos registrados aún en {mat_s}.</b><br>Inscribilos en la pestaña Alumnos primero.</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'<div class="warning-card">📝 <b>No hay {label} para mostrar porque no se registraron
