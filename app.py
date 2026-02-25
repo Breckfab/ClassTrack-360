@@ -31,7 +31,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGIN (BLINDADO PARA ENTER) ---
+# --- LOGIN (VALIDADO PARA ENTER Y BOTÓN) ---
 if st.session_state.user is None:
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
@@ -50,7 +50,7 @@ if st.session_state.user is None:
                             st.session_state.user = res.data[0]
                             st.rerun()
                         else: st.error("Credenciales incorrectas.")
-                    except: st.error("Error de red. Intenta nuevamente.")
+                    except: st.error("Error de conexión. Reintenta.")
                 else: st.error("Usuario no reconocido.")
 else:
     user = st.session_state.user
@@ -107,7 +107,7 @@ else:
                         st.rerun()
                     else: st.warning("Escribí los temas de hoy.")
 
-    # --- TAB 1: ALUMNOS ---
+    # --- TAB 1: ALUMNOS (BÚSQUEDA E INSCRIPCIÓN) ---
     with tabs[1]:
         st.subheader("Búsqueda e Inscripción")
         if df_cursos.empty:
@@ -125,7 +125,7 @@ else:
                             supabase.table("inscripciones").insert({"alumno_id": nuevo.data[0]['id'], "profesor_id": user['id'], "nombre_curso_materia": c_nom, "horario": c_hor, "anio_lectivo": 2026}).execute()
                             st.success("Alumno anotado."); st.rerun()
 
-    # --- TAB 2 Y 3: LÓGICA DE NOTAS Y ASISTENCIA CORREGIDA ---
+    # --- TAB 2 Y 3: ASISTENCIA Y NOTAS ---
     for i, label in [(2, "Asistencia"), (3, "Notas")]:
         with tabs[i]:
             st.subheader(label)
@@ -133,16 +133,12 @@ else:
                 st.markdown(f'<div class="warning-card">⚠️ Crea un curso primero para ver {label}.</div>', unsafe_allow_html=True)
             else:
                 mat_sel = st.selectbox(f"Materia para {label}:", df_cursos['nombre_curso_materia'].unique(), key=f"sel_{i}")
-                
-                # Primero chequeamos si hay alumnos
                 res_check = supabase.table("inscripciones").select("alumno_id").eq("nombre_curso_materia", mat_sel).not_.is_("alumno_id", "null").execute()
                 
                 if not res_check.data:
                     st.markdown(f'<div class="warning-card">👤 <b>No hay alumnos registrados aún en {mat_sel}.</b><br>Inscribilos en la pestaña <b>Alumnos</b> primero.</div>', unsafe_allow_html=True)
                 else:
-                    # Si hay alumnos, chequeamos si hay datos de la sección (ej: notas)
-                    # Por ahora simulamos el aviso de "No hay notas disponibles" si la tabla de notas estuviera vacía
-                    st.markdown(f'<div class="warning-card">📝 <b>No hay {label} disponibles para mostrar todavía.</b><br>Podés empezar a cargar datos utilizando el editor de abajo.</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="warning-card">📝 <b>No hay {label} disponibles para mostrar todavía.</b><br>Podés empezar a cargar datos en esta sección.</div>', unsafe_allow_html=True)
 
     # --- TAB 4: CURSOS ---
     with tabs[4]:
@@ -150,7 +146,7 @@ else:
         if not df_cursos.empty:
             for _, cur in df_cursos.iterrows(): st.write(f"📘 **{cur['nombre_curso_materia']}** | {cur['horario']}")
         with st.form("nuevo_c_f"):
-            nc, hc = st.text_input("Nombre"), st.text_input("Horario")
+            nc, hc = st.text_input("Nombre de Materia"), st.text_input("Horario")
             if st.form_submit_button("Crear Materia"):
                 if nc and hc:
                     supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": nc, "horario": hc, "anio_lectivo": 2026}).execute()
