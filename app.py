@@ -1,5 +1,4 @@
 import streamlit as st
-import streamlit.components.v1 as components
 from supabase import create_client
 import pandas as pd
 import datetime
@@ -35,7 +34,7 @@ if st.session_state.user is None:
     _, col_login, _ = st.columns([1, 1.8, 1])
     with col_login:
         st.markdown('<div class="login-box"><div class="logo-text">ClassTrack 360</div></div>', unsafe_allow_html=True)
-        with st.form("login_v79"):
+        with st.form("login_v81"):
             u_in = st.text_input("Sede").strip().lower()
             p_in = st.text_input("Clave", type="password")
             if st.form_submit_button("Entrar", use_container_width=True):
@@ -61,51 +60,61 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # Carga de Cursos para el Profesor
+    # Carga de Materias
     df_cursos = pd.DataFrame()
     try:
         r_c = supabase.table("inscripciones").select("id, nombre_curso_materia").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
         if r_c and r_c.data: df_cursos = pd.DataFrame(r_c.data)
     except: pass
 
-    # --- TAB 0: AGENDA (EDICIÓN DE BITÁCORA) ---
+    # --- TAB 0: AGENDA (CON BOTÓN CANCELAR) ---
     with tabs[0]:
         st.subheader("Registro de Clase")
         if df_cursos.empty: st.info("Crea un curso primero.")
         else:
             mapa_cursos = {row['nombre_curso_materia']: row['id'] for _, row in df_cursos.iterrows()}
-            m_sel = st.selectbox("--- Elegir Curso o Materia ---", list(mapa_cursos.keys()), key="sb_age_v79")
+            m_sel = st.selectbox("--- Elegir Curso o Materia ---", ["--- Elegir Curso o Materia ---"] + list(mapa_cursos.keys()), key="sb_age_v81")
             
-            c1, c2 = st.columns(2)
-            with c1:
-                with st.form("f_new_bit"):
-                    t1 = st.text_area("Temas dictados")
-                    t2 = st.text_area("Tarea próxima")
-                    if st.form_submit_button("Guardar"):
-                        supabase.table("bitacora").insert({
-                            "inscripcion_id": mapa_cursos[m_sel],
-                            "fecha": str(ahora.date()),
-                            "contenido_clase": t1,
-                            "tarea_proxima": t2
-                        }).execute()
-                        st.rerun()
-            with c2:
-                st.write("### Historial / Editar")
-                r_h = supabase.table("bitacora").select("*").eq("inscripcion_id", mapa_cursos[m_sel]).order("fecha", desc=True).execute()
-                if r_h.data:
-                    for entry in r_h.data:
-                        with st.expander(f"📝 {entry['fecha']}"):
-                            with st.form(f"ed_bit_{entry['id']}"):
-                                e_cont = st.text_area("Contenido", value=entry['contenido_clase'])
-                                e_tar = st.text_area("Tarea", value=entry['tarea_proxima'])
-                                if st.form_submit_button("Actualizar"):
-                                    supabase.table("bitacora").update({"contenido_clase": e_cont, "tarea_proxima": e_tar}).eq("id", entry['id']).execute()
-                                    st.rerun()
+            if m_sel != "--- Elegir Curso o Materia ---":
+                c1, c2 = st.columns(2)
+                with c1:
+                    with st.form("f_new_bit", clear_on_submit=True):
+                        t1 = st.text_area("Temas dictados")
+                        t2 = st.text_area("Tarea próxima")
+                        if st.form_submit_button("Guardar"):
+                            supabase.table("bitacora").insert({
+                                "inscripcion_id": mapa_cursos[m_sel],
+                                "fecha": str(ahora.date()),
+                                "contenido_clase": t1,
+                                "tarea_proxima": t2
+                            }).execute()
+                            st.rerun()
+                with c2:
+                    st.write("### Historial / Editar")
+                    r_h = supabase.table("bitacora").select("*").eq("inscripcion_id", mapa_cursos[m_sel]).order("fecha", desc=True).execute()
+                    if r_h.data:
+                        for entry in r_h.data:
+                            with st.expander(f"📝 {entry['fecha']}"):
+                                with st.form(f"ed_bit_{entry['id']}"):
+                                    e_cont = st.text_area("Contenido", value=entry['contenido_clase'])
+                                    e_tar = st.text_area("Tarea", value=entry['tarea_proxima'] if entry['tarea_proxima'] else "")
+                                    
+                                    # BOTONES ALINEADOS
+                                    col_upd, col_can, col_del = st.columns(3)
+                                    if col_upd.form_submit_button("ACTUALIZAR"):
+                                        supabase.table("bitacora").update({"contenido_clase": e_cont, "tarea_proxima": e_tar}).eq("id", entry['id']).execute()
+                                        st.success("Cambiado")
+                                        st.rerun()
+                                    if col_can.form_submit_button("CANCELAR"):
+                                        st.rerun()
+                                    if col_del.form_submit_button("ELIMINAR"):
+                                        supabase.table("bitacora").delete().eq("id", entry['id']).execute()
+                                        st.rerun()
+                    else: st.info("ℹ️ Sin historial.")
 
-    # --- TAB 1: ALUMNOS (EDICIÓN DE DATOS) ---
+    # --- TAB 1: ALUMNOS (CON BOTÓN CANCELAR) ---
     with tabs[1]:
         st.subheader("Alumnos")
-        # Consulta simplificada para evitar el error de la línea 132
         r_insc = supabase.table("inscripciones").select("id, alumno_id, nombre_curso_materia").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
         if r_insc.data:
             for item in r_insc.data:
@@ -116,19 +125,9 @@ else:
                         with st.form(f"ed_alu_{alu['id']}"):
                             n_nom = st.text_input("Nombre", value=alu['nombre'])
                             n_ape = st.text_input("Apellido", value=alu['apellido'])
-                            if st.form_submit_button("Guardar Cambios"):
+                            b_a1, b_a2 = st.columns(2)
+                            if b_a1.form_submit_button("ACTUALIZAR"):
                                 supabase.table("alumnos").update({"nombre": n_nom, "apellido": n_ape}).eq("id", alu['id']).execute()
                                 st.rerun()
-        else: st.info("Sin alumnos.")
-
-    # --- TAB 4: CURSOS (EDICIÓN DE MATERIAS) ---
-    with tabs[4]:
-        st.subheader("Mis Materias")
-        if not df_cursos.empty:
-            for _, r in df_cursos.iterrows():
-                with st.expander(f"📘 {r['nombre_curso_materia']}"):
-                    with st.form(f"ed_cur_{r['id']}"):
-                        n_mat = st.text_input("Nombre", value=r['nombre_curso_materia'])
-                        if st.form_submit_button("Actualizar Nombre"):
-                            supabase.table("inscripciones").update({"nombre_curso_materia": n_mat}).eq("id", r['id']).execute()
-                            st.rerun()
+                            if b_a2.form_submit_button("CANCELAR"):
+                                st.rerun()
