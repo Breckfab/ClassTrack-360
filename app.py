@@ -26,10 +26,12 @@ st.markdown("""
     .logo-text { font-weight: 800; background: linear-gradient(to right, #3b82f6, #a855f7); -webkit-background-clip: text; -webkit-text-fill-color: transparent; font-size: 3rem; text-align: center; margin-bottom: 20px; }
     .warning-card { background: rgba(255, 184, 0, 0.1); border-left: 5px solid #ffb800; padding: 15px; border-radius: 8px; color: #ffb800; margin-bottom: 15px; }
     .reminder-box { background: rgba(59, 130, 246, 0.1); border-left: 5px solid #3b82f6; padding: 15px; border-radius: 8px; margin-bottom: 20px; }
+    .print-area { background-color: white; color: black; padding: 25px; border-radius: 10px; margin-top: 20px; border: 1px solid #ddd; }
+    @media print { .no-print { display: none !important; } .stApp { background-color: white !important; } }
     </style>
     """, unsafe_allow_html=True)
 
-# --- LOGIN (CORREGIDO PARA ENTER) ---
+# --- LOGIN (BLINDADO PARA ENTER) ---
 if st.session_state.user is None:
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
@@ -53,30 +55,30 @@ if st.session_state.user is None:
 else:
     user = st.session_state.user
     hoy = datetime.datetime.now()
+    es_daguerre = "daguerre" in user['email'].lower()
     
-    st.sidebar.write(f"Sesión: {'Daguerre' if 'daguerre' in user['email'] else 'Cambridge'}")
+    st.sidebar.write(f"Sesión: {'Daguerre' if es_daguerre else 'Cambridge'}")
     if st.sidebar.button("SALIR"):
         st.session_state.user = None
         st.rerun()
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # Carga de materias
+    # --- CARGA MAESTRA DE CURSOS ---
     df_cursos = pd.DataFrame()
     try:
-        res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
+        res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario, anio_lectivo").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
         if res_c.data: df_cursos = pd.DataFrame(res_c.data)
     except: pass
 
-    # --- TAB 0: AGENDA (CON MEMORIA DE CLASE ANTERIOR) ---
+    # --- TAB 0: AGENDA (CON MEMORIA INTELIGENTE) ---
     with tabs[0]:
         st.subheader("Registro de Clase y Continuidad")
         if df_cursos.empty:
-            st.markdown('<div class="warning-card">⚠️ No hay materias. Crea una en la pestaña <b>Cursos</b>.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="warning-card">⚠️ No hay materias creadas. Ve a la pestaña <b>Cursos</b>.</div>', unsafe_allow_html=True)
         else:
             c_agenda = st.selectbox("Materia de hoy:", df_cursos['nombre_curso_materia'].unique())
             
-            # Recuperar última clase
             ultima_clase = None
             try:
                 res_b = supabase.table("bitacora").select("*").eq("profesor_id", user['id']).eq("materia", c_agenda).order("fecha", desc=True).limit(1).execute()
@@ -84,51 +86,72 @@ else:
             except: pass
 
             if ultima_clase:
-                tarea_hoy = ultima_clase.get('tarea_proxima', 'No hay tarea registrada.')
-                temas_ant = ultima_clase.get('temas_dictados', 'No hay temas registrados.')
-                st.markdown(f'<div class="reminder-box">🔔 <b>Tarea para revisar hoy:</b><br>{tarea_hoy}</div>', unsafe_allow_html=True)
-                st.info(f"📍 **La clase anterior viste:** {temas_ant}")
+                tarea_revisar = ultima_clase.get('tarea_proxima', 'No se asignó tarea.')
+                temas_pasados = ultima_clase.get('temas_dictados', 'No hay registros anteriores.')
+                st.markdown(f'<div class="reminder-box">🔔 <b>Tarea para revisar hoy:</b><br>{tarea_revisar}</div>', unsafe_allow_html=True)
+                st.info(f"📍 **La clase anterior viste:** {temas_pasados}")
             else:
-                st.markdown('<div class="reminder-box">✅ <b>No hay registros previos.</b> Es tu primera clase registrada para esta materia.</div>', unsafe_allow_html=True)
+                st.markdown('<div class="reminder-box">✅ <b>No hay tarea para revisar.</b> Es el primer registro para esta materia.</div>', unsafe_allow_html=True)
 
-            with st.form("form_clase_hoy", clear_on_submit=True):
-                t_hoy = st.text_area("¿Qué temas diste hoy?")
-                tar_sig = st.text_area("Tarea para la clase que viene:")
+            with st.form("form_agenda_hoy", clear_on_submit=True):
+                st.write(f"📝 **Registro para hoy: {hoy.strftime('%d/%m/%Y')}**")
+                temas_h = st.text_area("¿Qué temas vas a dictar hoy?")
+                tarea_h = st.text_area("Tarea para la próxima clase:")
                 if st.form_submit_button("Guardar Clase"):
-                    if t_hoy:
+                    if temas_h:
                         supabase.table("bitacora").insert({
                             "profesor_id": user['id'], "materia": c_agenda, "fecha": str(hoy.date()),
-                            "temas_dictados": t_hoy, "tarea_proxima": tar_sig
+                            "temas_dictados": temas_h, "tarea_proxima": tarea_h
                         }).execute()
-                        st.success("Guardado. Mañana verás esto como recordatorio.")
+                        st.success("¡Clase guardada!")
                         st.rerun()
+                    else: st.warning("Escribí los temas de hoy.")
 
-    # --- TAB 1: ALUMNOS (INSCRIPCIÓN SIEMPRE DISPONIBLE) ---
+    # --- TAB 1: ALUMNOS ---
     with tabs[1]:
-        st.subheader("Gestión de Alumnos")
+        st.subheader("Búsqueda e Inscripción")
         if df_cursos.empty:
             st.markdown('<div class="warning-card">⚠️ Crea una materia primero para inscribir alumnos.</div>', unsafe_allow_html=True)
         else:
-            with st.form("ins_alu"):
-                c_dest = st.selectbox("Curso:", df_cursos['nombre_curso_materia'].unique())
-                nom, ape = st.text_input("Nombre"), st.text_input("Apellido")
-                if st.form_submit_button("Inscribir"):
-                    st.success("Alumno inscrito."); st.rerun()
+            busq_alu = st.text_input("🔍 Buscar Alumno por Apellido")
+            with st.expander("➕ Inscribir Estudiante", expanded=True):
+                with st.form("ins_alu_f", clear_on_submit=True):
+                    c_sel = st.selectbox("Asignar a:", [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()])
+                    nom, ape = st.text_input("Nombre"), st.text_input("Apellido")
+                    if st.form_submit_button("Inscribir"):
+                        if nom and ape:
+                            nuevo = supabase.table("alumnos").insert({"nombre": nom, "apellido": ape}).execute()
+                            c_nom, c_hor = c_sel.split(" | ")
+                            supabase.table("inscripciones").insert({"alumno_id": nuevo.data[0]['id'], "profesor_id": user['id'], "nombre_curso_materia": c_nom, "horario": c_hor, "anio_lectivo": 2026}).execute()
+                            st.success("Alumno anotado."); st.rerun()
 
-    # --- TAB 2 Y 3: LEYENDAS SI NO HAY ALUMNOS ---
+    # --- TAB 2 Y 3: LÓGICA DE NOTAS Y ASISTENCIA CORREGIDA ---
     for i, label in [(2, "Asistencia"), (3, "Notas")]:
         with tabs[i]:
             st.subheader(label)
-            st.markdown(f'<div class="warning-card">⚠️ <b>No hay alumnos registrados aún en esta materia.</b><br>Inscríbelos en la pestaña <b>Alumnos</b> para activar esta sección.</div>', unsafe_allow_html=True)
+            if df_cursos.empty:
+                st.markdown(f'<div class="warning-card">⚠️ Crea un curso primero para ver {label}.</div>', unsafe_allow_html=True)
+            else:
+                mat_sel = st.selectbox(f"Materia para {label}:", df_cursos['nombre_curso_materia'].unique(), key=f"sel_{i}")
+                
+                # Primero chequeamos si hay alumnos
+                res_check = supabase.table("inscripciones").select("alumno_id").eq("nombre_curso_materia", mat_sel).not_.is_("alumno_id", "null").execute()
+                
+                if not res_check.data:
+                    st.markdown(f'<div class="warning-card">👤 <b>No hay alumnos registrados aún en {mat_sel}.</b><br>Inscribilos en la pestaña <b>Alumnos</b> primero.</div>', unsafe_allow_html=True)
+                else:
+                    # Si hay alumnos, chequeamos si hay datos de la sección (ej: notas)
+                    # Por ahora simulamos el aviso de "No hay notas disponibles" si la tabla de notas estuviera vacía
+                    st.markdown(f'<div class="warning-card">📝 <b>No hay {label} disponibles para mostrar todavía.</b><br>Podés empezar a cargar datos utilizando el editor de abajo.</div>', unsafe_allow_html=True)
 
     # --- TAB 4: CURSOS ---
     with tabs[4]:
-        st.subheader("Mis Materias")
+        st.subheader("Gestión de Materias")
         if not df_cursos.empty:
             for _, cur in df_cursos.iterrows(): st.write(f"📘 **{cur['nombre_curso_materia']}** | {cur['horario']}")
-        with st.form("n_c"):
-            n, h = st.text_input("Materia"), st.text_input("Horario")
-            if st.form_submit_button("Crear"):
-                if n and h:
-                    supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": n, "horario": h, "anio_lectivo": 2026}).execute()
+        with st.form("nuevo_c_f"):
+            nc, hc = st.text_input("Nombre"), st.text_input("Horario")
+            if st.form_submit_button("Crear Materia"):
+                if nc and hc:
+                    supabase.table("inscripciones").insert({"profesor_id": user['id'], "nombre_curso_materia": nc, "horario": hc, "anio_lectivo": 2026}).execute()
                     st.rerun()
