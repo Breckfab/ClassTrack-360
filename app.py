@@ -19,7 +19,7 @@ supabase = init_connection()
 if 'user' not in st.session_state: 
     st.session_state.user = None
 
-# --- ESTILO CSS (DISEÑO DEGRADADO + CRISTAL) ---
+# --- ESTILO CSS (DISEÑO DEGRADADO DEEP OCEAN + CRISTAL) ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
@@ -98,7 +98,10 @@ else:
         <script>
             function updateClock() {{
                 const d = new Date();
-                document.getElementById('clock').innerHTML = d.toLocaleTimeString('es-AR', {{hour12:false}});
+                const hh = String(d.getHours()).padStart(2, '0');
+                const mm = String(d.getMinutes()).padStart(2, '0');
+                const ss = String(d.getSeconds()).padStart(2, '0');
+                document.getElementById('clock').innerHTML = hh + ":" + mm + ":" + ss;
             }}
             setInterval(updateClock, 1000);
             updateClock();
@@ -138,4 +141,9 @@ else:
                     st.info(f"📍 Clase anterior: {res_b.data[0].get('temas_dictados', 'Sin registro')}")
             except: pass
             
-            with st.form("f_agenda_v
+            with st.form("f_agenda_final_v10"):
+                temas_h = st.text_area("Temas dictados hoy")
+                tarea_n = st.text_area("Tarea para la próxima")
+                fecha_n = st.date_input("Fecha de entrega:", value=ahora_dt + datetime.timedelta(days=7))
+                if st.form_submit_button("Guardar Clase"):
+                    if temas_h:
