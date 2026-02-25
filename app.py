@@ -61,24 +61,19 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # --- CARGA DE MATERIAS (Dato maestro para todo el sistema) ---
+    # --- CARGA DE MATERIAS ---
     df_cursos = pd.DataFrame()
     try:
         res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario, anio_lectivo").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
         if res_c.data: df_cursos = pd.DataFrame(res_c.data)
     except: pass
 
-    # --- TAB 1: ALUMNOS (FILTROS E INSCRIPCIÓN SIEMPRE VISIBLES) ---
+    # --- TAB 1: ALUMNOS ---
     with tabs[1]:
         st.subheader("Búsqueda e Inscripción")
         if df_cursos.empty:
-            st.markdown('<div class="warning-card">⚠️ No hay cursos. Crea uno en la pestaña <b>Cursos</b> para empezar a anotar alumnos.</div>', unsafe_allow_html=True)
+            st.markdown('<div class="warning-card">⚠️ No hay materias creadas. Primero crea una en la pestaña <b>Cursos</b>.</div>', unsafe_allow_html=True)
         else:
-            col_f1, col_f2 = st.columns([2, 1])
-            busq_alu = col_f1.text_input("🔍 Buscar por Apellido")
-            curso_alu = col_f2.selectbox("Materia:", ["Todas"] + list(df_cursos['nombre_curso_materia'].unique()))
-            
-            # Formulario de Inscripción (Siempre visible si hay cursos)
             with st.expander("➕ Inscribir Nuevo Alumno", expanded=True):
                 with st.form("form_alu_full", clear_on_submit=True):
                     c_sel = st.selectbox("Curso destino:", [f"{c['nombre_curso_materia']} | {c['horario']}" for _, c in df_cursos.iterrows()])
@@ -90,12 +85,8 @@ else:
                             c_nom, c_hor = c_sel.split(" | ")
                             supabase.table("inscripciones").insert({"alumno_id": nuevo.data[0]['id'], "profesor_id": user['id'], "nombre_curso_materia": c_nom, "horario": c_hor, "anio_lectivo": 2026}).execute()
                             st.success("Alumno anotado."); st.rerun()
-            
-            st.write("---")
-            st.write("Lista de Alumnos registrados:")
-            # Aquí se mostraría la tabla de alumnos filtrada
 
-    # --- TAB 2 Y 3: ASISTENCIA Y NOTAS (CON LEYENDAS SI NO HAY ALUMNOS) ---
+    # --- TABS: ASISTENCIA Y NOTAS (CORREGIDAS) ---
     for i, label in [(2, "Asistencia"), (3, "Notas")]:
         with tabs[i]:
             st.subheader(label)
@@ -103,18 +94,23 @@ else:
                 st.markdown(f'<div class="warning-card">⚠️ Primero crea una materia en la pestaña <b>Cursos</b>.</div>', unsafe_allow_html=True)
             else:
                 materia_sel = st.selectbox(f"Elegir materia para {label}:", df_cursos['nombre_curso_materia'].unique(), key=f"sel_{i}")
-                # Verificación de si hay alumnos en ese curso
-                st.info(f"Cargando datos de {materia_sel}...")
+                
+                # Chequeo de alumnos en el curso seleccionado
+                res_a = supabase.table("inscripciones").select("alumno_id").eq("nombre_curso_materia", materia_sel).not_.is_("alumno_id", "null").execute()
+                
+                if not res_a.data:
+                    st.markdown(f'<div class="warning-card">⚠️ <b>No hay alumnos registrados aún en {materia_sel}.</b><br>Debes inscribirlos en la pestaña <b>Alumnos</b> para poder ver {label}.</div>', unsafe_allow_html=True)
+                else:
+                    st.success(f"Datos de {materia_sel} listos para procesar.")
 
-    # --- TAB 4: CURSOS (EL ORIGEN DE TODO) ---
+    # --- TAB 4: CURSOS ---
     with tabs[4]:
         st.subheader("Tus Materias")
         if not df_cursos.empty:
             for _, cur in df_cursos.iterrows():
-                st.write(f"📘 **{cur['nombre_curso_materia']}** | {cur['horario']} (Año: {cur['anio_lectivo']})")
+                st.write(f"📘 **{cur['nombre_curso_materia']}** | {cur['horario']}")
         
         with st.form("nuevo_curso_f"):
-            st.write("➕ Añadir nueva materia")
             nc = st.text_input("Nombre de Materia")
             hc = st.text_input("Horario")
             if st.form_submit_button("Crear Materia"):
@@ -128,6 +124,4 @@ else:
         if df_cursos.empty:
             st.markdown('<div class="warning-card">⚠️ No hay materias para registrar temas.</div>', unsafe_allow_html=True)
         else:
-            st.selectbox("Materia hoy:", df_cursos['nombre_curso_materia'].unique())
-            st.text_area("Contenidos de hoy:")
-            st.button("Guardar en Bitácora")
+            st.info("Agenda operativa para el registro de contenidos.")
