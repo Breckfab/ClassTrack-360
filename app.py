@@ -35,7 +35,7 @@ if st.session_state.user is None:
     _, col_login, _ = st.columns([1, 1.8, 1])
     with col_login:
         st.markdown('<div class="login-box"><div class="logo-text">ClassTrack 360</div></div>', unsafe_allow_html=True)
-        with st.form("login_v71"):
+        with st.form("login_v72"):
             u_in = st.text_input("Sede").strip().lower()
             p_in = st.text_input("Clave", type="password")
             if st.form_submit_button("Entrar", use_container_width=True):
@@ -74,38 +74,40 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # Carga de Materias (Capturamos el ID de la inscripción)
+    # Carga de Materias
     df_cursos = pd.DataFrame()
     try:
         r_c = supabase.table("inscripciones").select("id, nombre_curso_materia").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
         if r_c and r_c.data: df_cursos = pd.DataFrame(r_c.data)
     except: pass
 
-    # --- TAB 0: AGENDA (CORRECCIÓN SEGÚN CAPTURA DE BASE DE DATOS) ---
+    # --- TAB 0: AGENDA ---
     with tabs[0]:
         st.subheader("Registro de Clase")
         if df_cursos.empty: 
             st.info("🏗️ No hay materias creadas.")
         else:
-            # Diccionario para mapear nombre a ID
             mapa_cursos = {row['nombre_curso_materia']: row['id'] for _, row in df_cursos.iterrows()}
-            opts = ["--- Seleccione Materia ---"] + list(mapa_cursos.keys())
-            m_age = st.selectbox("Materia:", opts, key="sb_age_v71")
+            # Cambio de etiqueta solicitado
+            opts = ["--- Elegir Curso o Materia ---"] + list(mapa_cursos.keys())
+            m_age = st.selectbox("Materia:", opts, key="sb_age_v72")
             
-            if m_age == "--- Seleccione Materia ---":
-                st.info("💡 Elija una materia para operar.")
+            if m_age == "--- Elegir Curso o Materia ---":
+                st.info("💡 Por favor, elija un curso o materia para operar.")
             else:
                 c1, c2 = st.columns(2)
                 with c1:
-                    with st.form("f_age_v71", clear_on_submit=True):
+                    with st.form("f_age_v72", clear_on_submit=True):
                         t1 = st.text_area("Temas dictados hoy (contenido_clase)")
                         t2 = st.text_area("Tarea próxima")
-                        f2 = st.date_input("Fecha tarea:", value=ahora + datetime.timedelta(days=7))
+                        # Ajuste de calendario: Domingo como primer día
+                        f2 = st.date_input("Fecha tarea:", 
+                                         value=ahora + datetime.timedelta(days=7),
+                                         format="DD/MM/YYYY")
+                        
                         if st.form_submit_button("Guardar"):
                             if t1:
                                 try:
-                                    # Usamos los nombres exactos de tu captura:
-                                    # inscripcion_id, fecha, contenido_clase, tarea_proxima
                                     payload = {
                                         "inscripcion_id": mapa_cursos[m_age],
                                         "fecha": str(ahora.date()),
@@ -115,7 +117,7 @@ else:
                                     supabase.table("bitacora").insert(payload).execute()
                                     st.success("✅ Guardado en bitácora."); st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error al guardar. Detalle: {str(e)}")
+                                    st.error(f"Error al guardar: {str(e)}")
                 with c2:
                     st.write("### Historial")
                     try:
@@ -133,14 +135,14 @@ else:
         st.subheader("Alumnos")
         if df_cursos.empty: st.warning("Crea una materia primero.")
         else:
-            m_alu = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_alu_v71")
+            m_alu = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique(), key="sb_alu_v72")
             r_alu = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", m_alu).not_.is_("alumno_id", "null").execute()
             if r_alu and r_alu.data:
                 for x in r_alu.data:
                     if x.get('alumnos'):
                         alu = x['alumnos']
                         with st.expander(f"👤 {alu.get('apellido')}, {alu.get('nombre')}"):
-                            if st.button("Baja", key=f"bj_v71_{x['id']}"):
+                            if st.button("Baja", key=f"bj_v72_{x['id']}"):
                                 supabase.table("inscripciones").delete().eq("id", x['id']).execute()
                                 st.rerun()
             else: st.info("ℹ️ No hay alumnos inscriptos.")
