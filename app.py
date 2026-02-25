@@ -119,12 +119,14 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # Carga de materias
+    # Carga de materias del profesor
     df_cursos = pd.DataFrame()
     try:
         res_c = supabase.table("inscripciones").select("id, nombre_curso_materia, horario").eq("profesor_id", user['id']).is_("alumno_id", "null").execute()
-        if res_c.data: df_cursos = pd.DataFrame(res_c.data)
-    except: pass
+        if res_c and res_c.data:
+            df_cursos = pd.DataFrame(res_c.data)
+    except:
+        pass
 
     # --- TAB 0: AGENDA ---
     with tabs[0]:
@@ -135,15 +137,40 @@ else:
             c_agenda = st.selectbox("Materia:", df_cursos['nombre_curso_materia'].unique())
             try:
                 res_b = supabase.table("bitacora").select("*").eq("profesor_id", user['id']).eq("materia", c_agenda).order("fecha", desc=True).limit(1).execute()
-                if res_b.data:
+                if res_b and res_b.data:
                     tarea_p = res_b.data[0].get("tarea_proxima", "")
-                    if tarea_p: st.markdown(f'<div class="reminder-box">🔔 <b>Tarea para Hoy (de la clase anterior):</b><br>{tarea_p}</div>', unsafe_allow_html=True)
+                    if tarea_p:
+                        st.markdown(f'<div class="reminder-box">🔔 <b>Tarea para Hoy (de la clase anterior):</b><br>{tarea_p}</div>', unsafe_allow_html=True)
                     st.info(f"📍 Clase anterior: {res_b.data[0].get('temas_dictados', 'Sin registro')}")
-            except: pass
+            except:
+                pass
             
-            with st.form("f_agenda_final_v10"):
+            with st.form("f_agenda_v11"):
                 temas_h = st.text_area("Temas dictados hoy")
                 tarea_n = st.text_area("Tarea para la próxima")
                 fecha_n = st.date_input("Fecha de entrega:", value=ahora_dt + datetime.timedelta(days=7))
                 if st.form_submit_button("Guardar Clase"):
                     if temas_h:
+                        t_txt = f"[{fecha_n.strftime('%d/%m/%Y')}] {tarea_n}"
+                        supabase.table("bitacora").insert({
+                            "profesor_id": user['id'], 
+                            "materia": c_agenda, 
+                            "fecha": str(ahora_dt.date()), 
+                            "temas_dictados": temas_h, 
+                            "tarea_proxima": t_txt
+                        }).execute()
+                        st.success("Guardado."); st.rerun()
+
+    # --- TAB 1: ALUMNOS ---
+    with tabs[1]:
+        st.subheader("Gestión de Alumnos")
+        if df_cursos.empty:
+            st.markdown('<div class="warning-card">⚠️ Crea una materia primero.</div>', unsafe_allow_html=True)
+        else:
+            try:
+                res_t = supabase.table("inscripciones").select("alumno_id", count="exact").eq("profesor_id", user['id']).eq("anio_lectivo", 2026).not_.is_("alumno_id", "null").execute()
+                total_m = res_t.count if res_t and res_t.count else 0
+                st.markdown(f'<div class="metric-card">Matrícula {sede_nombre} 2026: <span class="metric-value">{total_m}</span></div>', unsafe_allow_html=True)
+                
+                mat_f = st.selectbox("Ver alumnos de:", df_cursos['nombre_curso_materia'].unique(), key="sel_alu_tab")
+                res_
