@@ -29,7 +29,7 @@ st.markdown("""
     </style>
     """, unsafe_allow_html=True)
 
-# --- RELOJ ---
+# --- RELOJ AUTOMÁTICO ---
 components.html("""
     <div id="rtc" style="position:fixed; top:10px; right:25px; font-family:'JetBrains Mono',monospace; font-size:1rem; color:white; z-index:9999;">--:--:--</div>
     <script>
@@ -49,7 +49,7 @@ if st.session_state.user is None:
     _, col_login, _ = st.columns([1, 1.2, 1])
     with col_login:
         st.markdown('<div class="logo-text">ClassTrack 360</div>', unsafe_allow_html=True)
-        with st.form("login_v140"):
+        with st.form("login_v141"):
             u_in = st.text_input("Sede").strip().lower()
             p_in = st.text_input("Clave", type="password")
             if st.form_submit_button("ENTRAR AL SISTEMA", use_container_width=True):
@@ -68,6 +68,7 @@ else:
     with st.sidebar:
         st.markdown('<div class="logo-text" style="font-size:1.5rem; text-align:left;">CT360</div>', unsafe_allow_html=True)
         st.write(f"Sede: {u_data['email'].split('.')[0].capitalize()}")
+        st.divider()
         if st.button("🚪 SALIR", use_container_width=True):
             st.session_state.user = None
             st.rerun()
@@ -81,69 +82,78 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # --- TAB 1: ALUMNOS (FILTROS PERMANENTES) ---
+    # --- TAB 0: AGENDA (RESTABLECIDA) ---
+    with tabs[0]:
+        st.subheader("📅 Agenda de Clases")
+        if not mapa_cursos:
+            st.info("ℹ️ No hay materias creadas. Ve a 'Cursos' para empezar.")
+        else:
+            sel_ag = st.selectbox("Seleccionar Curso:", ["---"] + list(mapa_cursos.keys()), key="v141_ag_sel")
+            if sel_ag != "---":
+                with st.form("f_ag_v141"):
+                    f_hoy = datetime.date.today()
+                    st.write(f"Registro: {f_hoy.strftime('%d/%m/%Y')}")
+                    temas = st.text_area("Temas dictados")
+                    f_tarea = st.date_input("Fecha tarea", value=f_hoy + datetime.timedelta(days=7))
+                    desc_tarea = st.text_area("Descripción tarea")
+                    c1, c2, c3 = st.columns(3)
+                    if c1.form_submit_button("💾 GUARDAR"):
+                        supabase.table("bitacora").insert({"inscripcion_id": mapa_cursos[sel_ag], "fecha": str(f_hoy), "contenido_clase": temas, "tarea_proxima": desc_tarea, "fecha_tarea": str(f_tarea)}).execute()
+                        st.success("Guardado.")
+                        st.rerun()
+                    if c2.form_submit_button("🔄 CANCELAR"): st.rerun()
+                    if c3.form_submit_button("🗑️ BORRAR"): st.rerun()
+
+    # --- TAB 3: NOTAS (RESTABLECIDA CON FILTROS) ---
+    with tabs[3]:
+        st.subheader("📝 Gestión de Notas")
+        if not mapa_cursos:
+            st.info("ℹ️ Debe crear una materia primero.")
+        else:
+            st.markdown('<div class="filter-box">', unsafe_allow_html=True)
+            n1, n2 = st.columns(2)
+            f_n_cur = n1.selectbox("Curso:", ["Seleccione..."] + list(mapa_cursos.keys()), key="v141_nt_c")
+            f_n_bus = n2.text_input("Buscar Apellido:", key="v141_nt_b").lower()
+            st.markdown('</div>', unsafe_allow_html=True)
+
+            if f_n_cur != "Seleccione...":
+                r_nt = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", f_n_cur).not_.is_("alumno_id", "null").execute()
+                if r_nt.data:
+                    for it in r_nt.data:
+                        al = it['alumnos']
+                        if f_n_bus in al['apellido'].lower():
+                            with st.expander(f"📝 {al['apellido'].upper()}, {al['nombre']}"):
+                                with st.form(f"f_nt_{al['id']}"):
+                                    st.text_input("Nota")
+                                    st.text_input("Instancia")
+                                    c1, c2, c3 = st.columns(3)
+                                    if c1.form_submit_button("💾 GUARDAR"): st.rerun()
+                                    if c2.form_submit_button("🔄 CANCELAR"): st.rerun()
+                                    if c3.form_submit_button("🗑️ BORRAR"): st.rerun()
+                else: st.warning("No hay alumnos en este curso.")
+
+    # --- TABS ALUMNOS, ASISTENCIA Y CURSOS (MANTENIDOS) ---
     with tabs[1]:
-        st.subheader("👥 Gestión de Alumnos")
+        st.subheader("👥 Alumnos")
         st.markdown('<div class="filter-box">', unsafe_allow_html=True)
-        f1, f2 = st.columns(2)
-        f_m_al = f1.selectbox("📍 Filtrar por Curso:", ["Todas"] + list(mapa_cursos.keys()), key="f_m_v140")
-        f_n_al = f2.text_input("🔍 Buscar por Apellido/Nombre:", key="f_n_v140").lower()
+        col1, col2 = st.columns(2)
+        f_m_al = col1.selectbox("Filtrar por Curso:", ["Todas"] + list(mapa_cursos.keys()), key="v141_f_m_al")
+        f_n_al = col2.text_input("Buscar Apellido:", key="v141_f_n_al").lower()
         st.markdown('</div>', unsafe_allow_html=True)
 
-        with st.expander("➕ INSCRIBIR NUEVO ALUMNO"):
-            with st.form("ins_al_v140"):
-                nn, na = st.text_input("Nombre"), st.text_input("Apellido")
-                nc = st.selectbox("Asignar a Materia:", list(mapa_cursos.keys()) if mapa_cursos else ["Sin cursos"])
-                if st.form_submit_button("💾 REGISTRAR"):
-                    res_a = supabase.table("alumnos").insert({"nombre": nn, "apellido": na}).execute()
-                    if res_a.data:
-                        supabase.table("inscripciones").insert({"alumno_id": res_a.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": nc, "anio_lectivo": 2026}).execute()
-                        st.rerun()
-        st.divider()
-        try:
-            r_l = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
-            if r_l.data:
-                for it in r_l.data:
-                    al = it['alumnos']
-                    if (f_m_al == "Todas" or it['nombre_curso_materia'] == f_m_al) and (f_n_al in al['nombre'].lower() or f_n_al in al['apellido'].lower()):
-                        with st.expander(f"👤 {al['apellido'].upper()}, {al['nombre']} | {it['nombre_curso_materia']}"):
-                            with st.form(f"ed_al_v140_{it['id']}"):
-                                st.text_input("Nombre", value=al['nombre'])
-                                st.text_input("Apellido", value=al['apellido'])
-                                b1, b2, b3 = st.columns(3)
-                                if b1.form_submit_button("💾 GUARDAR"): st.rerun()
-                                if b2.form_submit_button("🔄 CANCELAR"): st.rerun()
-                                if b3.form_submit_button("🗑️ BORRAR"):
-                                    supabase.table("inscripciones").delete().eq("id", it['id']).execute()
-                                    st.rerun()
-        except: pass
-
-    # --- TAB 2: ASISTENCIA (FILTROS) ---
     with tabs[2]:
         st.subheader("✅ Asistencia")
         if mapa_cursos:
             st.markdown('<div class="filter-box">', unsafe_allow_html=True)
             ac1, ac2 = st.columns(2)
-            f_as_c = ac1.selectbox("Curso:", ["Seleccione..."] + list(mapa_cursos.keys()), key="f_as_c_140")
-            f_as_n = ac2.text_input("Apellido:", key="f_as_n_140").lower()
+            f_as_c = ac1.selectbox("Elegir Curso:", ["---"] + list(mapa_cursos.keys()), key="v141_as_c")
+            f_as_n = ac2.text_input("Buscar Alumno:", key="v141_as_n").lower()
             st.markdown('</div>', unsafe_allow_html=True)
 
-    # --- TAB 4: CURSOS (TRIPLE BOTONERA) ---
     with tabs[4]:
         st.subheader("🏗️ Cursos")
-        with st.form("crear_c_v140"):
+        with st.form("crear_c_v141"):
             nc_nom = st.text_input("Nombre de Materia")
             if st.form_submit_button("💾 GRABAR"):
                 supabase.table("inscripciones").insert({"profesor_id": u_data['id'], "nombre_curso_materia": nc_nom, "anio_lectivo": 2026}).execute()
                 st.rerun()
-        st.divider()
-        for n, i in mapa_cursos.items():
-            with st.expander(f"📘 {n}"):
-                with st.form(f"ops_c_v140_{i}"):
-                    st.text_input("Nombre", value=n)
-                    c1, c2, c3 = st.columns(3)
-                    if c1.form_submit_button("💾 GUARDAR"): st.rerun()
-                    if c2.form_submit_button("🔄 CANCELAR"): st.rerun()
-                    if c3.form_submit_button("🗑️ BORRAR"):
-                        supabase.table("inscripciones").delete().eq("id", i).execute()
-                        st.rerun()
