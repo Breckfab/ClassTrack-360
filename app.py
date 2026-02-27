@@ -6,7 +6,7 @@ import streamlit.components.v1 as components
 import time
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="ClassTrack 360 v187", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v188", layout="wide")
 
 @st.cache_resource
 def init_connection():
@@ -62,20 +62,19 @@ if st.session_state.user is None:
             else: st.error("Acceso denegado.")
 else:
     u_data = st.session_state.user
-    # Cargar cursos activos
     res_c = supabase.table("inscripciones").select("*").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
     mapa_cursos = {c['nombre_curso_materia']: c['id'] for c in res_c.data} if res_c.data else {}
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # --- TAB ALUMNOS (REDISEÑADA Y FUNCIONAL) ---
+    # --- TAB ALUMNOS (REDISEÑADA: ANTI-DUPLICADOS) ---
     with tabs[1]:
         st.subheader("👥 Gestión de Alumnos")
         
         if not mapa_cursos:
             st.warning("⚠️ Debés crear un curso en la pestaña 'Cursos' antes de inscribir alumnos.")
         else:
-            with st.form("registro_alumno_v187", clear_on_submit=True):
+            with st.form("registro_alumno_v188", clear_on_submit=True):
                 st.write("### 📝 Nueva Inscripción")
                 c1, c2 = st.columns(2)
                 nombre = c1.text_input("Nombre")
@@ -84,78 +83,62 @@ else:
                 telefono = c2.text_input("Teléfono de contacto")
                 curso_destino = st.selectbox("Curso a inscribir:", list(mapa_cursos.keys()))
                 
-                col_btn1, col_btn2, _ = st.columns([1,1,4])
-                guardar = col_btn1.form_submit_button("💾 GUARDAR")
-                cancelar = col_btn2.form_submit_button("❌ CANCELAR")
+                guardar = st.form_submit_button("💾 GUARDAR E INSCRIBIR")
                 
                 if guardar:
-                    if nombre and apellido:
-                        try:
-                            # 1. Crear el alumno
-                            res_al = supabase.table("alumnos").insert({
-                                "nombre": nombre, "apellido": apellido, "dni": dni, "telefono_contacto": telefono
-                            }).execute()
-                            
-                            if res_al.data:
-                                # 2. Crear la inscripción
-                                supabase.table("inscripciones").insert({
-                                    "alumno_id": res_al.data[0]['id'],
-                                    "profesor_id": u_data['id'],
-                                    "nombre_curso_materia": curso_destino,
-                                    "anio_lectivo": 2026
+                    if nombre and apellido and dni:
+                        # VERIFICACIÓN ANTI-DUPLICADOS
+                        check = supabase.table("alumnos").select("id").eq("dni", dni).execute()
+                        if check.data:
+                            st.error(f"❌ El alumno con DNI {dni} ya existe en el sistema.")
+                        else:
+                            try:
+                                # 1. Crear el alumno
+                                res_al = supabase.table("alumnos").insert({
+                                    "nombre": nombre, "apellido": apellido, "dni": dni, "telefono_contacto": telefono
                                 }).execute()
-                                st.success(f"✅ Inscripción satisfactoria: {apellido.upper()}, {nombre} ha sido agregado a {curso_destino}.")
-                                time.sleep(1)
-                                st.rerun()
-                        except Exception as e:
-                            st.error(f"❌ Error al guardar en la base de datos: {str(e)}")
+                                
+                                if res_al.data:
+                                    # 2. Crear la inscripción
+                                    supabase.table("inscripciones").insert({
+                                        "alumno_id": res_al.data[0]['id'],
+                                        "profesor_id": u_data['id'],
+                                        "nombre_curso_materia": curso_destino,
+                                        "anio_lectivo": 2026
+                                    }).execute()
+                                    st.success(f"✅ Inscripción satisfactoria: {apellido.upper()} agregado a {curso_destino}.")
+                                    time.sleep(1)
+                                    st.rerun()
+                            except:
+                                st.error("❌ Error de conexión al guardar.")
                     else:
-                        st.warning("⚠️ El nombre y el apellido son obligatorios.")
+                        st.warning("⚠️ Nombre, Apellido y DNI son obligatorios.")
 
             st.divider()
             st.write("### 📋 Alumnos Inscriptos")
-            # Listado de alumnos con su Triple Botonera
             res_lista = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, dni)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
             
             if res_lista.data:
-                for reg in res_lista.data:
-                    al = reg['alumnos']
+                # Convertir a DataFrame para visualización limpia
+                data_print = []
+                for r in res_lista.data:
+                    al = r['alumnos']
+                    data_print.append({
+                        "id": r['id'],
+                        "Apellido": al['apellido'].upper(),
+                        "Nombre": al['nombre'],
+                        "DNI": al['dni'],
+                        "Curso": r['nombre_curso_materia']
+                    })
+                df = pd.DataFrame(data_print)
+                
+                for _, row in df.iterrows():
                     with st.container():
-                        st.markdown(f"""
-                        <div class="ficha-alumno">
-                            <b>👤 {al['apellido'].upper()}, {al['nombre']}</b><br>
-                            📌 Curso: {reg['nombre_curso_materia']} | DNI: {al['dni'] if al['dni'] else '---'}
-                        </div>
-                        """, unsafe_allow_html=True)
-                        b1, b2, b3, _ = st.columns([1,1,1,5])
-                        if b1.button("✏️ Editar", key=f"ed_al_{reg['id']}"): st.info("Función de edición próximamente.")
-                        if b2.button("🗑️ Borrar", key=f"del_al_{reg['id']}"):
-                            supabase.table("inscripciones").delete().eq("id", reg['id']).execute()
-                            st.warning("Inscripción eliminada."); time.sleep(0.5); st.rerun()
-                        if b3.button("💾 Guardar", key=f"sv_al_{reg['id']}"): st.success("Cambios guardados.")
+                        st.markdown(f'<div class="ficha-alumno"><b>{row["Apellido"]}, {row["Nombre"]}</b> - {row["Curso"]} (DNI: {row["DNI"]})</div>', unsafe_allow_html=True)
+                        b1, b2, _ = st.columns([1,1,6])
+                        if b1.button("✏️ Editar", key=f"ed_{row['id']}"): st.info("Edición")
+                        if b2.button("🗑️ Borrar", key=f"del_{row['id']}"):
+                            supabase.table("inscripciones").delete().eq("id", row['id']).execute()
+                            st.rerun()
             else:
-                st.info("Aún no hay alumnos inscriptos.")
-
-    # --- TAB CURSOS ---
-    with tabs[4]:
-        st.subheader("🏗️ Gestión de Cursos")
-        # Listado siempre arriba
-        if mapa_cursos:
-            for n, id in mapa_cursos.items():
-                with st.container():
-                    st.markdown(f'<div class="ficha-alumno">📖 <b>{n}</b></div>', unsafe_allow_html=True)
-                    bc1, bc2, bc3, _ = st.columns([1,1,1,5])
-                    if bc1.button("✏️ Editar", key=f"ed_c_{id}"): st.info("Edición de curso.")
-                    if bc2.button("🗑️ Borrar", key=f"del_c_{id}"):
-                        supabase.table("inscripciones").delete().eq("id", id).execute()
-                        st.rerun()
-                    if bc3.button("💾 Guardar", key=f"sv_c_{id}"): st.success("Ok")
-        
-        st.divider()
-        with st.expander("➕ CREAR NUEVO CURSO"):
-            with st.form("new_cur"):
-                nm = st.text_input("Nombre Materia")
-                hs = st.text_input("Días/Horas")
-                if st.form_submit_button("💾 INSTALAR"):
-                    supabase.table("inscripciones").insert({"profesor_id": u_data['id'], "nombre_curso_materia": f"{nm} - {hs}", "anio_lectivo": 2026}).execute()
-                    st.rerun()
+                st.info("No hay alumnos.")
