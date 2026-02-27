@@ -5,8 +5,8 @@ import datetime
 import streamlit.components.v1 as components
 import time
 
-# --- NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v244", layout="wide")
+# --- CONFIGURACIÓN DE NÚCLEO ---
+st.set_page_config(page_title="ClassTrack 360 v245", layout="wide")
 
 @st.cache_resource
 def init_connection():
@@ -18,7 +18,7 @@ supabase = init_connection()
 
 if 'user' not in st.session_state: st.session_state.user = None
 
-# --- ESTILO ---
+# --- ESTILO CLASSTRACK ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
@@ -49,32 +49,69 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # --- TAB 0: AGENDA ---
+    # --- TAB 0: AGENDA (SENSOR FIJO) ---
     with tabs[0]:
         st.subheader("📅 Agenda")
         if mapa_cursos:
-            c_ag = st.selectbox("Seleccione Curso:", list(mapa_cursos.keys()), key="ag_v244")
+            c_ag = st.selectbox("Curso:", list(mapa_cursos.keys()), key="ag_v245")
             f_hoy = st.date_input("Fecha:", datetime.date.today())
             res_t = supabase.table("bitacora").select("tarea_proxima").eq("inscripcion_id", mapa_cursos[c_ag]).eq("fecha_tarea", str(f_hoy)).execute()
             if res_t.data:
                 st.markdown(f'<div class="tarea-alerta">🔔 TAREA PARA ENTREGAR HOY:<br>{res_t.data[0]["tarea_proxima"]}</div>', unsafe_allow_html=True)
-            with st.form("f_ag_v244"):
+            
+            with st.form("f_ag_v245"):
                 temas, tarea_n = st.text_area("Temas dictados"), st.text_area("Nueva tarea")
                 vto = st.date_input("Vencimiento:", f_hoy + datetime.timedelta(days=7))
                 b1, b2, b3, _ = st.columns([1,1,1,5])
                 if b1.form_submit_button("💾 Guardar"):
                     supabase.table("bitacora").insert({"inscripcion_id": mapa_cursos[c_ag], "fecha": str(f_hoy), "contenido_clase": temas, "tarea_proxima": tarea_n, "fecha_tarea": str(vto)}).execute()
-                    st.success("Satisfactorio."); st.rerun()
+                    st.success("Cambios guardados satisfactoriamente."); st.rerun()
                 b2.form_submit_button("✏️ Editar")
                 b3.form_submit_button("🗑️ Borrar")
 
-    # --- TAB 1: ALUMNOS ---
+    # --- TAB 1: ALUMNOS (REPARACIÓN LÍNEA 80) ---
     with tabs[1]:
-        sub_al = st.radio("Acción:", ["Consulta de Alumnos", "Nuevo Alumno"], horizontal=True, key="al_rad")
+        sub_al = st.radio("Acción:", ["Consulta", "Nuevo Alumno"], horizontal=True, key="al_rad")
         if sub_al == "Nuevo Alumno":
-            with st.form("new_al"):
+            with st.form("new_al_v245"):
                 n, a = st.text_input("Nombre"), st.text_input("Apellido")
                 c_sel = st.selectbox("Asignar a:", list(mapa_cursos.keys()))
                 if st.form_submit_button("💾 REGISTRAR"):
                     ra = supabase.table("alumnos").insert({"nombre": n, "apellido": a}).execute()
-                    supabase.table("inscripciones").insert({"alumno_id": ra.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": c_sel, "anio_lectivo": 2026}).
+                    if ra.data: # Verificación de seguridad
+                        supabase.table("inscripciones").insert({"alumno_id": ra.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": c_sel, "anio_lectivo": 2026}).execute()
+                        st.success("Cambios guardados satisfactoriamente."); st.rerun()
+                    else: st.error("Error al registrar alumno en la base de datos.")
+        else:
+            c_v = st.selectbox("Curso:", ["---"] + list(mapa_cursos.keys()), key="al_list")
+            if c_v != "---":
+                res_al = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
+                for r in res_al.data:
+                    al = r['alumnos'][0] if isinstance(r['alumnos'], list) else r['alumnos']
+                    if al:
+                        st.markdown(f'<div class="planilla-row">👤 {al["apellido"].upper()}, {al["nombre"]}</div>', unsafe_allow_html=True)
+                        b1, b2, b3, _ = st.columns([1,1,1,5])
+                        b1.button("✏️ Editar", key=f"eal_{r['id']}")
+                        if b2.button("🗑️ Borrar", key=f"dal_{r['id']}"):
+                            supabase.table("inscripciones").delete().eq("id", r['id']).execute(); st.rerun()
+                        b3.button("💾 Guardar", key=f"sal_{r['id']}")
+
+    # --- TAB 4: CURSOS (RECONSTRUIDO) ---
+    with tabs[4]:
+        sub_cu = st.radio("Acción:", ["Listar Cursos", "Nuevo Curso"], horizontal=True, key="cu_rad")
+        if sub_cu == "Nuevo Curso":
+            with st.form("new_c_v245"):
+                mat, hor = st.text_input("Materia"), st.text_input("Horario")
+                dias = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
+                if st.form_submit_button("💾 INSTALAR"):
+                    info = f"{mat} ({', '.join(dias)}) | {hor}"
+                    supabase.table("inscripciones").insert({"profesor_id": u_data['id'], "nombre_curso_materia": info, "anio_lectivo": 2026}).execute()
+                    st.success("Cambios guardados satisfactoriamente."); st.rerun()
+        else:
+            for c in res_c.data:
+                st.markdown(f'<div class="planilla-row">📖 {c["nombre_curso_materia"]}</div>', unsafe_allow_html=True)
+                cb1, cb2, cb3, _ = st.columns([1,1,1,5])
+                cb1.button("✏️ Editar", key=f"ec_{c['id']}")
+                if cb2.button("🗑️ Borrar", key=f"dc_{c['id']}"):
+                    supabase.table("inscripciones").delete().eq("id", c['id']).execute(); st.rerun()
+                cb3.button("💾 Guardar", key=f"sc_{c['id']}")
