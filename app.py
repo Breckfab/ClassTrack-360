@@ -5,8 +5,8 @@ import datetime
 import streamlit.components.v1 as components
 import time
 
-# --- CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v246", layout="wide")
+# --- 1. CONFIGURACIÓN ---
+st.set_page_config(page_title="ClassTrack 360 v247", layout="wide")
 
 @st.cache_resource
 def init_connection():
@@ -18,7 +18,7 @@ supabase = init_connection()
 
 if 'user' not in st.session_state: st.session_state.user = None
 
-# --- ESTILO CLASSTRACK ---
+# --- 2. ESTILO VISUAL ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&display=swap');
@@ -43,27 +43,29 @@ else:
         components.html("""<div style="color:#4facfe;font-family:monospace;font-size:24px;text-align:center;"><div id="c">00:00:00</div></div><script>setInterval(()=>{document.getElementById('c').innerText=new Date().toLocaleTimeString('es-AR',{hour12:false})},1000);</script>""", height=50)
         if st.button("🚪 SALIR"): st.session_state.user = None; st.rerun()
 
-    # MOTOR DE DATOS
-    res_c = supabase.table("inscripciones").select("*").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
-    mapa_cursos = {c['nombre_curso_materia']: c['id'] for c in res_c.data} if res_c.data else {}
+    # --- MOTOR DE DATOS BLINDADO (REPARACIÓN LÍNEA 69) ---
+    mapa_cursos = {}
+    try:
+        res_c = supabase.table("inscripciones").select("*").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
+        if res_c.data:
+            mapa_cursos = {c['nombre_curso_materia']: c['id'] for c in res_c.data if 'nombre_curso_materia' in c}
+    except Exception as e:
+        st.error("Error al conectar con los cursos. Reintentando...")
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # --- TAB 0: AGENDA (SENSOR DE TAREA FIJO) ---
+    # --- TAB 0: AGENDA (TAREA PARA HOY) ---
     with tabs[0]:
         st.subheader("📅 Agenda")
         if mapa_cursos:
-            c_ag = st.selectbox("Curso:", list(mapa_cursos.keys()), key="ag_v246")
+            c_ag = st.selectbox("Curso:", list(mapa_cursos.keys()), key="ag_247")
             f_hoy = st.date_input("Fecha:", datetime.date.today())
-            
-            # BUSQUEDA DE TAREA PENDIENTE PARA HOY (Prioridad de carga)
             res_t = supabase.table("bitacora").select("tarea_proxima").eq("inscripcion_id", mapa_cursos[c_ag]).eq("fecha_tarea", str(f_hoy)).execute()
             if res_t.data:
                 st.markdown(f'<div class="tarea-alerta">🔔 TAREA PARA ENTREGAR HOY:<br>{res_t.data[0]["tarea_proxima"]}</div>', unsafe_allow_html=True)
-            
-            with st.form("f_ag_v246"):
-                temas, tarea_n = st.text_area("Temas dictados"), st.text_area("Nueva tarea")
+            with st.form("f_ag_v247"):
+                temas, n_tarea = st.text_area("Temas de hoy"), st.text_area("Nueva tarea")
                 vto = st.date_input("Vencimiento:", f_hoy + datetime.timedelta(days=7))
                 b1, b2, b3, _ = st.columns([1,1,1,5])
                 if b1.form_submit_button("💾 Guardar"):
-                    supabase.table("bitacora").insert({"inscripcion_id": mapa_cursos[c_ag], "fecha": str(f_hoy), "contenido_clase": temas, "tarea_proxima": tarea_n
+                    supabase.table("bitacora").insert({"inscripcion_id": mapa_cursos[c_ag], "fecha": str(f_hoy), "contenido_
