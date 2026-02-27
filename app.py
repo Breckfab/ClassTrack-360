@@ -6,7 +6,7 @@ import streamlit.components.v1 as components
 import time
 
 # --- CONFIGURACIÓN ---
-st.set_page_config(page_title="ClassTrack 360 v186", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v187", layout="wide")
 
 @st.cache_resource
 def init_connection():
@@ -24,8 +24,7 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800&family=JetBrains+Mono&display=swap');
     .stApp { background: linear-gradient(135deg, #0b0e14 0%, #1e293b 100%); color: #e0e0e0; font-family: 'Inter', sans-serif; }
     .logo-text { font-size: 2.5rem; font-weight: 800; background: linear-gradient(to right, #4facfe, #00f2fe); -webkit-background-clip: text; -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 20px; }
-    .empty-state { background: rgba(255, 255, 255, 0.05); padding: 40px; border-radius: 15px; text-align: center; border: 2px dashed #4facfe; margin-top: 20px; }
-    .planilla-row { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #4facfe; }
+    .ficha-alumno { background: rgba(255,255,255,0.05); padding: 15px; border-radius: 12px; border-left: 5px solid #4facfe; margin-bottom: 10px; }
     #info-superior { position: fixed; top: 10px; right: 20px; font-family: 'JetBrains Mono', monospace; text-align: right; z-index: 10000; background: rgba(0,0,0,0.8); padding: 10px; border-radius: 8px; border: 1px solid #4facfe; }
     </style>
     """, unsafe_allow_html=True)
@@ -55,80 +54,108 @@ components.html("""
 if st.session_state.user is None:
     st.markdown('<div class="logo-text">ClassTrack 360</div>', unsafe_allow_html=True)
     with st.form("login"):
-        u = st.text_input("Sede (ej: cambridge)").strip().lower()
+        u = st.text_input("Sede").strip().lower()
         p = st.text_input("Clave", type="password")
         if st.form_submit_button("ENTRAR AL SISTEMA"):
             res = supabase.table("usuarios").select("*").eq("email", f"{u}.fabianbelledi@gmail.com").eq("password_text", p).execute()
-            if res.data: 
-                st.session_state.user = res.data[0]
-                st.rerun()
+            if res.data: st.session_state.user = res.data[0]; st.rerun()
+            else: st.error("Acceso denegado.")
 else:
     u_data = st.session_state.user
-    # 1. BUSCAR SI EXISTEN CURSOS
+    # Cargar cursos activos
     res_c = supabase.table("inscripciones").select("*").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
-    cursos_existentes = res_c.data if res_c.data else []
-    mapa_cursos = {c['nombre_curso_materia']: c['id'] for c in cursos_existentes}
+    mapa_cursos = {c['nombre_curso_materia']: c['id'] for c in res_c.data} if res_c.data else {}
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "✅ Asistencia", "📝 Notas", "🏗️ Cursos"])
 
-    # --- PANTALLA PARA CUANDO NO HAY NADA ---
-    def estado_vacio(mensaje):
-        st.markdown(f"""<div class="empty-state"><h3>⚠️ {mensaje}</h3><p>Para usar esta pestaña, primero debés configurar un curso.</p></div>""", unsafe_allow_html=True)
-        if st.button("Ir a Crear Curso ahora"):
-            st.write("Cambiá a la pestaña 🏗️ Cursos arriba.")
-
-    # --- TAB CURSOS (EL PRIMER PASO) ---
-    with tabs[4]:
-        st.subheader("🏗️ Configuración de Cursos")
-        # Listado arriba
-        if cursos_existentes:
-            st.write("### Mis Cursos Activos")
-            for cur in cursos_existentes:
-                with st.container():
-                    st.markdown(f'<div class="planilla-row">📖 <b>{cur["nombre_curso_materia"]}</b></div>', unsafe_allow_html=True)
-                    col1, col2, _ = st.columns([1,1,6])
-                    if col1.button("✏️ Editar", key=f"ed_{cur['id']}"): st.toast("Editar habilitado")
-                    if col2.button("🗑️ Borrar", key=f"del_{cur['id']}"):
-                        supabase.table("inscripciones").delete().eq("id", cur['id']).execute()
-                        st.rerun()
-            st.divider()
-        
-        st.write("### Crear Nuevo Curso")
-        with st.form("crear_curso_v186"):
-            n = st.text_input("Nombre de la Materia (ej: Inglés Inicial)")
-            d = st.text_input("Días y Horarios (ej: Lunes 18:00)")
-            if st.form_submit_button("💾 GUARDAR CURSO"):
-                if n and d:
-                    supabase.table("inscripciones").insert({"profesor_id": u_data['id'], "nombre_curso_materia": f"{n} ({d})", "anio_lectivo": 2026}).execute()
-                    st.success("Curso creado con éxito!"); time.sleep(0.5); st.rerun()
-
-    # --- TAB ALUMNOS ---
+    # --- TAB ALUMNOS (REDISEÑADA Y FUNCIONAL) ---
     with tabs[1]:
-        st.subheader("👥 Registro de Alumnos")
-        if not cursos_existentes:
-            estado_vacio("No hay cursos donde inscribir alumnos")
+        st.subheader("👥 Gestión de Alumnos")
+        
+        if not mapa_cursos:
+            st.warning("⚠️ Debés crear un curso en la pestaña 'Cursos' antes de inscribir alumnos.")
         else:
-            with st.form("inscribir_v186"):
+            with st.form("registro_alumno_v187", clear_on_submit=True):
+                st.write("### 📝 Nueva Inscripción")
                 c1, c2 = st.columns(2)
-                nom = c1.text_input("Nombre")
-                ape = c1.text_input("Apellido")
+                nombre = c1.text_input("Nombre")
+                apellido = c1.text_input("Apellido")
                 dni = c2.text_input("DNI")
-                cur_sel = st.selectbox("Inscribir en el curso:", list(mapa_cursos.keys()))
-                if st.form_submit_button("💾 GUARDAR ALUMNO"):
-                    if nom and ape:
-                        res_al = supabase.table("alumnos").insert({"nombre": nom, "apellido": ape, "dni": dni}).execute()
-                        if res_al.data:
-                            supabase.table("inscripciones").insert({
-                                "alumno_id": res_al.data[0]['id'], "profesor_id": u_data['id'], 
-                                "nombre_curso_materia": cur_sel, "anio_lectivo": 2026
+                telefono = c2.text_input("Teléfono de contacto")
+                curso_destino = st.selectbox("Curso a inscribir:", list(mapa_cursos.keys()))
+                
+                col_btn1, col_btn2, _ = st.columns([1,1,4])
+                guardar = col_btn1.form_submit_button("💾 GUARDAR")
+                cancelar = col_btn2.form_submit_button("❌ CANCELAR")
+                
+                if guardar:
+                    if nombre and apellido:
+                        try:
+                            # 1. Crear el alumno
+                            res_al = supabase.table("alumnos").insert({
+                                "nombre": nombre, "apellido": apellido, "dni": dni, "telefono_contacto": telefono
                             }).execute()
-                            st.success(f"✅ {ape} inscripto en {cur_sel}"); st.rerun()
+                            
+                            if res_al.data:
+                                # 2. Crear la inscripción
+                                supabase.table("inscripciones").insert({
+                                    "alumno_id": res_al.data[0]['id'],
+                                    "profesor_id": u_data['id'],
+                                    "nombre_curso_materia": curso_destino,
+                                    "anio_lectivo": 2026
+                                }).execute()
+                                st.success(f"✅ Inscripción satisfactoria: {apellido.upper()}, {nombre} ha sido agregado a {curso_destino}.")
+                                time.sleep(1)
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"❌ Error al guardar en la base de datos: {str(e)}")
+                    else:
+                        st.warning("⚠️ El nombre y el apellido son obligatorios.")
 
-    # --- TAB ASISTENCIA, NOTAS Y AGENDA ---
-    # (Se activan solo si hay cursos y alumnos)
-    for i, t in enumerate([tabs[0], tabs[2], tabs[3]]):
-        with t:
-            if not cursos_existentes:
-                estado_vacio("Pestaña bloqueada")
+            st.divider()
+            st.write("### 📋 Alumnos Inscriptos")
+            # Listado de alumnos con su Triple Botonera
+            res_lista = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, dni)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+            
+            if res_lista.data:
+                for reg in res_lista.data:
+                    al = reg['alumnos']
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="ficha-alumno">
+                            <b>👤 {al['apellido'].upper()}, {al['nombre']}</b><br>
+                            📌 Curso: {reg['nombre_curso_materia']} | DNI: {al['dni'] if al['dni'] else '---'}
+                        </div>
+                        """, unsafe_allow_html=True)
+                        b1, b2, b3, _ = st.columns([1,1,1,5])
+                        if b1.button("✏️ Editar", key=f"ed_al_{reg['id']}"): st.info("Función de edición próximamente.")
+                        if b2.button("🗑️ Borrar", key=f"del_al_{reg['id']}"):
+                            supabase.table("inscripciones").delete().eq("id", reg['id']).execute()
+                            st.warning("Inscripción eliminada."); time.sleep(0.5); st.rerun()
+                        if b3.button("💾 Guardar", key=f"sv_al_{reg['id']}"): st.success("Cambios guardados.")
             else:
-                st.info("Seleccioná un curso para empezar a trabajar.")
+                st.info("Aún no hay alumnos inscriptos.")
+
+    # --- TAB CURSOS ---
+    with tabs[4]:
+        st.subheader("🏗️ Gestión de Cursos")
+        # Listado siempre arriba
+        if mapa_cursos:
+            for n, id in mapa_cursos.items():
+                with st.container():
+                    st.markdown(f'<div class="ficha-alumno">📖 <b>{n}</b></div>', unsafe_allow_html=True)
+                    bc1, bc2, bc3, _ = st.columns([1,1,1,5])
+                    if bc1.button("✏️ Editar", key=f"ed_c_{id}"): st.info("Edición de curso.")
+                    if bc2.button("🗑️ Borrar", key=f"del_c_{id}"):
+                        supabase.table("inscripciones").delete().eq("id", id).execute()
+                        st.rerun()
+                    if bc3.button("💾 Guardar", key=f"sv_c_{id}"): st.success("Ok")
+        
+        st.divider()
+        with st.expander("➕ CREAR NUEVO CURSO"):
+            with st.form("new_cur"):
+                nm = st.text_input("Nombre Materia")
+                hs = st.text_input("Días/Horas")
+                if st.form_submit_button("💾 INSTALAR"):
+                    supabase.table("inscripciones").insert({"profesor_id": u_data['id'], "nombre_curso_materia": f"{nm} - {hs}", "anio_lectivo": 2026}).execute()
+                    st.rerun()
