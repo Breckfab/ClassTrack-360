@@ -57,11 +57,15 @@ if st.session_state.user is None:
         st.markdown('<div class="login-eyebrow">// Acceso al sistema</div>', unsafe_allow_html=True)
         st.markdown('<div class="login-title">Iniciar sesión</div>', unsafe_allow_html=True)
         with st.form("login"):
-            u = st.text_input("Sede", placeholder="cambridge").strip().lower()
+            u = st.text_input("Sede", placeholder="cambridge")
             p = st.text_input("Clave de acceso", type="password", placeholder="••••••••")
             if st.form_submit_button("ENTRAR AL SISTEMA", use_container_width=True):
                 try:
-                    res = supabase.table("usuarios").select("*").eq("email", f"{u}.fabianbelledi@gmail.com").eq("password_text", p).execute()
+                    email_construido = f"{u.strip().lower()}.fabianbelledi@gmail.com"
+                    st.write(f"DEBUG - Email: {email_construido}")
+                    st.write(f"DEBUG - Clave: {p}")
+                    res = supabase.table("usuarios").select("*").eq("email", email_construido).eq("password_text", p).execute()
+                    st.write(f"DEBUG - Resultado: {res.data}")
                     if res.data:
                         st.session_state.user = res.data[0]
                         st.rerun()
@@ -114,7 +118,6 @@ else:
             c_ag = st.selectbox("Seleccione Curso para iniciar clase:", list(mapa_cursos.keys()), key="ag_sel")
             inscripcion_id = mapa_cursos[c_ag]
 
-            # SENSOR DE TAREA PENDIENTE
             try:
                 res_t = supabase.table("bitacora").select("tarea_proxima, fecha").eq("inscripcion_id", inscripcion_id).lt("fecha", str(f_hoy)).order("fecha", desc=True).limit(1).execute()
                 if res_t.data and res_t.data[0].get('tarea_proxima'):
@@ -129,7 +132,6 @@ else:
             except Exception as e:
                 st.error(f"Error al buscar tarea pendiente: {e}")
 
-            # HISTORIAL DE CLASES
             st.subheader("📋 Historial de Clases")
             try:
                 res_hist = supabase.table("bitacora").select("*").eq("inscripcion_id", inscripcion_id).order("fecha", desc=True).limit(10).execute()
@@ -179,7 +181,6 @@ else:
             else:
                 st.info("No hay clases registradas para este curso aún.")
 
-            # REGISTRAR CLASE DE HOY
             st.subheader("📝 Registrar Clase de Hoy")
             try:
                 res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(f_hoy)).execute()
