@@ -40,7 +40,7 @@ if st.session_state.user is None:
         st.write(f"DEBUG sede: [{sede}]")
         st.write(f"DEBUG clave: [{clave}]")
         try:
-            res = supabase.table("usuarios").select("*").ilike("sede", sede).eq("password_text", clave).execute()
+            res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
             st.write(f"DEBUG resultado: {res.data}")
             if res.data:
                 st.session_state.user = res.data[0]
