@@ -20,56 +20,35 @@ if 'editando_curso' not in st.session_state: st.session_state.editando_curso = N
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400&display=swap');
-
     .stApp { background: #080b10; color: #e8eaf0; font-family: 'DM Mono', monospace; }
-
-    .stApp::before {
-        content: '';
-        position: fixed; inset: 0; z-index: 0; pointer-events: none;
-        background-image:
-            linear-gradient(rgba(79,172,254,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(79,172,254,0.04) 1px, transparent 1px);
-        background-size: 48px 48px;
-    }
-
     .planilla-row { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #4facfe; border: 1px solid rgba(255,255,255,0.1); }
     .tarea-alerta { background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 25px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
     .stat-card { background: rgba(79,172,254,0.1); border: 1px solid #4facfe; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .nota-existente { color: #4facfe; font-size: 0.85rem; margin-top: 4px; }
-
-    .login-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 8px; }
-    .login-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.8rem; margin-bottom: 32px; color: #e8eaf0; }
-    .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; letter-spacing: 0.05em; color: #e8eaf0; margin-bottom: 32px; }
-    .login-logo span { color: #4facfe; }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 3. LÓGICA DE ACCESO ---
 if st.session_state.user is None:
-    col1, col2, col3 = st.columns([1, 1.2, 1])
-    with col2:
-        st.markdown('<div style="height:60px"></div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-logo">Class<span>Track</span> 360</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-eyebrow">// Acceso al sistema</div>', unsafe_allow_html=True)
-        st.markdown('<div class="login-title">Iniciar sesión</div>', unsafe_allow_html=True)
-        with st.form("login"):
-            u = st.text_input("Sede", placeholder="cambridge")
-            p = st.text_input("Clave de acceso", type="password")
-            if st.form_submit_button("ENTRAR AL SISTEMA", use_container_width=True):
-                try:
-                    sede = u.strip().lower()
-                    clave = p.strip()
-                    st.write(f"DEBUG sede: [{sede}]")
-                    st.write(f"DEBUG clave: [{clave}]")
-                    res = supabase.table("usuarios").select("*").ilike("sede", sede).eq("password_text", clave).execute()
-                    st.write(f"DEBUG resultado: {res.data}")
-                    if res.data:
-                        st.session_state.user = res.data[0]
-                        st.rerun()
-                    else:
-                        st.error("Sede o clave incorrectos.")
-                except Exception as e:
-                    st.error(f"Error de conexión: {e}")
+    st.title("ClassTrack 360")
+    st.subheader("Iniciar sesión")
+    sede_input = st.text_input("Sede", key="sede_input")
+    clave_input = st.text_input("Clave de acceso", type="password", key="clave_input")
+    if st.button("ENTRAR AL SISTEMA"):
+        sede = sede_input.strip().lower()
+        clave = clave_input.strip()
+        st.write(f"DEBUG sede: [{sede}]")
+        st.write(f"DEBUG clave: [{clave}]")
+        try:
+            res = supabase.table("usuarios").select("*").ilike("sede", sede).eq("password_text", clave).execute()
+            st.write(f"DEBUG resultado: {res.data}")
+            if res.data:
+                st.session_state.user = res.data[0]
+                st.rerun()
+            else:
+                st.error("Sede o clave incorrectos.")
+        except Exception as e:
+            st.error(f"Error de conexión: {e}")
 
 else:
     u_data = st.session_state.user
@@ -80,13 +59,11 @@ else:
         st.header(f"Sede: {u_data['sede'].upper()}")
         st.write(f"📅 {f_hoy.strftime('%d/%m/%Y')}")
         components.html("""<div style="color:#4facfe;font-family:monospace;font-size:24px;text-align:center;"><div id="c">00:00:00</div></div><script>setInterval(()=>{document.getElementById('c').innerText=new Date().toLocaleTimeString('es-AR',{hour12:false})},1000);</script>""", height=50)
-
         try:
             res_total = supabase.table("inscripciones").select("id").eq("profesor_id", u_data['id']).eq("anio_lectivo", 2026).not_.is_("alumno_id", "null").execute()
             st.markdown(f'<div class="stat-card">Total Alumnos 2026: <b>{len(res_total.data)}</b></div>', unsafe_allow_html=True)
         except:
             st.markdown('<div class="stat-card">Total Alumnos 2026: <b>-</b></div>', unsafe_allow_html=True)
-
         st.markdown("---")
         if st.button("🚪 SALIR"):
             st.session_state.user = None
@@ -114,18 +91,10 @@ else:
         else:
             c_ag = st.selectbox("Seleccione Curso para iniciar clase:", list(mapa_cursos.keys()), key="ag_sel")
             inscripcion_id = mapa_cursos[c_ag]
-
             try:
                 res_t = supabase.table("bitacora").select("tarea_proxima, fecha").eq("inscripcion_id", inscripcion_id).lt("fecha", str(f_hoy)).order("fecha", desc=True).limit(1).execute()
                 if res_t.data and res_t.data[0].get('tarea_proxima'):
-                    st.markdown(f'''
-                        <div class="tarea-alerta">
-                            🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({res_t.data[0]['fecha']})<br>
-                            <div style="margin-top:10px; border-top:1px solid #ffc107; padding-top:10px; color:#fff; font-weight:400; font-size:1.1rem;">
-                                {res_t.data[0]["tarea_proxima"]}
-                            </div>
-                        </div>
-                    ''', unsafe_allow_html=True)
+                    st.markdown(f'''<div class="tarea-alerta">🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({res_t.data[0]['fecha']})<br><div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1.1rem;">{res_t.data[0]["tarea_proxima"]}</div></div>''', unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Error al buscar tarea pendiente: {e}")
 
@@ -147,11 +116,7 @@ else:
                                 col_e1, col_e2 = st.columns(2)
                                 if col_e1.form_submit_button("💾 Guardar Cambios"):
                                     try:
-                                        supabase.table("bitacora").update({
-                                            "contenido_clase": t_edit,
-                                            "tarea_proxima": ta_edit,
-                                            "fecha_tarea": str(vto_edit)
-                                        }).eq("id", reg['id']).execute()
+                                        supabase.table("bitacora").update({"contenido_clase": t_edit, "tarea_proxima": ta_edit, "fecha_tarea": str(vto_edit)}).eq("id", reg['id']).execute()
                                         st.session_state.editando_bitacora = None
                                         st.success("Registro actualizado.")
                                         st.rerun()
@@ -197,13 +162,7 @@ else:
                             st.error("El contenido de la clase no puede estar vacío.")
                         else:
                             try:
-                                supabase.table("bitacora").insert({
-                                    "inscripcion_id": inscripcion_id,
-                                    "fecha": str(f_hoy),
-                                    "contenido_clase": temas,
-                                    "tarea_proxima": n_tarea,
-                                    "fecha_tarea": str(vto)
-                                }).execute()
+                                supabase.table("bitacora").insert({"inscripcion_id": inscripcion_id, "fecha": str(f_hoy), "contenido_clase": temas, "tarea_proxima": n_tarea, "fecha_tarea": str(vto)}).execute()
                                 st.success("Clase guardada satisfactoriamente.")
                                 st.rerun()
                             except Exception as e:
@@ -214,7 +173,6 @@ else:
     # =========================================================
     with tabs[1]:
         sub_al = st.radio("Acción:", ["Ver Lista", "Registrar Alumno Nuevo"], horizontal=True)
-
         if sub_al == "Registrar Alumno Nuevo":
             if not mapa_cursos:
                 st.warning("Primero creá un curso en la pestaña 🏗️ Cursos.")
@@ -230,12 +188,7 @@ else:
                             try:
                                 ra = supabase.table("alumnos").insert({"nombre": n.strip(), "apellido": a.strip()}).execute()
                                 if ra.data:
-                                    supabase.table("inscripciones").insert({
-                                        "alumno_id": ra.data[0]['id'],
-                                        "profesor_id": u_data['id'],
-                                        "nombre_curso_materia": c_sel,
-                                        "anio_lectivo": 2026
-                                    }).execute()
+                                    supabase.table("inscripciones").insert({"alumno_id": ra.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": c_sel, "anio_lectivo": 2026}).execute()
                                     st.success(f"Alumno {a.upper()}, {n} registrado en {c_sel}.")
                                     st.rerun()
                             except Exception as e:
@@ -260,10 +213,7 @@ else:
                                         col_a1, col_a2 = st.columns(2)
                                         if col_a1.form_submit_button("💾 Guardar"):
                                             try:
-                                                supabase.table("alumnos").update({
-                                                    "nombre": n_edit.strip(),
-                                                    "apellido": a_edit.strip()
-                                                }).eq("id", al['id']).execute()
+                                                supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip()}).eq("id", al['id']).execute()
                                                 st.session_state.editando_alumno = None
                                                 st.success("Alumno actualizado.")
                                                 st.rerun()
@@ -315,11 +265,9 @@ else:
                                         nota_existente = res_nota.data[0]
                                 except:
                                     pass
-
                                 st.markdown(f'<div class="planilla-row">👤 {al.get("apellido", "").upper()}, {al.get("nombre", "")}</div>', unsafe_allow_html=True)
                                 if nota_existente:
                                     st.markdown(f'<p class="nota-existente">📌 Nota actual: <b>{nota_existente["calificacion"]}</b></p>', unsafe_allow_html=True)
-
                                 with st.form(f"nt_{r['id']}"):
                                     val_default = float(nota_existente['calificacion']) if nota_existente else 0.0
                                     nueva_nota = st.number_input("Calificación:", 0.0, 10.0, value=val_default, step=0.1, key=f"ni_{r['id']}")
@@ -328,11 +276,7 @@ else:
                                             if nota_existente:
                                                 supabase.table("notas").update({"calificacion": nueva_nota}).eq("id", nota_existente['id']).execute()
                                             else:
-                                                supabase.table("notas").insert({
-                                                    "inscripcion_id": r['id'],
-                                                    "alumno_id": al['id'],
-                                                    "calificacion": nueva_nota
-                                                }).execute()
+                                                supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
                                             st.success(f"Nota {nueva_nota} guardada para {al.get('apellido', '').upper()}, {al.get('nombre', '')}.")
                                             st.rerun()
                                         except Exception as e:
@@ -345,7 +289,6 @@ else:
     # =========================================================
     with tabs[3]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
-
         if sub_cu == "Crear Nuevo Curso":
             with st.form("new_c"):
                 mat = st.text_input("Materia")
@@ -359,11 +302,7 @@ else:
                     else:
                         info = f"{mat.strip()} ({', '.join(dias)}) | {hor}"
                         try:
-                            supabase.table("inscripciones").insert({
-                                "profesor_id": u_data['id'],
-                                "nombre_curso_materia": info,
-                                "anio_lectivo": 2026
-                            }).execute()
+                            supabase.table("inscripciones").insert({"profesor_id": u_data['id'], "nombre_curso_materia": info, "anio_lectivo": 2026}).execute()
                             st.success(f"Curso '{info}' creado correctamente.")
                             st.rerun()
                         except Exception as e:
