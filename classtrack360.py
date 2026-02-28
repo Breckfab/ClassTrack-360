@@ -7,13 +7,9 @@ import streamlit.components.v1 as components
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
 st.set_page_config(page_title="ClassTrack 360 v260", layout="wide")
 
-@st.cache_resource
-def init_connection():
-    url = "https://tzevdylabtradqmcqldx.supabase.co"
-    key = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
-    return create_client(url, key)
-
-supabase = init_connection()
+SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
+SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
+supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 if 'user' not in st.session_state: st.session_state.user = None
 if 'editando_bitacora' not in st.session_state: st.session_state.editando_bitacora = None
@@ -63,7 +59,10 @@ if st.session_state.user is None:
                 try:
                     sede = u.strip().lower()
                     clave = p.strip()
-                    res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
+                    st.write(f"DEBUG sede: [{sede}]")
+                    st.write(f"DEBUG clave: [{clave}]")
+                    res = supabase.table("usuarios").select("*").ilike("sede", sede).eq("password_text", clave).execute()
+                    st.write(f"DEBUG resultado: {res.data}")
                     if res.data:
                         st.session_state.user = res.data[0]
                         st.rerun()
