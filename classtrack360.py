@@ -20,35 +20,90 @@ if 'editando_curso' not in st.session_state: st.session_state.editando_curso = N
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400&display=swap');
+
     .stApp { background: #080b10; color: #e8eaf0; font-family: 'DM Mono', monospace; }
+
+    .stApp::before {
+        content: '';
+        position: fixed; inset: 0; z-index: 0; pointer-events: none;
+        background-image:
+            linear-gradient(rgba(79,172,254,0.04) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(79,172,254,0.04) 1px, transparent 1px);
+        background-size: 48px 48px;
+    }
+
     .planilla-row { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #4facfe; border: 1px solid rgba(255,255,255,0.1); }
     .tarea-alerta { background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 25px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
     .stat-card { background: rgba(79,172,254,0.1); border: 1px solid #4facfe; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .nota-existente { color: #4facfe; font-size: 0.85rem; margin-top: 4px; }
+
+    .login-box {
+        background: rgba(255,255,255,0.03);
+        border: 1px solid rgba(79,172,254,0.2);
+        border-radius: 16px;
+        padding: 40px;
+        margin-top: 60px;
+    }
+    .login-logo {
+        font-family: 'Syne', sans-serif;
+        font-weight: 800;
+        font-size: 1.4rem;
+        letter-spacing: 0.05em;
+        color: #e8eaf0;
+        margin-bottom: 6px;
+    }
+    .login-logo span { color: #4facfe; }
+    .login-eyebrow {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: #4facfe;
+        margin-bottom: 16px;
+    }
+    .login-title {
+        font-family: 'Syne', sans-serif;
+        font-weight: 700;
+        font-size: 1.6rem;
+        margin-bottom: 28px;
+        color: #e8eaf0;
+    }
+    .login-footer {
+        font-size: 0.72rem;
+        color: #3a4358;
+        text-align: center;
+        margin-top: 24px;
+        border-top: 1px solid rgba(255,255,255,0.05);
+        padding-top: 16px;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # --- 3. LÓGICA DE ACCESO ---
 if st.session_state.user is None:
-    st.title("ClassTrack 360")
-    st.subheader("Iniciar sesión")
-    sede_input = st.text_input("Sede", key="sede_input")
-    clave_input = st.text_input("Clave de acceso", type="password", key="clave_input")
-    if st.button("ENTRAR AL SISTEMA"):
-        sede = sede_input.strip().lower()
-        clave = clave_input.strip()
-        st.write(f"DEBUG sede: [{sede}]")
-        st.write(f"DEBUG clave: [{clave}]")
-        try:
-            res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
-            st.write(f"DEBUG resultado: {res.data}")
-            if res.data:
-                st.session_state.user = res.data[0]
-                st.rerun()
-            else:
-                st.error("Sede o clave incorrectos.")
-        except Exception as e:
-            st.error(f"Error de conexión: {e}")
+    _, col, _ = st.columns([1.5, 1, 1.5])
+    with col:
+        st.markdown("""
+            <div class="login-box">
+                <div class="login-logo">Class<span>Track</span> 360</div>
+                <div class="login-eyebrow">// Acceso al sistema</div>
+                <div class="login-title">Iniciar sesión</div>
+            </div>
+        """, unsafe_allow_html=True)
+        sede_input = st.text_input("Sede", placeholder="cambridge", key="sede_input")
+        clave_input = st.text_input("Clave de acceso", type="password", key="clave_input")
+        if st.button("ENTRAR AL SISTEMA", use_container_width=True):
+            sede = sede_input.strip().lower()
+            clave = clave_input.strip()
+            try:
+                res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
+                if res.data:
+                    st.session_state.user = res.data[0]
+                    st.rerun()
+                else:
+                    st.error("Sede o clave incorrectos.")
+            except Exception as e:
+                st.error(f"Error de conexión: {e}")
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v260</div>', unsafe_allow_html=True)
 
 else:
     u_data = st.session_state.user
