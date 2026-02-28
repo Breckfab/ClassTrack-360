@@ -89,7 +89,7 @@ if st.session_state.user is None:
                 <div class="login-title">Iniciar sesión</div>
             </div>
         """, unsafe_allow_html=True)
-        sede_input = st.text_input("Sede", placeholder="cambridge", key="sede_input")
+        sede_input = st.text_input("Sede", key="sede_input")
         clave_input = st.text_input("Clave de acceso", type="password", key="clave_input")
         if st.button("ENTRAR AL SISTEMA", use_container_width=True):
             sede = sede_input.strip().lower()
