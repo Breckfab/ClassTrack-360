@@ -5,7 +5,7 @@ import datetime
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v259", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v260", layout="wide")
 
 @st.cache_resource
 def init_connection():
@@ -63,8 +63,7 @@ if st.session_state.user is None:
                 try:
                     sede = u.strip().lower()
                     clave = p.strip()
-                    email_construido = f"{sede}.fabianbelledi@gmail.com"
-                    res = supabase.table("usuarios").select("*").eq("email", email_construido).eq("password_text", clave).execute()
+                    res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
                     if res.data:
                         st.session_state.user = res.data[0]
                         st.rerun()
@@ -79,7 +78,7 @@ else:
 
     # --- SIDEBAR ---
     with st.sidebar:
-        st.header(f"Sede: {u_data['email'].split('.')[0].upper()}")
+        st.header(f"Sede: {u_data['sede'].upper()}")
         st.write(f"📅 {f_hoy.strftime('%d/%m/%Y')}")
         components.html("""<div style="color:#4facfe;font-family:monospace;font-size:24px;text-align:center;"><div id="c">00:00:00</div></div><script>setInterval(()=>{document.getElementById('c').innerText=new Date().toLocaleTimeString('es-AR',{hour12:false})},1000);</script>""", height=50)
 
