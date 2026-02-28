@@ -58,14 +58,13 @@ if st.session_state.user is None:
         st.markdown('<div class="login-title">Iniciar sesión</div>', unsafe_allow_html=True)
         with st.form("login"):
             u = st.text_input("Sede", placeholder="cambridge")
-            p = st.text_input("Clave de acceso", type="password", placeholder="••••••••")
+            p = st.text_input("Clave de acceso", type="password")
             if st.form_submit_button("ENTRAR AL SISTEMA", use_container_width=True):
                 try:
-                    email_construido = f"{u.strip().lower()}.fabianbelledi@gmail.com"
-                    st.write(f"DEBUG - Email: {email_construido}")
-                    st.write(f"DEBUG - Clave: {p}")
-                    res = supabase.table("usuarios").select("*").eq("email", email_construido).eq("password_text", p).execute()
-                    st.write(f"DEBUG - Resultado: {res.data}")
+                    sede = u.strip().lower()
+                    clave = p.strip()
+                    email_construido = f"{sede}.fabianbelledi@gmail.com"
+                    res = supabase.table("usuarios").select("*").eq("email", email_construido).eq("password_text", clave).execute()
                     if res.data:
                         st.session_state.user = res.data[0]
                         st.rerun()
