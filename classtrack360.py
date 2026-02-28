@@ -44,37 +44,11 @@ st.markdown("""
         padding: 40px;
         margin-top: 60px;
     }
-    .login-logo {
-        font-family: 'Syne', sans-serif;
-        font-weight: 800;
-        font-size: 1.4rem;
-        letter-spacing: 0.05em;
-        color: #e8eaf0;
-        margin-bottom: 6px;
-    }
+    .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: #e8eaf0; margin-bottom: 6px; }
     .login-logo span { color: #4facfe; }
-    .login-eyebrow {
-        font-size: 0.72rem;
-        text-transform: uppercase;
-        letter-spacing: 0.15em;
-        color: #4facfe;
-        margin-bottom: 16px;
-    }
-    .login-title {
-        font-family: 'Syne', sans-serif;
-        font-weight: 700;
-        font-size: 1.6rem;
-        margin-bottom: 28px;
-        color: #e8eaf0;
-    }
-    .login-footer {
-        font-size: 0.72rem;
-        color: #3a4358;
-        text-align: center;
-        margin-top: 24px;
-        border-top: 1px solid rgba(255,255,255,0.05);
-        padding-top: 16px;
-    }
+    .login-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 16px; }
+    .login-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.6rem; margin-bottom: 28px; color: #e8eaf0; }
+    .login-footer { font-size: 0.72rem; color: #3a4358; text-align: center; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -89,20 +63,22 @@ if st.session_state.user is None:
                 <div class="login-title">Iniciar sesión</div>
             </div>
         """, unsafe_allow_html=True)
-        sede_input = st.text_input("Sede", key="sede_input")
-        clave_input = st.text_input("Clave de acceso", type="password", key="clave_input")
-        if st.button("ENTRAR AL SISTEMA", use_container_width=True):
-            sede = sede_input.strip().lower()
-            clave = clave_input.strip()
-            try:
-                res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
-                if res.data:
-                    st.session_state.user = res.data[0]
-                    st.rerun()
-                else:
-                    st.error("Sede o clave incorrectos.")
-            except Exception as e:
-                st.error(f"Error de conexión: {e}")
+        with st.form("login", clear_on_submit=False):
+            sede_input = st.text_input("Sede", key="sede_input")
+            clave_input = st.text_input("Clave de acceso", type="password", key="clave_input")
+            submitted = st.form_submit_button("ENTRAR AL SISTEMA", use_container_width=True)
+            if submitted:
+                sede = sede_input.strip().lower()
+                clave = clave_input.strip()
+                try:
+                    res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
+                    if res.data:
+                        st.session_state.user = res.data[0]
+                        st.rerun()
+                    else:
+                        st.error("Sede o clave incorrectos.")
+                except Exception as e:
+                    st.error(f"Error de conexión: {e}")
         st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v260</div>', unsafe_allow_html=True)
 
 else:
