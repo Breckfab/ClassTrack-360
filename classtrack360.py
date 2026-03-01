@@ -5,7 +5,7 @@ import datetime
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v261", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v262", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -22,7 +22,6 @@ st.markdown("""
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400&display=swap');
 
     .stApp { background: #080b10; color: #e8eaf0; font-family: 'DM Mono', monospace; }
-
     .stApp::before {
         content: '';
         position: fixed; inset: 0; z-index: 0; pointer-events: none;
@@ -37,14 +36,15 @@ st.markdown("""
     .stat-card { background: rgba(79,172,254,0.1); border: 1px solid #4facfe; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .nota-existente { color: #4facfe; font-size: 0.85rem; margin-top: 4px; }
 
-    .nota-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 18px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-    .nota-card .alumno-nombre { font-weight: 600; color: #e8eaf0; font-size: 0.95rem; }
-    .nota-card .alumno-fecha { font-size: 0.72rem; color: #556; margin-top: 3px; }
-    .nota-card .alumno-nota { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem; padding: 4px 10px; border-radius: 6px; min-width: 44px; text-align: center; }
-    .nota-card .alumno-nota.baja { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); }
-    .nota-card .alumno-nota.media { color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); }
-    .nota-card .alumno-nota.alta { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); }
-    .nota-card .alumno-nota.sin-nota { color: #555; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); }
+    .alumno-block { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
+    .alumno-block .nombre { font-weight: 600; color: #e8eaf0; font-size: 0.95rem; margin-bottom: 10px; }
+    .nota-linea { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem; color: #99a; }
+    .nota-linea:last-of-type { border-bottom: none; }
+    .nota-badge { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; padding: 2px 8px; border-radius: 5px; }
+    .nota-badge.baja { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); }
+    .nota-badge.media { color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); }
+    .nota-badge.alta { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); }
+    .promedio-linea { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(79,172,254,0.2); font-size: 0.85rem; color: #4facfe; font-weight: 600; }
 
     .login-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(79,172,254,0.2); border-radius: 16px; padding: 40px; margin-top: 60px; }
     .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: #e8eaf0; margin-bottom: 6px; }
@@ -91,7 +91,7 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v261</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v262</div>', unsafe_allow_html=True)
 
 else:
     u_data = st.session_state.user
@@ -289,6 +289,7 @@ else:
         else:
             sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota"], horizontal=True)
 
+            # ── VER NOTAS ──
             if sub_nt == "📋 Ver Notas por Curso":
                 c_ver = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver")
                 if c_ver != "---":
@@ -302,31 +303,41 @@ else:
                                 al_raw = r.get('alumnos')
                                 al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
                                 if al:
-                                    nota_val = "-"
-                                    clase_nota = "sin-nota"
-                                    fecha_nota = ""
                                     try:
-                                        res_nota = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=True).limit(1).execute()
-                                        if res_nota.data:
-                                            n_float = float(res_nota.data[0]['calificacion'])
-                                            nota_val = n_float
-                                            clase_nota = color_nota(n_float)
-                                            fecha_raw = res_nota.data[0]['created_at']
-                                            fecha_nota = datetime.datetime.fromisoformat(fecha_raw[:10]).strftime('%d/%m/%Y')
+                                        res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
+                                        notas = res_notas.data if res_notas.data else []
                                     except:
-                                        pass
+                                        notas = []
+
+                                    # Construir filas de notas
+                                    filas_html = ""
+                                    valores = []
+                                    for i, nt in enumerate(notas):
+                                        val = float(nt['calificacion'])
+                                        valores.append(val)
+                                        fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
+                                        clase = color_nota(val)
+                                        filas_html += f'<div class="nota-linea"><span>Nota {i+1} &nbsp;·&nbsp; {fecha_fmt}</span><span class="nota-badge {clase}">{val}</span></div>'
+
+                                    if not filas_html:
+                                        filas_html = '<div class="nota-linea"><span style="color:#555">Sin notas cargadas</span></div>'
+                                        promedio_html = ""
+                                    else:
+                                        promedio = round(sum(valores) / len(valores), 2)
+                                        clase_prom = color_nota(promedio)
+                                        promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {clase_prom}">{promedio}</span></div>'
+
                                     st.markdown(f'''
-                                        <div class="nota-card">
-                                            <div>
-                                                <div class="alumno-nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>
-                                                <div class="alumno-fecha">{f"📅 {fecha_nota}" if fecha_nota else "Sin nota cargada"}</div>
-                                            </div>
-                                            <span class="alumno-nota {clase_nota}">{nota_val}</span>
+                                        <div class="alumno-block">
+                                            <div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>
+                                            {filas_html}
+                                            {promedio_html}
                                         </div>
                                     ''', unsafe_allow_html=True)
                     except Exception as e:
                         st.error(f"Error al cargar alumnos: {e}")
 
+            # ── CARGAR NOTA ──
             else:
                 c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga")
                 if c_nt != "---":
@@ -340,26 +351,25 @@ else:
                                 al_raw = r.get('alumnos')
                                 al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
                                 if al:
-                                    nota_existente = None
                                     try:
-                                        res_nota = supabase.table("notas").select("id, calificacion").eq("inscripcion_id", r['id']).order("created_at", desc=True).limit(1).execute()
-                                        if res_nota.data:
-                                            nota_existente = res_nota.data[0]
+                                        res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
+                                        notas_existentes = res_notas.data if res_notas.data else []
                                     except:
-                                        pass
+                                        notas_existentes = []
+
                                     st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>', unsafe_allow_html=True)
-                                    if nota_existente:
-                                        st.markdown(f'<p class="nota-existente">📌 Nota actual: <b>{nota_existente["calificacion"]}</b></p>', unsafe_allow_html=True)
+
+                                    if notas_existentes:
+                                        for i, nt in enumerate(notas_existentes):
+                                            fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
+                                            st.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{nt["calificacion"]}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
+
                                     with st.form(f"nt_{r['id']}"):
-                                        val_default = float(nota_existente['calificacion']) if nota_existente else 0.0
-                                        nueva_nota = st.number_input("Calificación:", 0.0, 10.0, value=val_default, step=0.1, key=f"ni_{r['id']}")
-                                        if st.form_submit_button("💾 Guardar Nota"):
+                                        nueva_nota = st.number_input("Nueva calificación:", 0.0, 10.0, value=0.0, step=0.1, key=f"ni_{r['id']}")
+                                        if st.form_submit_button("💾 Agregar Nota"):
                                             try:
-                                                if nota_existente:
-                                                    supabase.table("notas").update({"calificacion": nueva_nota}).eq("id", nota_existente['id']).execute()
-                                                else:
-                                                    supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
-                                                st.success(f"Nota {nueva_nota} guardada para {al.get('apellido','').upper()}, {al.get('nombre','')}.")
+                                                supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
+                                                st.success(f"Nota {nueva_nota} agregada para {al.get('apellido','').upper()}, {al.get('nombre','')}.")
                                                 st.rerun()
                                             except Exception as e:
                                                 st.error(f"Error al guardar nota: {e}")
