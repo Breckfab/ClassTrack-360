@@ -36,13 +36,15 @@ st.markdown("""
     .tarea-alerta { background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 25px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
     .stat-card { background: rgba(79,172,254,0.1); border: 1px solid #4facfe; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .nota-existente { color: #4facfe; font-size: 0.85rem; margin-top: 4px; }
-    .nota-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
-    .nota-card .alumno-nombre { font-weight: 600; color: #e8eaf0; }
-    .nota-card .alumno-nota { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.3rem; }
-    .nota-card .alumno-nota.baja { color: #ff4d6d; }
-    .nota-card .alumno-nota.media { color: #ffc107; }
-    .nota-card .alumno-nota.alta { color: #4facfe; }
-    .nota-card .alumno-nota.sin-nota { color: #555; }
+
+    .nota-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 18px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .nota-card .alumno-nombre { font-weight: 600; color: #e8eaf0; font-size: 0.95rem; }
+    .nota-card .alumno-fecha { font-size: 0.72rem; color: #556; margin-top: 3px; }
+    .nota-card .alumno-nota { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.95rem; padding: 4px 10px; border-radius: 6px; min-width: 44px; text-align: center; }
+    .nota-card .alumno-nota.baja { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); }
+    .nota-card .alumno-nota.media { color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); }
+    .nota-card .alumno-nota.alta { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); }
+    .nota-card .alumno-nota.sin-nota { color: #555; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); }
 
     .login-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(79,172,254,0.2); border-radius: 16px; padding: 40px; margin-top: 60px; }
     .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: #e8eaf0; margin-bottom: 6px; }
@@ -95,7 +97,6 @@ else:
     u_data = st.session_state.user
     f_hoy = datetime.date.today()
 
-    # --- SIDEBAR ---
     with st.sidebar:
         st.header(f"Sede: {u_data['sede'].upper()}")
         st.write(f"📅 {f_hoy.strftime('%d/%m/%Y')}")
@@ -110,7 +111,6 @@ else:
             st.session_state.user = None
             st.rerun()
 
-    # --- MOTOR DE DATOS ---
     mapa_cursos = {}
     try:
         res_c = supabase.table("inscripciones").select("*").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
@@ -289,7 +289,6 @@ else:
         else:
             sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota"], horizontal=True)
 
-            # ── SUBCATEGORÍA 1: VER NOTAS ──
             if sub_nt == "📋 Ver Notas por Curso":
                 c_ver = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver")
                 if c_ver != "---":
@@ -305,24 +304,29 @@ else:
                                 if al:
                                     nota_val = "-"
                                     clase_nota = "sin-nota"
+                                    fecha_nota = ""
                                     try:
-                                        res_nota = supabase.table("notas").select("calificacion").eq("inscripcion_id", r['id']).order("created_at", desc=True).limit(1).execute()
+                                        res_nota = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=True).limit(1).execute()
                                         if res_nota.data:
                                             n_float = float(res_nota.data[0]['calificacion'])
                                             nota_val = n_float
                                             clase_nota = color_nota(n_float)
+                                            fecha_raw = res_nota.data[0]['created_at']
+                                            fecha_nota = datetime.datetime.fromisoformat(fecha_raw[:10]).strftime('%d/%m/%Y')
                                     except:
                                         pass
                                     st.markdown(f'''
                                         <div class="nota-card">
-                                            <span class="alumno-nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</span>
+                                            <div>
+                                                <div class="alumno-nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>
+                                                <div class="alumno-fecha">{f"📅 {fecha_nota}" if fecha_nota else "Sin nota cargada"}</div>
+                                            </div>
                                             <span class="alumno-nota {clase_nota}">{nota_val}</span>
                                         </div>
                                     ''', unsafe_allow_html=True)
                     except Exception as e:
                         st.error(f"Error al cargar alumnos: {e}")
 
-            # ── SUBCATEGORÍA 2: CARGAR NOTA ──
             else:
                 c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga")
                 if c_nt != "---":
