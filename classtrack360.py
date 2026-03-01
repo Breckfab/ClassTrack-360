@@ -2,10 +2,11 @@ import streamlit as st
 from supabase import create_client
 import pandas as pd
 import datetime
+import calendar
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v263", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v264", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -17,6 +18,8 @@ if 'editando_bitacora' not in st.session_state: st.session_state.editando_bitaco
 if 'editando_alumno' not in st.session_state: st.session_state.editando_alumno = None
 if 'editando_curso' not in st.session_state: st.session_state.editando_curso = None
 if 'confirmar_reset' not in st.session_state: st.session_state.confirmar_reset = None
+if 'cal_mes' not in st.session_state: st.session_state.cal_mes = datetime.date.today().month
+if 'cal_anio' not in st.session_state: st.session_state.cal_anio = datetime.date.today().year
 
 # --- 2. ESTILO VISUAL ---
 st.markdown("""
@@ -48,6 +51,14 @@ st.markdown("""
     .nota-badge.alta { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); }
     .promedio-linea { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(79,172,254,0.2); font-size: 0.85rem; color: #4facfe; font-weight: 600; }
 
+    .cal-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 10px; margin-top: 8px; }
+    .cal-titulo { text-align: center; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; color: #4facfe; margin-bottom: 8px; }
+    .cal-tabla { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
+    .cal-tabla th { color: #4facfe; text-align: center; padding: 2px; font-weight: 600; }
+    .cal-tabla td { text-align: center; padding: 3px 2px; color: #99a; }
+    .cal-tabla td.hoy { background: #4facfe; color: #080b10; border-radius: 50%; font-weight: 800; }
+    .cal-tabla td.vacio { color: transparent; }
+
     .admin-badge { background: rgba(255,77,109,0.15); border: 1px solid rgba(255,77,109,0.4); border-radius: 8px; padding: 8px 14px; color: #ff4d6d; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; display: inline-block; margin-bottom: 16px; }
     .reset-box { background: rgba(255,77,109,0.05); border: 2px solid rgba(255,77,109,0.3); border-radius: 12px; padding: 20px; margin-top: 20px; }
     .reset-titulo { color: #ff4d6d; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 8px; }
@@ -64,56 +75,55 @@ st.markdown("""
 
 # --- FUNCIÓN COLOR NOTA ---
 def color_nota(n):
-    if n <= 3:
-        return "baja"
-    elif n <= 5:
-        return "media"
-    else:
-        return "alta"
+    if n <= 3: return "baja"
+    elif n <= 5: return "media"
+    else: return "alta"
+
+# --- FUNCIÓN CALENDARIO ---
+def render_calendario(mes, anio):
+    MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
+    hoy = datetime.date.today()
+    cal = calendar.monthcalendar(anio, mes)
+    filas = ""
+    for semana in cal:
+        fila = ""
+        for dia in semana:
+            if dia == 0:
+                fila += '<td class="vacio">·</td>'
+            elif dia == hoy.day and mes == hoy.month and anio == hoy.year:
+                fila += f'<td class="hoy">{dia}</td>'
+            else:
+                fila += f'<td>{dia}</td>'
+        filas += f"<tr>{fila}</tr>"
+    html = f"""
+    <div class="cal-box">
+        <div class="cal-titulo">{MESES_ES[mes-1]} {anio}</div>
+        <table class="cal-tabla">
+            <tr>
+                <th>Lu</th><th>Ma</th><th>Mi</th><th>Ju</th><th>Vi</th><th>Sa</th><th>Do</th>
+            </tr>
+            {filas}
+        </table>
+    </div>
+    """
+    return html
 
 # --- FUNCIÓN RESET SEDE ---
-def reset_sede(sede_nombre):
-    try:
-        res_u = supabase.table("usuarios").select("id").eq("sede", sede_nombre).execute()
-        if not res_u.data:
-            return False, "No se encontró la sede."
-        profesor_id = res_u.data[0]['id']
-
-        res_insc = supabase.table("inscripciones").select("id").eq("profesor_id", profesor_id).execute()
-        ids_insc = [i['id'] for i in res_insc.data] if res_insc.data else []
-
-        for iid in ids_insc:
-            supabase.table("notas").delete().eq("inscripcion_id", iid).execute()
-            supabase.table("bitacora").delete().eq("inscripcion_id", iid).execute()
-
-        supabase.table("inscripciones").delete().eq("profesor_id", profesor_id).execute()
-        supabase.table("alumnos").delete().in_("id", [i['alumno_id'] for i in supabase.table("inscripciones").select("alumno_id").eq("profesor_id", profesor_id).not_.is_("alumno_id", "null").execute().data] if False else []).execute()
-
-        return True, "Reset completado."
-    except Exception as e:
-        return False, str(e)
-
-# --- FUNCIÓN RESET COMPLETO ---
 def reset_completo_sede(sede_nombre):
     try:
         res_u = supabase.table("usuarios").select("id").eq("sede", sede_nombre).execute()
         if not res_u.data:
             return False, "No se encontró la sede."
         profesor_id = res_u.data[0]['id']
-
         res_insc = supabase.table("inscripciones").select("id, alumno_id").eq("profesor_id", profesor_id).execute()
         ids_insc = [i['id'] for i in res_insc.data] if res_insc.data else []
         ids_alumnos = list(set([i['alumno_id'] for i in res_insc.data if i.get('alumno_id')] if res_insc.data else []))
-
         for iid in ids_insc:
             supabase.table("notas").delete().eq("inscripcion_id", iid).execute()
             supabase.table("bitacora").delete().eq("inscripcion_id", iid).execute()
-
         supabase.table("inscripciones").delete().eq("profesor_id", profesor_id).execute()
-
         for aid in ids_alumnos:
             supabase.table("alumnos").delete().eq("id", aid).execute()
-
         return True, f"Sede {sede_nombre.upper()} reseteada correctamente."
     except Exception as e:
         return False, str(e)
@@ -147,7 +157,7 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v263</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v264</div>', unsafe_allow_html=True)
 
 # =========================================================
 # --- PANEL ADMIN ---
@@ -159,20 +169,16 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
         st.markdown('<div class="admin-badge">⚡ Modo Administrador</div>', unsafe_allow_html=True)
         st.write(f"📅 {datetime.date.today().strftime('%d/%m/%Y')}")
         st.markdown("---")
-
-        # Selector de sede para operar
         try:
             res_sedes = supabase.table("usuarios").select("sede, nombre").neq("sede", "admin").execute()
             sedes_disponibles = [s['sede'] for s in res_sedes.data] if res_sedes.data else []
         except:
             sedes_disponibles = []
-
         if sedes_disponibles:
             sede_sel = st.selectbox("Ver sede:", sedes_disponibles, key="admin_sede_sel")
             st.session_state.sede_admin = sede_sel
         else:
             st.warning("No hay sedes registradas.")
-
         st.markdown("---")
         if st.button("🚪 SALIR"):
             st.session_state.user = None
@@ -184,10 +190,8 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
 
     if st.session_state.sede_admin:
         sede_activa = st.session_state.sede_admin
-
         admin_tabs = st.tabs(["📊 Resumen", "👥 Alumnos", "📝 Notas", "🗑️ Reset de Datos"])
 
-        # --- RESUMEN ---
         with admin_tabs[0]:
             st.subheader(f"Resumen — Sede {sede_activa.upper()}")
             try:
@@ -199,7 +203,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                     col1, col2 = st.columns(2)
                     col1.metric("Cursos", len(res_cursos.data) if res_cursos.data else 0)
                     col2.metric("Alumnos", len(res_alumnos.data) if res_alumnos.data else 0)
-
                     if res_cursos.data:
                         st.markdown("**Cursos activos:**")
                         for c in res_cursos.data:
@@ -207,7 +210,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
             except Exception as e:
                 st.error(f"Error: {e}")
 
-        # --- ALUMNOS ---
         with admin_tabs[1]:
             st.subheader(f"Alumnos — Sede {sede_activa.upper()}")
             try:
@@ -229,7 +231,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
             except Exception as e:
                 st.error(f"Error: {e}")
 
-        # --- NOTAS ---
         with admin_tabs[2]:
             st.subheader(f"Notas — Sede {sede_activa.upper()}")
             try:
@@ -272,7 +273,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
             except Exception as e:
                 st.error(f"Error: {e}")
 
-        # --- RESET ---
         with admin_tabs[3]:
             st.subheader("🗑️ Reset de Datos")
             st.markdown(f"""
@@ -281,10 +281,8 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                     Esta acción borrará TODOS los datos de la sede seleccionada: cursos, alumnos, clases y notas. El usuario de la sede NO será eliminado.
                 </div>
             """, unsafe_allow_html=True)
-
             st.markdown("---")
             sede_reset = st.selectbox("Sede a resetear:", sedes_disponibles, key="reset_sede_sel")
-
             if st.session_state.confirmar_reset != sede_reset:
                 if st.button(f"🔴 BORRAR TODOS LOS DATOS DE {sede_reset.upper()}", type="primary"):
                     st.session_state.confirmar_reset = sede_reset
@@ -326,6 +324,27 @@ else:
             st.markdown(f'<div class="stat-card">Total Alumnos 2026: <b>{len(res_total.data)}</b></div>', unsafe_allow_html=True)
         except:
             st.markdown('<div class="stat-card">Total Alumnos 2026: <b>-</b></div>', unsafe_allow_html=True)
+
+        st.markdown("---")
+
+        # --- CALENDARIO ---
+        col_prev, col_next = st.columns([1, 1])
+        if col_prev.button("◀", key="cal_prev"):
+            if st.session_state.cal_mes == 1:
+                st.session_state.cal_mes = 12
+                st.session_state.cal_anio -= 1
+            else:
+                st.session_state.cal_mes -= 1
+            st.rerun()
+        if col_next.button("▶", key="cal_next"):
+            if st.session_state.cal_mes == 12:
+                st.session_state.cal_mes = 1
+                st.session_state.cal_anio += 1
+            else:
+                st.session_state.cal_mes += 1
+            st.rerun()
+        st.markdown(render_calendario(st.session_state.cal_mes, st.session_state.cal_anio), unsafe_allow_html=True)
+
         st.markdown("---")
         if st.button("🚪 SALIR"):
             st.session_state.user = None
