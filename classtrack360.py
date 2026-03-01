@@ -5,7 +5,7 @@ import datetime
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v260", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v261", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -36,14 +36,15 @@ st.markdown("""
     .tarea-alerta { background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 25px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
     .stat-card { background: rgba(79,172,254,0.1); border: 1px solid #4facfe; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .nota-existente { color: #4facfe; font-size: 0.85rem; margin-top: 4px; }
+    .nota-card { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+    .nota-card .alumno-nombre { font-weight: 600; color: #e8eaf0; }
+    .nota-card .alumno-nota { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.3rem; }
+    .nota-card .alumno-nota.baja { color: #ff4d6d; }
+    .nota-card .alumno-nota.media { color: #ffc107; }
+    .nota-card .alumno-nota.alta { color: #4facfe; }
+    .nota-card .alumno-nota.sin-nota { color: #555; }
 
-    .login-box {
-        background: rgba(255,255,255,0.03);
-        border: 1px solid rgba(79,172,254,0.2);
-        border-radius: 16px;
-        padding: 40px;
-        margin-top: 60px;
-    }
+    .login-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(79,172,254,0.2); border-radius: 16px; padding: 40px; margin-top: 60px; }
     .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: #e8eaf0; margin-bottom: 6px; }
     .login-logo span { color: #4facfe; }
     .login-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 16px; }
@@ -51,6 +52,15 @@ st.markdown("""
     .login-footer { font-size: 0.72rem; color: #3a4358; text-align: center; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; }
     </style>
 """, unsafe_allow_html=True)
+
+# --- FUNCIÓN COLOR NOTA ---
+def color_nota(n):
+    if n <= 3:
+        return "baja"
+    elif n <= 5:
+        return "media"
+    else:
+        return "alta"
 
 # --- 3. LÓGICA DE ACCESO ---
 if st.session_state.user is None:
@@ -79,7 +89,7 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v260</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v261</div>', unsafe_allow_html=True)
 
 else:
     u_data = st.session_state.user
@@ -277,43 +287,80 @@ else:
         if not mapa_cursos:
             st.warning("No hay cursos creados.")
         else:
-            c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_sel")
-            if c_nt != "---":
-                try:
-                    res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
-                    if not res_al_n.data:
-                        st.info("No hay alumnos inscriptos en este curso.")
-                    else:
-                        st.info(f"Alumnos en el curso: {len(res_al_n.data)}")
-                        for r in res_al_n.data:
-                            al_raw = r.get('alumnos')
-                            al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
-                            if al:
-                                nota_existente = None
-                                try:
-                                    res_nota = supabase.table("notas").select("id, calificacion").eq("inscripcion_id", r['id']).order("created_at", desc=True).limit(1).execute()
-                                    if res_nota.data:
-                                        nota_existente = res_nota.data[0]
-                                except:
-                                    pass
-                                st.markdown(f'<div class="planilla-row">👤 {al.get("apellido", "").upper()}, {al.get("nombre", "")}</div>', unsafe_allow_html=True)
-                                if nota_existente:
-                                    st.markdown(f'<p class="nota-existente">📌 Nota actual: <b>{nota_existente["calificacion"]}</b></p>', unsafe_allow_html=True)
-                                with st.form(f"nt_{r['id']}"):
-                                    val_default = float(nota_existente['calificacion']) if nota_existente else 0.0
-                                    nueva_nota = st.number_input("Calificación:", 0.0, 10.0, value=val_default, step=0.1, key=f"ni_{r['id']}")
-                                    if st.form_submit_button("💾 Guardar Nota"):
-                                        try:
-                                            if nota_existente:
-                                                supabase.table("notas").update({"calificacion": nueva_nota}).eq("id", nota_existente['id']).execute()
-                                            else:
-                                                supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
-                                            st.success(f"Nota {nueva_nota} guardada para {al.get('apellido', '').upper()}, {al.get('nombre', '')}.")
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Error al guardar nota: {e}")
-                except Exception as e:
-                    st.error(f"Error al cargar alumnos: {e}")
+            sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota"], horizontal=True)
+
+            # ── SUBCATEGORÍA 1: VER NOTAS ──
+            if sub_nt == "📋 Ver Notas por Curso":
+                c_ver = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver")
+                if c_ver != "---":
+                    try:
+                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                        if not res_al_v.data:
+                            st.info("No hay alumnos inscriptos en este curso.")
+                        else:
+                            st.info(f"Alumnos en el curso: {len(res_al_v.data)}")
+                            for r in res_al_v.data:
+                                al_raw = r.get('alumnos')
+                                al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
+                                if al:
+                                    nota_val = "-"
+                                    clase_nota = "sin-nota"
+                                    try:
+                                        res_nota = supabase.table("notas").select("calificacion").eq("inscripcion_id", r['id']).order("created_at", desc=True).limit(1).execute()
+                                        if res_nota.data:
+                                            n_float = float(res_nota.data[0]['calificacion'])
+                                            nota_val = n_float
+                                            clase_nota = color_nota(n_float)
+                                    except:
+                                        pass
+                                    st.markdown(f'''
+                                        <div class="nota-card">
+                                            <span class="alumno-nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</span>
+                                            <span class="alumno-nota {clase_nota}">{nota_val}</span>
+                                        </div>
+                                    ''', unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"Error al cargar alumnos: {e}")
+
+            # ── SUBCATEGORÍA 2: CARGAR NOTA ──
+            else:
+                c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga")
+                if c_nt != "---":
+                    try:
+                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
+                        if not res_al_n.data:
+                            st.info("No hay alumnos inscriptos en este curso.")
+                        else:
+                            st.info(f"Alumnos en el curso: {len(res_al_n.data)}")
+                            for r in res_al_n.data:
+                                al_raw = r.get('alumnos')
+                                al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
+                                if al:
+                                    nota_existente = None
+                                    try:
+                                        res_nota = supabase.table("notas").select("id, calificacion").eq("inscripcion_id", r['id']).order("created_at", desc=True).limit(1).execute()
+                                        if res_nota.data:
+                                            nota_existente = res_nota.data[0]
+                                    except:
+                                        pass
+                                    st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>', unsafe_allow_html=True)
+                                    if nota_existente:
+                                        st.markdown(f'<p class="nota-existente">📌 Nota actual: <b>{nota_existente["calificacion"]}</b></p>', unsafe_allow_html=True)
+                                    with st.form(f"nt_{r['id']}"):
+                                        val_default = float(nota_existente['calificacion']) if nota_existente else 0.0
+                                        nueva_nota = st.number_input("Calificación:", 0.0, 10.0, value=val_default, step=0.1, key=f"ni_{r['id']}")
+                                        if st.form_submit_button("💾 Guardar Nota"):
+                                            try:
+                                                if nota_existente:
+                                                    supabase.table("notas").update({"calificacion": nueva_nota}).eq("id", nota_existente['id']).execute()
+                                                else:
+                                                    supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
+                                                st.success(f"Nota {nueva_nota} guardada para {al.get('apellido','').upper()}, {al.get('nombre','')}.")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error al guardar nota: {e}")
+                    except Exception as e:
+                        st.error(f"Error al cargar alumnos: {e}")
 
     # =========================================================
     # --- TAB 3: CURSOS ---
