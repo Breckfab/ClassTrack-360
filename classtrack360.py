@@ -6,7 +6,7 @@ import calendar
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v267", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v268", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -20,6 +20,7 @@ if 'editando_curso' not in st.session_state: st.session_state.editando_curso = N
 if 'confirmar_reset' not in st.session_state: st.session_state.confirmar_reset = None
 if 'cal_mes' not in st.session_state: st.session_state.cal_mes = datetime.date.today().month
 if 'cal_anio' not in st.session_state: st.session_state.cal_anio = datetime.date.today().year
+if 'es_suplente' not in st.session_state: st.session_state.es_suplente = False
 
 # --- 2. ESTILO VISUAL ---
 st.markdown("""
@@ -56,6 +57,8 @@ st.markdown("""
     .aprobado { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; }
     .desaprobado { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; }
     .biblio-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 14px; margin-top: 6px; font-size: 0.8rem; color: #778; }
+    .suplente-badge { background: rgba(255,193,7,0.12); border: 1px solid rgba(255,193,7,0.35); border-radius: 6px; padding: 3px 10px; color: #ffc107; font-size: 0.78rem; font-weight: 700; display: inline-block; margin-top: 4px; }
+    .titular-badge { background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); border-radius: 6px; padding: 3px 10px; color: #4facfe; font-size: 0.78rem; font-weight: 700; display: inline-block; margin-top: 4px; }
 
     .cal-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 10px; margin-top: 8px; }
     .cal-titulo { text-align: center; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; color: #4facfe; margin-bottom: 8px; }
@@ -94,7 +97,6 @@ def estado_aprobacion(promedio, nota_aprobacion):
         return '<span class="desaprobado">❌ DESAPROBADO</span>'
 
 def validar_hora(h):
-    """Valida que la hora esté en formato HH:MM"""
     try:
         datetime.datetime.strptime(h.strip(), "%H:%M")
         return True
@@ -103,9 +105,9 @@ def validar_hora(h):
 
 def format_horario(inicio, fin):
     if inicio and fin:
-        return f"{inicio} → {fin}"
+        return f"{str(inicio)[:5]} → {str(fin)[:5]}"
     elif inicio:
-        return inicio
+        return str(inicio)[:5]
     return "-"
 
 def render_calendario(mes, anio):
@@ -180,7 +182,7 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v267</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v268</div>', unsafe_allow_html=True)
 
 # =========================================================
 # --- PANEL ADMIN ---
@@ -303,7 +305,7 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
 
         with admin_tabs[3]:
             st.subheader("🗑️ Reset de Datos")
-            st.markdown(f"""
+            st.markdown("""
                 <div class="reset-box">
                     <div class="reset-titulo">⚠️ Zona de Peligro</div>
                     Esta acción borrará TODOS los datos de la sede seleccionada: cursos, alumnos, clases y notas. El usuario de la sede NO será eliminado.
@@ -399,12 +401,11 @@ else:
             c_ag = st.selectbox("Seleccione Curso para iniciar clase:", list(mapa_cursos.keys()), key="ag_sel")
             inscripcion_id = mapa_cursos[c_ag]
 
-            # Mostrar horario del curso seleccionado
             curso_sel_data = mapa_cursos_data.get(c_ag, {})
-            hi = curso_sel_data.get('hora_inicio', '')
-            hf = curso_sel_data.get('hora_fin', '')
+            hi = str(curso_sel_data.get('hora_inicio', '') or '')[:5]
+            hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
             if hi and hf:
-                st.caption(f"🕐 Horario: {format_horario(str(hi)[:5], str(hf)[:5])}")
+                st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
 
             # --- TAREAS PENDIENTES DEL DÍA ---
             try:
@@ -443,10 +444,19 @@ else:
 
             if res_hist.data:
                 for reg in res_hist.data:
-                    with st.expander(f"📅 Clase del {reg['fecha']}"):
+                    suplente_hist = reg.get('profesor_suplente')
+                    prof_label = f"👤 Suplente: {suplente_hist}" if suplente_hist else "👤 Titular"
+                    with st.expander(f"📅 Clase del {reg['fecha']} · {prof_label}"):
                         if st.session_state.editando_bitacora == reg['id']:
                             with st.form(f"edit_bit_{reg['id']}"):
                                 t_edit = st.text_area("Contenido dictado:", value=reg.get('contenido_clase', ''))
+
+                                # Suplente en edición
+                                es_sup_edit = st.checkbox("¿Clase dictada por suplente?", value=bool(suplente_hist), key=f"sup_chk_{reg['id']}")
+                                sup_nombre_edit = ""
+                                if es_sup_edit:
+                                    sup_nombre_edit = st.text_input("Apellido y Nombre del profesor suplente:", value=suplente_hist or "", key=f"sup_nom_{reg['id']}")
+
                                 st.markdown("**Tareas:**")
                                 col_t1, col_t2, col_t3 = st.columns(3)
                                 with col_t1:
@@ -461,11 +471,13 @@ else:
                                     st.markdown("**Tarea 3**")
                                     t3_edit = st.text_area("Descripción:", value=reg.get('tarea3', '') or '', key=f"et3_{reg['id']}")
                                     f3_edit = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea3_fecha']) if reg.get('tarea3_fecha') else f_hoy, key=f"ef3_{reg['id']}")
+
                                 col_e1, col_e2 = st.columns(2)
                                 if col_e1.form_submit_button("💾 Guardar Cambios"):
                                     try:
                                         supabase.table("bitacora").update({
                                             "contenido_clase": t_edit,
+                                            "profesor_suplente": sup_nombre_edit.strip() if es_sup_edit and sup_nombre_edit.strip() else None,
                                             "tarea1": t1_edit or None, "tarea1_fecha": str(f1_edit) if t1_edit else None,
                                             "tarea2": t2_edit or None, "tarea2_fecha": str(f2_edit) if t2_edit else None,
                                             "tarea3": t3_edit or None, "tarea3_fecha": str(f3_edit) if t3_edit else None,
@@ -479,6 +491,10 @@ else:
                                     st.session_state.editando_bitacora = None
                                     st.rerun()
                         else:
+                            if suplente_hist:
+                                st.markdown(f'<span class="suplente-badge">👤 Clase dictada por suplente: {suplente_hist}</span>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<span class="titular-badge">👤 Clase dictada por titular</span>', unsafe_allow_html=True)
                             st.write(f"**Contenido:** {reg.get('contenido_clase', '-')}")
                             for i in range(1, 4):
                                 txt = reg.get(f'tarea{i}')
@@ -515,6 +531,27 @@ else:
             if ya_guardado_hoy:
                 st.warning("⚠️ Ya existe un registro para HOY en este curso. Podés editarlo desde el historial de arriba.")
             else:
+                # --- BOTÓN SUPLENTE (fuera del form para poder togglear) ---
+                col_tit, col_sup = st.columns([3, 1])
+                with col_tit:
+                    if st.session_state.es_suplente:
+                        st.markdown('<span class="suplente-badge">⚠️ Registrando clase como SUPLENTE</span>', unsafe_allow_html=True)
+                    else:
+                        st.markdown('<span class="titular-badge">👤 Clase dictada por TITULAR</span>', unsafe_allow_html=True)
+                with col_sup:
+                    if not st.session_state.es_suplente:
+                        if st.button("👥 Dictada por suplente", key="btn_suplente"):
+                            st.session_state.es_suplente = True
+                            st.rerun()
+                    else:
+                        if st.button("👤 Volver a titular", key="btn_titular"):
+                            st.session_state.es_suplente = False
+                            st.rerun()
+
+                suplente_nombre = ""
+                if st.session_state.es_suplente:
+                    suplente_nombre = st.text_input("Apellido y Nombre del profesor suplente:", placeholder="Ej: García, María")
+
                 with st.form("f_agenda"):
                     temas = st.text_area("Contenido dictado hoy")
                     st.markdown("---")
@@ -535,18 +572,22 @@ else:
                     if st.form_submit_button("💾 Guardar Clase"):
                         if not temas.strip():
                             st.error("El contenido de la clase no puede estar vacío.")
+                        elif st.session_state.es_suplente and not suplente_nombre.strip():
+                            st.error("Ingresá el apellido y nombre del profesor suplente.")
                         else:
                             try:
                                 supabase.table("bitacora").insert({
                                     "inscripcion_id": inscripcion_id,
                                     "fecha": str(f_hoy),
                                     "contenido_clase": temas,
+                                    "profesor_suplente": suplente_nombre.strip() if st.session_state.es_suplente else None,
                                     "tarea_proxima": tarea1 or tarea2 or tarea3 or None,
                                     "fecha_tarea": str(fecha1) if tarea1 else (str(fecha2) if tarea2 else (str(fecha3) if tarea3 else None)),
                                     "tarea1": tarea1 or None, "tarea1_fecha": str(fecha1) if tarea1 else None,
                                     "tarea2": tarea2 or None, "tarea2_fecha": str(fecha2) if tarea2 else None,
                                     "tarea3": tarea3 or None, "tarea3_fecha": str(fecha3) if tarea3 else None,
                                 }).execute()
+                                st.session_state.es_suplente = False
                                 st.success("Clase guardada satisfactoriamente.")
                                 st.rerun()
                             except Exception as e:
@@ -745,8 +786,8 @@ else:
                 mat = st.text_input("Nombre del Curso *")
                 dias = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
                 col_h1, col_h2 = st.columns(2)
-                hora_ini = col_h1.text_input("Hora de inicio * (hh:mm)", placeholder="15:00")
-                hora_fin = col_h2.text_input("Hora de finalización * (hh:mm)", placeholder="17:00")
+                hora_ini = col_h1.text_input("Hora de inicio *", placeholder="hh:mm (hora y minutos, ej: 15:00)")
+                hora_fin = col_h2.text_input("Hora de finalización *", placeholder="hh:mm (hora y minutos, ej: 17:00)")
                 nota_ap = st.number_input("Nota de aprobación * (ingresá un número del 1 al 10)", min_value=1.0, max_value=10.0, value=None, step=0.5, placeholder="Nota de aprobación")
                 biblio = st.text_area("Bibliografía / Fotocopias (opcional)")
                 if st.form_submit_button("💾 CREAR CURSO"):
@@ -802,8 +843,8 @@ else:
                             mat_e = st.text_input("Nombre del Curso:", value=mat_actual)
                             dias_e = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
                             col_h1e, col_h2e = st.columns(2)
-                            hora_ini_e = col_h1e.text_input("Hora de inicio (hh:mm):", value=hi_cur, placeholder="15:00")
-                            hora_fin_e = col_h2e.text_input("Hora de finalización (hh:mm):", value=hf_cur, placeholder="17:00")
+                            hora_ini_e = col_h1e.text_input("Hora de inicio:", value=hi_cur, placeholder="hh:mm (hora y minutos, ej: 15:00)")
+                            hora_fin_e = col_h2e.text_input("Hora de finalización:", value=hf_cur, placeholder="hh:mm (hora y minutos, ej: 17:00)")
                             nota_ap_e = st.number_input(
                                 "Nota de aprobación * (ingresá un número del 1 al 10)",
                                 min_value=1.0, max_value=10.0,
