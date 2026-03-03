@@ -6,7 +6,7 @@ import calendar
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v264", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v265", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -50,6 +50,9 @@ st.markdown("""
     .nota-badge.media { color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); }
     .nota-badge.alta { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); }
     .promedio-linea { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(79,172,254,0.2); font-size: 0.85rem; color: #4facfe; font-weight: 600; }
+    .aprobado { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; }
+    .desaprobado { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; }
+    .biblio-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 14px; margin-top: 6px; font-size: 0.8rem; color: #778; }
 
     .cal-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 10px; margin-top: 8px; }
     .cal-titulo { text-align: center; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; color: #4facfe; margin-bottom: 8px; }
@@ -73,13 +76,20 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- FUNCIÓN COLOR NOTA ---
+# --- FUNCIONES ---
 def color_nota(n):
     if n <= 3: return "baja"
     elif n <= 5: return "media"
     else: return "alta"
 
-# --- FUNCIÓN CALENDARIO ---
+def estado_aprobacion(promedio, nota_aprobacion):
+    if promedio is None or nota_aprobacion is None:
+        return ""
+    if promedio >= nota_aprobacion:
+        return '<span class="aprobado">✅ APROBADO</span>'
+    else:
+        return '<span class="desaprobado">❌ DESAPROBADO</span>'
+
 def render_calendario(mes, anio):
     MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
     hoy = datetime.date.today()
@@ -95,25 +105,20 @@ def render_calendario(mes, anio):
             else:
                 fila += f'<td>{dia}</td>'
         filas += f"<tr>{fila}</tr>"
-    html = f"""
+    return f"""
     <div class="cal-box">
         <div class="cal-titulo">{MESES_ES[mes-1]} {anio}</div>
         <table class="cal-tabla">
-            <tr>
-                <th>Lu</th><th>Ma</th><th>Mi</th><th>Ju</th><th>Vi</th><th>Sa</th><th>Do</th>
-            </tr>
+            <tr><th>Lu</th><th>Ma</th><th>Mi</th><th>Ju</th><th>Vi</th><th>Sa</th><th>Do</th></tr>
             {filas}
         </table>
     </div>
     """
-    return html
 
-# --- FUNCIÓN RESET SEDE ---
 def reset_completo_sede(sede_nombre):
     try:
         res_u = supabase.table("usuarios").select("id").eq("sede", sede_nombre).execute()
-        if not res_u.data:
-            return False, "No se encontró la sede."
+        if not res_u.data: return False, "No se encontró la sede."
         profesor_id = res_u.data[0]['id']
         res_insc = supabase.table("inscripciones").select("id, alumno_id").eq("profesor_id", profesor_id).execute()
         ids_insc = [i['id'] for i in res_insc.data] if res_insc.data else []
@@ -157,7 +162,7 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v264</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v265</div>', unsafe_allow_html=True)
 
 # =========================================================
 # --- PANEL ADMIN ---
@@ -259,10 +264,12 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                     if not filas_html:
                                         filas_html = '<div class="nota-linea"><span style="color:#555">Sin notas</span></div>'
                                         promedio_html = ""
+                                        estado_html = ""
                                     else:
                                         promedio = round(sum(valores) / len(valores), 2)
                                         clase_prom = color_nota(promedio)
                                         promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {clase_prom}">{promedio}</span></div>'
+                                        estado_html = ""
                                     st.markdown(f'''
                                         <div class="alumno-block">
                                             <div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>
@@ -326,8 +333,6 @@ else:
             st.markdown('<div class="stat-card">Total Alumnos 2026: <b>-</b></div>', unsafe_allow_html=True)
 
         st.markdown("---")
-
-        # --- CALENDARIO ---
         col_prev, col_next = st.columns([1, 1])
         if col_prev.button("◀", key="cal_prev"):
             if st.session_state.cal_mes == 1:
@@ -344,24 +349,28 @@ else:
                 st.session_state.cal_mes += 1
             st.rerun()
         st.markdown(render_calendario(st.session_state.cal_mes, st.session_state.cal_anio), unsafe_allow_html=True)
-
         st.markdown("---")
         if st.button("🚪 SALIR"):
             st.session_state.user = None
             st.rerun()
 
     mapa_cursos = {}
+    mapa_cursos_data = {}
     try:
         res_c = supabase.table("inscripciones").select("*").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
         if res_c.data:
             for c in res_c.data:
                 if 'nombre_curso_materia' in c:
                     mapa_cursos[c['nombre_curso_materia']] = c['id']
+                    mapa_cursos_data[c['nombre_curso_materia']] = c
     except Exception as e:
         st.error(f"Error al cargar cursos: {e}")
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "📝 Notas", "🏗️ Cursos"])
 
+    # =========================================================
+    # --- TAB 0: AGENDA ---
+    # =========================================================
     with tabs[0]:
         if not mapa_cursos:
             st.warning("No tenés cursos creados. Andá a la pestaña 🏗️ Cursos para crear uno.")
@@ -445,6 +454,9 @@ else:
                             except Exception as e:
                                 st.error(f"Error al guardar: {e}")
 
+    # =========================================================
+    # --- TAB 1: ALUMNOS ---
+    # =========================================================
     with tabs[1]:
         sub_al = st.radio("Acción:", ["Ver Lista", "Registrar Alumno Nuevo"], horizontal=True)
         if sub_al == "Registrar Alumno Nuevo":
@@ -471,47 +483,55 @@ else:
             if not mapa_cursos:
                 st.warning("No hay cursos creados.")
             else:
+                busqueda = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_alumno")
                 c_v = st.selectbox("Filtrar por curso:", ["---"] + list(mapa_cursos.keys()))
                 if c_v != "---":
                     try:
                         res_al = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
-                        st.info(f"Cantidad de alumnos: {len(res_al.data)}")
+                        alumnos_filtrados = []
                         for r in res_al.data:
                             al_raw = r.get('alumnos')
                             al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
                             if al:
-                                if st.session_state.editando_alumno == r['id']:
-                                    with st.form(f"edit_al_{r['id']}"):
-                                        n_edit = st.text_input("Nombre:", value=al.get('nombre', ''))
-                                        a_edit = st.text_input("Apellido:", value=al.get('apellido', ''))
-                                        col_a1, col_a2 = st.columns(2)
-                                        if col_a1.form_submit_button("💾 Guardar"):
-                                            try:
-                                                supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip()}).eq("id", al['id']).execute()
-                                                st.session_state.editando_alumno = None
-                                                st.success("Alumno actualizado.")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Error: {e}")
-                                        if col_a2.form_submit_button("❌ Cancelar"):
-                                            st.session_state.editando_alumno = None
-                                            st.rerun()
-                                else:
-                                    st.markdown(f'<div class="planilla-row">👤 {al.get("apellido", "").upper()}, {al.get("nombre", "")}</div>', unsafe_allow_html=True)
-                                    ab1, ab2 = st.columns([1, 1])
-                                    if ab1.button("✏️ Editar", key=f"eal_{r['id']}"):
-                                        st.session_state.editando_alumno = r['id']
-                                        st.rerun()
-                                    if ab2.button("🗑️ Borrar", key=f"dal_{r['id']}"):
+                                if busqueda.strip() == "" or busqueda.lower() in al.get('nombre','').lower() or busqueda.lower() in al.get('apellido','').lower():
+                                    alumnos_filtrados.append((r, al))
+                        st.info(f"Cantidad de alumnos: {len(alumnos_filtrados)}")
+                        for r, al in alumnos_filtrados:
+                            if st.session_state.editando_alumno == r['id']:
+                                with st.form(f"edit_al_{r['id']}"):
+                                    n_edit = st.text_input("Nombre:", value=al.get('nombre', ''))
+                                    a_edit = st.text_input("Apellido:", value=al.get('apellido', ''))
+                                    col_a1, col_a2 = st.columns(2)
+                                    if col_a1.form_submit_button("💾 Guardar"):
                                         try:
-                                            supabase.table("inscripciones").delete().eq("id", r['id']).execute()
-                                            st.success("Alumno eliminado del curso.")
+                                            supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip()}).eq("id", al['id']).execute()
+                                            st.session_state.editando_alumno = None
+                                            st.success("Alumno actualizado.")
                                             st.rerun()
                                         except Exception as e:
-                                            st.error(f"Error al borrar: {e}")
+                                            st.error(f"Error: {e}")
+                                    if col_a2.form_submit_button("❌ Cancelar"):
+                                        st.session_state.editando_alumno = None
+                                        st.rerun()
+                            else:
+                                st.markdown(f'<div class="planilla-row">👤 {al.get("apellido", "").upper()}, {al.get("nombre", "")}</div>', unsafe_allow_html=True)
+                                ab1, ab2 = st.columns([1, 1])
+                                if ab1.button("✏️ Editar", key=f"eal_{r['id']}"):
+                                    st.session_state.editando_alumno = r['id']
+                                    st.rerun()
+                                if ab2.button("🗑️ Borrar", key=f"dal_{r['id']}"):
+                                    try:
+                                        supabase.table("inscripciones").delete().eq("id", r['id']).execute()
+                                        st.success("Alumno eliminado del curso.")
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error al borrar: {e}")
                     except Exception as e:
                         st.error(f"Error al cargar alumnos: {e}")
 
+    # =========================================================
+    # --- TAB 2: NOTAS ---
+    # =========================================================
     with tabs[2]:
         st.subheader("📝 Notas y Calificaciones")
         if not mapa_cursos:
@@ -520,18 +540,26 @@ else:
             sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota"], horizontal=True)
 
             if sub_nt == "📋 Ver Notas por Curso":
-                c_ver = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver")
+                col_f1, col_f2 = st.columns([2, 1])
+                c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver")
+                filtro_estado = col_f2.selectbox("Estado:", ["Todos", "Aprobados", "Desaprobados"], key="filtro_estado")
+                busq_nota = st.text_input("🔍 Buscar alumno:", key="busq_nota")
+
                 if c_ver != "---":
+                    curso_data = mapa_cursos_data.get(c_ver, {})
+                    nota_aprobacion = curso_data.get('nota_aprobacion')
                     try:
                         res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
                         if not res_al_v.data:
                             st.info("No hay alumnos inscriptos en este curso.")
                         else:
-                            st.info(f"Alumnos en el curso: {len(res_al_v.data)}")
+                            mostrados = 0
                             for r in res_al_v.data:
                                 al_raw = r.get('alumnos')
                                 al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
                                 if al:
+                                    if busq_nota.strip() and busq_nota.lower() not in al.get('nombre','').lower() and busq_nota.lower() not in al.get('apellido','').lower():
+                                        continue
                                     try:
                                         res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas = res_notas.data if res_notas.data else []
@@ -545,35 +573,48 @@ else:
                                         fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
                                         clase = color_nota(val)
                                         filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {clase}">{val}</span></div>'
-                                    if not filas_html:
+
+                                    if not valores:
+                                        if filtro_estado != "Todos": continue
                                         filas_html = '<div class="nota-linea"><span style="color:#555">Sin notas cargadas</span></div>'
                                         promedio_html = ""
+                                        estado_html = ""
                                     else:
                                         promedio = round(sum(valores) / len(valores), 2)
                                         clase_prom = color_nota(promedio)
+                                        es_aprobado = nota_aprobacion and promedio >= nota_aprobacion
+                                        if filtro_estado == "Aprobados" and not es_aprobado: continue
+                                        if filtro_estado == "Desaprobados" and es_aprobado: continue
                                         promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {clase_prom}">{promedio}</span></div>'
+                                        estado_html = estado_aprobacion(promedio, nota_aprobacion)
+
+                                    mostrados += 1
                                     st.markdown(f'''
                                         <div class="alumno-block">
-                                            <div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>
+                                            <div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} {estado_html if valores else ""}</div>
                                             {filas_html}
-                                            {promedio_html}
+                                            {promedio_html if valores else ""}
                                         </div>
                                     ''', unsafe_allow_html=True)
+                            st.caption(f"Mostrando {mostrados} alumno/s")
                     except Exception as e:
                         st.error(f"Error al cargar alumnos: {e}")
+
             else:
                 c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga")
+                busq_carga = st.text_input("🔍 Buscar alumno:", key="busq_carga")
                 if c_nt != "---":
                     try:
                         res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
                         if not res_al_n.data:
                             st.info("No hay alumnos inscriptos en este curso.")
                         else:
-                            st.info(f"Alumnos en el curso: {len(res_al_n.data)}")
                             for r in res_al_n.data:
                                 al_raw = r.get('alumnos')
                                 al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
                                 if al:
+                                    if busq_carga.strip() and busq_carga.lower() not in al.get('nombre','').lower() and busq_carga.lower() not in al.get('apellido','').lower():
+                                        continue
                                     try:
                                         res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas_existentes = res_notas.data if res_notas.data else []
@@ -596,23 +637,36 @@ else:
                     except Exception as e:
                         st.error(f"Error al cargar alumnos: {e}")
 
+    # =========================================================
+    # --- TAB 3: CURSOS ---
+    # =========================================================
     with tabs[3]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
         if sub_cu == "Crear Nuevo Curso":
             with st.form("new_c"):
-                mat = st.text_input("Materia")
+                mat = st.text_input("Nombre del Curso *")
                 hor = st.text_input("Horario (ej: 08:00 - 10:00)")
                 dias = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
+                nota_ap = st.number_input("Nota de Aprobación * (obligatorio)", min_value=1.0, max_value=10.0, value=4.0, step=0.5)
+                biblio = st.text_area("Bibliografía / Fotocopias (opcional)")
                 if st.form_submit_button("💾 CREAR CURSO"):
                     if not mat.strip():
-                        st.error("El nombre de la materia es obligatorio.")
+                        st.error("El nombre del curso es obligatorio.")
                     elif not dias:
                         st.error("Seleccioná al menos un día.")
+                    elif not nota_ap:
+                        st.error("La nota de aprobación es obligatoria.")
                     else:
                         info = f"{mat.strip()} ({', '.join(dias)}) | {hor}"
                         try:
-                            supabase.table("inscripciones").insert({"profesor_id": u_data['id'], "nombre_curso_materia": info, "anio_lectivo": 2026}).execute()
-                            st.success(f"Curso '{info}' creado correctamente.")
+                            supabase.table("inscripciones").insert({
+                                "profesor_id": u_data['id'],
+                                "nombre_curso_materia": info,
+                                "anio_lectivo": 2026,
+                                "nota_aprobacion": nota_ap,
+                                "bibliografia": biblio.strip() if biblio.strip() else None
+                            }).execute()
+                            st.success(f"Curso '{info}' creado con nota de aprobación {nota_ap}.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error al crear curso: {e}")
@@ -620,20 +674,32 @@ else:
             if not mapa_cursos:
                 st.info("No tenés cursos creados todavía.")
             else:
+                busq_curso = st.text_input("🔍 Buscar curso:", key="busq_curso")
                 for n_c, i_c in mapa_cursos.items():
+                    if busq_curso.strip() and busq_curso.lower() not in n_c.lower():
+                        continue
+                    curso_data = mapa_cursos_data.get(n_c, {})
+                    nota_ap_cur = curso_data.get('nota_aprobacion', '-')
+                    biblio_cur = curso_data.get('bibliografia', '')
+
                     if st.session_state.editando_curso == i_c:
                         partes = n_c.split(" (")
                         mat_actual = partes[0] if partes else n_c
                         with st.form(f"edit_c_{i_c}"):
-                            mat_e = st.text_input("Materia:", value=mat_actual)
+                            mat_e = st.text_input("Nombre del Curso:", value=mat_actual)
                             hor_e = st.text_input("Horario:")
                             dias_e = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
+                            nota_ap_e = st.number_input("Nota de Aprobación *", min_value=1.0, max_value=10.0, value=float(nota_ap_cur) if nota_ap_cur != '-' else 4.0, step=0.5)
+                            biblio_e = st.text_area("Bibliografía / Fotocopias (opcional):", value=biblio_cur or "")
                             col_c1, col_c2 = st.columns(2)
                             if col_c1.form_submit_button("💾 Guardar"):
                                 nuevo_nombre = f"{mat_e.strip()} ({', '.join(dias_e)}) | {hor_e}" if dias_e else mat_e.strip()
                                 try:
-                                    supabase.table("inscripciones").update({"nombre_curso_materia": nuevo_nombre}).eq("id", i_c).execute()
-                                    supabase.table("inscripciones").update({"nombre_curso_materia": nuevo_nombre}).eq("nombre_curso_materia", n_c).execute()
+                                    supabase.table("inscripciones").update({
+                                        "nombre_curso_materia": nuevo_nombre,
+                                        "nota_aprobacion": nota_ap_e,
+                                        "bibliografia": biblio_e.strip() if biblio_e.strip() else None
+                                    }).eq("id", i_c).execute()
                                     st.session_state.editando_curso = None
                                     st.success("Curso actualizado.")
                                     st.rerun()
@@ -648,7 +714,14 @@ else:
                             cant = res_count.count if res_count.count else 0
                         except:
                             cant = 0
-                        st.markdown(f'<div class="planilla-row">📖 {n_c}<br><small style="color:#4facfe;">Alumnos: {cant}</small></div>', unsafe_allow_html=True)
+                        biblio_html = f'<div class="biblio-box">📚 {biblio_cur}</div>' if biblio_cur else ""
+                        st.markdown(f'''
+                            <div class="planilla-row">
+                                📖 {n_c}<br>
+                                <small style="color:#4facfe;">Alumnos: {cant} · Nota de aprobación: {nota_ap_cur}</small>
+                                {biblio_html}
+                            </div>
+                        ''', unsafe_allow_html=True)
                         cb1, cb2 = st.columns([1, 1])
                         if cb1.button("✏️ Editar", key=f"ec_{i_c}"):
                             st.session_state.editando_curso = i_c
