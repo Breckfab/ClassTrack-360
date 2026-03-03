@@ -88,7 +88,7 @@ def color_nota(n):
 def estado_aprobacion(promedio, nota_aprobacion):
     if promedio is None or nota_aprobacion is None:
         return ""
-    if promedio >= nota_aprobacion:
+    if promedio >= float(nota_aprobacion):
         return '<span class="aprobado">✅ APROBADO</span>'
     else:
         return '<span class="desaprobado">❌ DESAPROBADO</span>'
@@ -249,11 +249,12 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                     if res_cursos.data:
                         curso_sel = st.selectbox("Curso:", ["---"] + [c['nombre_curso_materia'] for c in res_cursos.data])
                         if curso_sel != "---":
-                            res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido), nota_aprobacion").eq("nombre_curso_materia", curso_sel).not_.is_("alumno_id", "null").execute()
+                            res_cur_data = supabase.table("inscripciones").select("nota_aprobacion").eq("nombre_curso_materia", curso_sel).is_("alumno_id", "null").limit(1).execute()
+                            nota_ap_admin = res_cur_data.data[0].get('nota_aprobacion') if res_cur_data.data else None
+                            res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido)").eq("nombre_curso_materia", curso_sel).not_.is_("alumno_id", "null").execute()
                             for r in res_al.data:
                                 al_raw = r.get('alumnos')
                                 al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
-                                nota_ap = r.get('nota_aprobacion')
                                 if al:
                                     res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                     notas = res_notas.data if res_notas.data else []
@@ -273,7 +274,7 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                         promedio = round(sum(valores) / len(valores), 2)
                                         clase_prom = color_nota(promedio)
                                         promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {clase_prom}">{promedio}</span></div>'
-                                        estado_html = estado_aprobacion(promedio, nota_ap)
+                                        estado_html = estado_aprobacion(promedio, nota_ap_admin)
                                     st.markdown(f'''
                                         <div class="alumno-block">
                                             <div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} {estado_html if valores else ""}</div>
@@ -392,7 +393,7 @@ else:
                         fecha = reg.get(f'tarea{i}_fecha')
                         if txt and fecha and str(fecha) == str(f_hoy):
                             if tareas_mostradas == 0:
-                                st.markdown(f'<div style="color:#ffc107;font-weight:700;margin-bottom:8px;">🔔 TAREAS PARA HOY:</div>', unsafe_allow_html=True)
+                                st.markdown('<div style="color:#ffc107;font-weight:700;margin-bottom:8px;">🔔 TAREAS PARA HOY:</div>', unsafe_allow_html=True)
                             st.markdown(f'''
                                 <div class="tarea-card">
                                     <div class="tarea-titulo">Tarea {i}</div>
@@ -400,16 +401,16 @@ else:
                                 </div>
                             ''', unsafe_allow_html=True)
                             tareas_mostradas += 1
-            except Exception as e:
+            except:
                 pass
 
-            # --- TAREA PENDIENTE CLASE ANTERIOR (original) ---
+            # --- TAREA PENDIENTE CLASE ANTERIOR ---
             try:
                 res_t = supabase.table("bitacora").select("tarea_proxima, fecha").eq("inscripcion_id", inscripcion_id).lt("fecha", str(f_hoy)).order("fecha", desc=True).limit(1).execute()
                 if res_t.data and res_t.data[0].get('tarea_proxima'):
                     st.markdown(f'''<div class="tarea-alerta">🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({res_t.data[0]['fecha']})<br><div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1.1rem;">{res_t.data[0]["tarea_proxima"]}</div></div>''', unsafe_allow_html=True)
             except Exception as e:
-                st.error(f"Error al buscar tarea pendiente: {e}")
+                pass
 
             st.subheader("📋 Historial de Clases")
             try:
@@ -424,12 +425,19 @@ else:
                             with st.form(f"edit_bit_{reg['id']}"):
                                 t_edit = st.text_area("Contenido dictado:", value=reg.get('contenido_clase', ''))
                                 st.markdown("**Tareas:**")
-                                t1_edit = st.text_area("Tarea 1:", value=reg.get('tarea1', '') or '')
-                                f1_edit = st.date_input("Fecha Tarea 1:", value=datetime.date.fromisoformat(reg['tarea1_fecha']) if reg.get('tarea1_fecha') else f_hoy, key=f"f1_{reg['id']}")
-                                t2_edit = st.text_area("Tarea 2:", value=reg.get('tarea2', '') or '')
-                                f2_edit = st.date_input("Fecha Tarea 2:", value=datetime.date.fromisoformat(reg['tarea2_fecha']) if reg.get('tarea2_fecha') else f_hoy, key=f"f2_{reg['id']}")
-                                t3_edit = st.text_area("Tarea 3:", value=reg.get('tarea3', '') or '')
-                                f3_edit = st.date_input("Fecha Tarea 3:", value=datetime.date.fromisoformat(reg['tarea3_fecha']) if reg.get('tarea3_fecha') else f_hoy, key=f"f3_{reg['id']}")
+                                col_t1, col_t2, col_t3 = st.columns(3)
+                                with col_t1:
+                                    st.markdown("**Tarea 1**")
+                                    t1_edit = st.text_area("Descripción:", value=reg.get('tarea1', '') or '', key=f"et1_{reg['id']}")
+                                    f1_edit = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea1_fecha']) if reg.get('tarea1_fecha') else f_hoy, key=f"ef1_{reg['id']}")
+                                with col_t2:
+                                    st.markdown("**Tarea 2**")
+                                    t2_edit = st.text_area("Descripción:", value=reg.get('tarea2', '') or '', key=f"et2_{reg['id']}")
+                                    f2_edit = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea2_fecha']) if reg.get('tarea2_fecha') else f_hoy, key=f"ef2_{reg['id']}")
+                                with col_t3:
+                                    st.markdown("**Tarea 3**")
+                                    t3_edit = st.text_area("Descripción:", value=reg.get('tarea3', '') or '', key=f"et3_{reg['id']}")
+                                    f3_edit = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea3_fecha']) if reg.get('tarea3_fecha') else f_hoy, key=f"ef3_{reg['id']}")
                                 col_e1, col_e2 = st.columns(2)
                                 if col_e1.form_submit_button("💾 Guardar Cambios"):
                                     try:
@@ -501,7 +509,6 @@ else:
                         st.markdown("**Tarea 3**")
                         tarea3 = st.text_area("Descripción:", key="t3_desc", height=100)
                         fecha3 = st.date_input("Fecha:", key="t3_fecha", value=f_hoy + datetime.timedelta(days=7))
-
                     if st.form_submit_button("💾 Guardar Clase"):
                         if not temas.strip():
                             st.error("El contenido de la clase no puede estar vacío.")
@@ -635,7 +642,6 @@ else:
                                         notas = res_notas.data if res_notas.data else []
                                     except:
                                         notas = []
-
                                     filas_html = ""
                                     valores = []
                                     for i, nt in enumerate(notas):
@@ -644,7 +650,6 @@ else:
                                         fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
                                         clase = color_nota(val)
                                         filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {clase}">{val}</span></div>'
-
                                     if not valores:
                                         if filtro_estado != "Todos": continue
                                         filas_html = '<div class="nota-linea"><span style="color:#555">Sin notas cargadas</span></div>'
@@ -653,12 +658,11 @@ else:
                                     else:
                                         promedio = round(sum(valores) / len(valores), 2)
                                         clase_prom = color_nota(promedio)
-                                        es_aprobado = nota_aprobacion and promedio >= float(nota_aprobacion)
+                                        es_aprobado = nota_aprobacion is not None and promedio >= float(nota_aprobacion)
                                         if filtro_estado == "✅ Aprobados" and not es_aprobado: continue
                                         if filtro_estado == "❌ Desaprobados" and es_aprobado: continue
                                         promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {clase_prom}">{promedio}</span></div>'
-                                        estado_html = estado_aprobacion(promedio, float(nota_aprobacion) if nota_aprobacion else None)
-
+                                        estado_html = estado_aprobacion(promedio, nota_aprobacion)
                                     mostrados += 1
                                     st.markdown(f'''
                                         <div class="alumno-block">
@@ -750,17 +754,29 @@ else:
                     if busq_curso.strip() and busq_curso.lower() not in n_c.lower():
                         continue
                     curso_data = mapa_cursos_data.get(n_c, {})
-                    nota_ap_cur = curso_data.get('nota_aprobacion', '-')
+                    nota_ap_cur = curso_data.get('nota_aprobacion')
                     biblio_cur = curso_data.get('bibliografia', '')
 
                     if st.session_state.editando_curso == i_c:
                         partes = n_c.split(" (")
                         mat_actual = partes[0] if partes else n_c
+                        # valor seguro para nota_aprobacion
+                        try:
+                            val_nota_edit = float(nota_ap_cur) if nota_ap_cur is not None else None
+                        except:
+                            val_nota_edit = None
+
                         with st.form(f"edit_c_{i_c}"):
                             mat_e = st.text_input("Nombre del Curso:", value=mat_actual)
                             hor_e = st.text_input("Horario:")
                             dias_e = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
-                            nota_ap_e = st.number_input("Nota de aprobación *", min_value=1.0, max_value=10.0, value=float(nota_ap_cur) if nota_ap_cur != '-' else None, step=0.5, placeholder="Nota de aprobación")
+                            nota_ap_e = st.number_input(
+                                "Nota de aprobación * (ingresá un número del 1 al 10)",
+                                min_value=1.0, max_value=10.0,
+                                value=val_nota_edit,
+                                step=0.5,
+                                placeholder="Nota de aprobación"
+                            )
                             biblio_e = st.text_area("Bibliografía / Fotocopias (opcional):", value=biblio_cur or "")
                             col_c1, col_c2 = st.columns(2)
                             if col_c1.form_submit_button("💾 Guardar"):
@@ -788,11 +804,12 @@ else:
                             cant = res_count.count if res_count.count else 0
                         except:
                             cant = 0
+                        nota_display = nota_ap_cur if nota_ap_cur is not None else "Sin definir"
                         biblio_html = f'<div class="biblio-box">📚 {biblio_cur}</div>' if biblio_cur else ""
                         st.markdown(f'''
                             <div class="planilla-row">
                                 📖 {n_c}<br>
-                                <small style="color:#4facfe;">Alumnos: {cant} · Nota de aprobación: {nota_ap_cur}</small>
+                                <small style="color:#4facfe;">Alumnos: {cant} · Nota de aprobación: {nota_display}</small>
                                 {biblio_html}
                             </div>
                         ''', unsafe_allow_html=True)
