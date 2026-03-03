@@ -6,7 +6,7 @@ import calendar
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v266", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v267", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -93,6 +93,21 @@ def estado_aprobacion(promedio, nota_aprobacion):
     else:
         return '<span class="desaprobado">❌ DESAPROBADO</span>'
 
+def validar_hora(h):
+    """Valida que la hora esté en formato HH:MM"""
+    try:
+        datetime.datetime.strptime(h.strip(), "%H:%M")
+        return True
+    except:
+        return False
+
+def format_horario(inicio, fin):
+    if inicio and fin:
+        return f"{inicio} → {fin}"
+    elif inicio:
+        return inicio
+    return "-"
+
 def render_calendario(mes, anio):
     MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
     hoy = datetime.date.today()
@@ -165,7 +180,7 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v266</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v267</div>', unsafe_allow_html=True)
 
 # =========================================================
 # --- PANEL ADMIN ---
@@ -206,7 +221,7 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                 res_u = supabase.table("usuarios").select("id, nombre").eq("sede", sede_activa).execute()
                 if res_u.data:
                     prof_id = res_u.data[0]['id']
-                    res_cursos = supabase.table("inscripciones").select("nombre_curso_materia").eq("profesor_id", prof_id).is_("alumno_id", "null").execute()
+                    res_cursos = supabase.table("inscripciones").select("nombre_curso_materia, hora_inicio, hora_fin").eq("profesor_id", prof_id).is_("alumno_id", "null").execute()
                     res_alumnos = supabase.table("inscripciones").select("id").eq("profesor_id", prof_id).not_.is_("alumno_id", "null").execute()
                     col1, col2 = st.columns(2)
                     col1.metric("Cursos", len(res_cursos.data) if res_cursos.data else 0)
@@ -214,7 +229,8 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                     if res_cursos.data:
                         st.markdown("**Cursos activos:**")
                         for c in res_cursos.data:
-                            st.markdown(f'<div class="planilla-row">📖 {c["nombre_curso_materia"]}</div>', unsafe_allow_html=True)
+                            horario = format_horario(c.get('hora_inicio',''), c.get('hora_fin',''))
+                            st.markdown(f'<div class="planilla-row">📖 {c["nombre_curso_materia"]}<br><small style="color:#4facfe;">🕐 {horario}</small></div>', unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Error: {e}")
 
@@ -383,6 +399,13 @@ else:
             c_ag = st.selectbox("Seleccione Curso para iniciar clase:", list(mapa_cursos.keys()), key="ag_sel")
             inscripcion_id = mapa_cursos[c_ag]
 
+            # Mostrar horario del curso seleccionado
+            curso_sel_data = mapa_cursos_data.get(c_ag, {})
+            hi = curso_sel_data.get('hora_inicio', '')
+            hf = curso_sel_data.get('hora_fin', '')
+            if hi and hf:
+                st.caption(f"🕐 Horario: {format_horario(str(hi)[:5], str(hf)[:5])}")
+
             # --- TAREAS PENDIENTES DEL DÍA ---
             try:
                 res_tareas_hoy = supabase.table("bitacora").select("tarea1, tarea1_fecha, tarea2, tarea2_fecha, tarea3, tarea3_fecha").eq("inscripcion_id", inscripcion_id).execute()
@@ -409,7 +432,7 @@ else:
                 res_t = supabase.table("bitacora").select("tarea_proxima, fecha").eq("inscripcion_id", inscripcion_id).lt("fecha", str(f_hoy)).order("fecha", desc=True).limit(1).execute()
                 if res_t.data and res_t.data[0].get('tarea_proxima'):
                     st.markdown(f'''<div class="tarea-alerta">🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({res_t.data[0]['fecha']})<br><div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1.1rem;">{res_t.data[0]["tarea_proxima"]}</div></div>''', unsafe_allow_html=True)
-            except Exception as e:
+            except:
                 pass
 
             st.subheader("📋 Historial de Clases")
@@ -720,28 +743,36 @@ else:
         if sub_cu == "Crear Nuevo Curso":
             with st.form("new_c"):
                 mat = st.text_input("Nombre del Curso *")
-                hor = st.text_input("Horario (ej: 08:00 - 10:00)")
                 dias = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
+                col_h1, col_h2 = st.columns(2)
+                hora_ini = col_h1.text_input("Hora de inicio * (hh:mm)", placeholder="15:00")
+                hora_fin = col_h2.text_input("Hora de finalización * (hh:mm)", placeholder="17:00")
                 nota_ap = st.number_input("Nota de aprobación * (ingresá un número del 1 al 10)", min_value=1.0, max_value=10.0, value=None, step=0.5, placeholder="Nota de aprobación")
                 biblio = st.text_area("Bibliografía / Fotocopias (opcional)")
                 if st.form_submit_button("💾 CREAR CURSO"):
-                    if not mat.strip():
-                        st.error("El nombre del curso es obligatorio.")
-                    elif not dias:
-                        st.error("Seleccioná al menos un día.")
-                    elif nota_ap is None:
-                        st.error("La nota de aprobación es obligatoria.")
+                    errores = []
+                    if not mat.strip(): errores.append("El nombre del curso es obligatorio.")
+                    if not dias: errores.append("Seleccioná al menos un día.")
+                    if not hora_ini.strip(): errores.append("La hora de inicio es obligatoria.")
+                    elif not validar_hora(hora_ini): errores.append("Hora de inicio inválida. Usá el formato hh:mm (ej: 15:00).")
+                    if not hora_fin.strip(): errores.append("La hora de finalización es obligatoria.")
+                    elif not validar_hora(hora_fin): errores.append("Hora de finalización inválida. Usá el formato hh:mm (ej: 17:00).")
+                    if nota_ap is None: errores.append("La nota de aprobación es obligatoria.")
+                    if errores:
+                        for e in errores: st.error(e)
                     else:
-                        info = f"{mat.strip()} ({', '.join(dias)}) | {hor}"
+                        info = f"{mat.strip()} ({', '.join(dias)}) | {hora_ini.strip()} → {hora_fin.strip()}"
                         try:
                             supabase.table("inscripciones").insert({
                                 "profesor_id": u_data['id'],
                                 "nombre_curso_materia": info,
                                 "anio_lectivo": 2026,
                                 "nota_aprobacion": nota_ap,
-                                "bibliografia": biblio.strip() if biblio.strip() else None
+                                "bibliografia": biblio.strip() if biblio.strip() else None,
+                                "hora_inicio": hora_ini.strip(),
+                                "hora_fin": hora_fin.strip()
                             }).execute()
-                            st.success(f"Curso '{info}' creado con nota de aprobación {nota_ap}.")
+                            st.success(f"Curso '{info}' creado correctamente.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Error al crear curso: {e}")
@@ -756,11 +787,12 @@ else:
                     curso_data = mapa_cursos_data.get(n_c, {})
                     nota_ap_cur = curso_data.get('nota_aprobacion')
                     biblio_cur = curso_data.get('bibliografia', '')
+                    hi_cur = str(curso_data.get('hora_inicio', '') or '')[:5]
+                    hf_cur = str(curso_data.get('hora_fin', '') or '')[:5]
 
                     if st.session_state.editando_curso == i_c:
                         partes = n_c.split(" (")
                         mat_actual = partes[0] if partes else n_c
-                        # valor seguro para nota_aprobacion
                         try:
                             val_nota_edit = float(nota_ap_cur) if nota_ap_cur is not None else None
                         except:
@@ -768,8 +800,10 @@ else:
 
                         with st.form(f"edit_c_{i_c}"):
                             mat_e = st.text_input("Nombre del Curso:", value=mat_actual)
-                            hor_e = st.text_input("Horario:")
                             dias_e = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
+                            col_h1e, col_h2e = st.columns(2)
+                            hora_ini_e = col_h1e.text_input("Hora de inicio (hh:mm):", value=hi_cur, placeholder="15:00")
+                            hora_fin_e = col_h2e.text_input("Hora de finalización (hh:mm):", value=hf_cur, placeholder="17:00")
                             nota_ap_e = st.number_input(
                                 "Nota de aprobación * (ingresá un número del 1 al 10)",
                                 min_value=1.0, max_value=10.0,
@@ -780,15 +814,21 @@ else:
                             biblio_e = st.text_area("Bibliografía / Fotocopias (opcional):", value=biblio_cur or "")
                             col_c1, col_c2 = st.columns(2)
                             if col_c1.form_submit_button("💾 Guardar"):
-                                if nota_ap_e is None:
-                                    st.error("La nota de aprobación es obligatoria.")
+                                errores = []
+                                if hora_ini_e.strip() and not validar_hora(hora_ini_e): errores.append("Hora de inicio inválida. Usá hh:mm (ej: 15:00).")
+                                if hora_fin_e.strip() and not validar_hora(hora_fin_e): errores.append("Hora de finalización inválida. Usá hh:mm (ej: 17:00).")
+                                if nota_ap_e is None: errores.append("La nota de aprobación es obligatoria.")
+                                if errores:
+                                    for e in errores: st.error(e)
                                 else:
-                                    nuevo_nombre = f"{mat_e.strip()} ({', '.join(dias_e)}) | {hor_e}" if dias_e else mat_e.strip()
+                                    nuevo_nombre = f"{mat_e.strip()} ({', '.join(dias_e)}) | {hora_ini_e.strip()} → {hora_fin_e.strip()}" if dias_e else mat_e.strip()
                                     try:
                                         supabase.table("inscripciones").update({
                                             "nombre_curso_materia": nuevo_nombre,
                                             "nota_aprobacion": nota_ap_e,
-                                            "bibliografia": biblio_e.strip() if biblio_e.strip() else None
+                                            "bibliografia": biblio_e.strip() if biblio_e.strip() else None,
+                                            "hora_inicio": hora_ini_e.strip() if hora_ini_e.strip() else None,
+                                            "hora_fin": hora_fin_e.strip() if hora_fin_e.strip() else None,
                                         }).eq("id", i_c).execute()
                                         st.session_state.editando_curso = None
                                         st.success("Curso actualizado.")
@@ -805,11 +845,12 @@ else:
                         except:
                             cant = 0
                         nota_display = nota_ap_cur if nota_ap_cur is not None else "Sin definir"
+                        horario_display = format_horario(hi_cur, hf_cur)
                         biblio_html = f'<div class="biblio-box">📚 {biblio_cur}</div>' if biblio_cur else ""
                         st.markdown(f'''
                             <div class="planilla-row">
                                 📖 {n_c}<br>
-                                <small style="color:#4facfe;">Alumnos: {cant} · Nota de aprobación: {nota_display}</small>
+                                <small style="color:#4facfe;">🕐 {horario_display} · Alumnos: {cant} · Aprobación: {nota_display}</small>
                                 {biblio_html}
                             </div>
                         ''', unsafe_allow_html=True)
