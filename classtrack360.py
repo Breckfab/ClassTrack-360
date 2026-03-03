@@ -1,26 +1,41 @@
 import streamlit as st
 from supabase import create_client
-import pandas as pd
 import datetime
 import calendar
 import streamlit.components.v1 as components
 
 # --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v269", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v270", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-if 'user' not in st.session_state: st.session_state.user = None
-if 'sede_admin' not in st.session_state: st.session_state.sede_admin = None
-if 'editando_bitacora' not in st.session_state: st.session_state.editando_bitacora = None
-if 'editando_alumno' not in st.session_state: st.session_state.editando_alumno = None
-if 'editando_curso' not in st.session_state: st.session_state.editando_curso = None
-if 'confirmar_reset' not in st.session_state: st.session_state.confirmar_reset = None
-if 'cal_mes' not in st.session_state: st.session_state.cal_mes = datetime.date.today().month
-if 'cal_anio' not in st.session_state: st.session_state.cal_anio = datetime.date.today().year
-if 'es_suplente' not in st.session_state: st.session_state.es_suplente = False
+def init_state():
+    defaults = {
+        'user': None, 'sede_admin': None,
+        'editando_bitacora': None, 'editando_alumno': None, 'editando_curso': None,
+        'confirmar_reset': None,
+        'cal_mes': datetime.date.today().month, 'cal_anio': datetime.date.today().year,
+        'es_suplente': False,
+        # selectores previos para detectar cambios
+        'prev_curso_alumnos': None,
+        'prev_curso_notas_ver': None,
+        'prev_curso_notas_carga': None,
+        'prev_curso_busq_hist': None,
+        # valores de campos dependientes
+        'busq_alumno_val': '',
+        'busq_nota_val': '',
+        'filtro_estado_val': 'Todos',
+        'busq_carga_val': '',
+        'busq_contenido_hist_val': '',
+        'tipo_prof_val': 'Todos',
+    }
+    for k, v in defaults.items():
+        if k not in st.session_state:
+            st.session_state[k] = v
+
+init_state()
 
 # --- 2. ESTILO VISUAL ---
 st.markdown("""
@@ -90,8 +105,7 @@ def color_nota(n):
     else: return "alta"
 
 def estado_aprobacion(promedio, nota_aprobacion):
-    if promedio is None or nota_aprobacion is None:
-        return ""
+    if promedio is None or nota_aprobacion is None: return ""
     if promedio >= float(nota_aprobacion):
         return '<span class="aprobado">✅ APROBADO</span>'
     else:
@@ -105,10 +119,8 @@ def validar_hora(h):
         return False
 
 def format_horario(inicio, fin):
-    if inicio and fin:
-        return f"{str(inicio)[:5]} → {str(fin)[:5]}"
-    elif inicio:
-        return str(inicio)[:5]
+    if inicio and fin: return f"{str(inicio)[:5]} → {str(fin)[:5]}"
+    elif inicio: return str(inicio)[:5]
     return "-"
 
 def render_calendario(mes, anio):
@@ -119,12 +131,9 @@ def render_calendario(mes, anio):
     for semana in cal:
         fila = ""
         for dia in semana:
-            if dia == 0:
-                fila += '<td class="vacio">·</td>'
-            elif dia == hoy.day and mes == hoy.month and anio == hoy.year:
-                fila += f'<td class="hoy">{dia}</td>'
-            else:
-                fila += f'<td>{dia}</td>'
+            if dia == 0: fila += '<td class="vacio">·</td>'
+            elif dia == hoy.day and mes == hoy.month and anio == hoy.year: fila += f'<td class="hoy">{dia}</td>'
+            else: fila += f'<td>{dia}</td>'
         filas += f"<tr>{fila}</tr>"
     return f"""
     <div class="cal-box">
@@ -142,9 +151,8 @@ def reset_completo_sede(sede_nombre):
         if not res_u.data: return False, "No se encontró la sede."
         profesor_id = res_u.data[0]['id']
         res_insc = supabase.table("inscripciones").select("id, alumno_id").eq("profesor_id", profesor_id).execute()
-        ids_insc = [i['id'] for i in res_insc.data] if res_insc.data else []
         ids_alumnos = list(set([i['alumno_id'] for i in res_insc.data if i.get('alumno_id')] if res_insc.data else []))
-        for iid in ids_insc:
+        for iid in [i['id'] for i in res_insc.data] if res_insc.data else []:
             supabase.table("notas").delete().eq("inscripcion_id", iid).execute()
             supabase.table("bitacora").delete().eq("inscripcion_id", iid).execute()
         supabase.table("inscripciones").delete().eq("profesor_id", profesor_id).execute()
@@ -183,14 +191,13 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v269</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v270</div>', unsafe_allow_html=True)
 
 # =========================================================
 # --- PANEL ADMIN ---
 # =========================================================
 elif st.session_state.user.get('sede', '').lower() == 'admin':
     u_data = st.session_state.user
-
     with st.sidebar:
         st.markdown('<div class="admin-badge">⚡ Modo Administrador</div>', unsafe_allow_html=True)
         st.write(f"📅 {datetime.date.today().strftime('%d/%m/%Y')}")
@@ -252,7 +259,7 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                 st.markdown(f"**📖 {nombre_curso}** ({len(res_al.data)} alumnos)")
                                 for r in res_al.data:
                                     al_raw = r.get('alumnos')
-                                    al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
+                                    al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                     if al:
                                         st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>', unsafe_allow_html=True)
             except Exception as e:
@@ -273,7 +280,7 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                             res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido)").eq("nombre_curso_materia", curso_sel).not_.is_("alumno_id", "null").execute()
                             for r in res_al.data:
                                 al_raw = r.get('alumnos')
-                                al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
+                                al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                 if al:
                                     res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                     notas = res_notas.data if res_notas.data else []
@@ -283,35 +290,21 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                         val = float(nt['calificacion'])
                                         valores.append(val)
                                         fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
-                                        clase = color_nota(val)
-                                        filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {clase}">{val}</span></div>'
+                                        filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {color_nota(val)}">{val}</span></div>'
                                     if not filas_html:
                                         filas_html = '<div class="nota-linea"><span style="color:#555">Sin notas</span></div>'
-                                        promedio_html = ""
-                                        estado_html = ""
+                                        promedio_html = estado_html = ""
                                     else:
-                                        promedio = round(sum(valores) / len(valores), 2)
-                                        clase_prom = color_nota(promedio)
-                                        promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {clase_prom}">{promedio}</span></div>'
+                                        promedio = round(sum(valores)/len(valores), 2)
+                                        promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {color_nota(promedio)}">{promedio}</span></div>'
                                         estado_html = estado_aprobacion(promedio, nota_ap_admin)
-                                    st.markdown(f'''
-                                        <div class="alumno-block">
-                                            <div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} {estado_html if valores else ""}</div>
-                                            {filas_html}
-                                            {promedio_html if valores else ""}
-                                        </div>
-                                    ''', unsafe_allow_html=True)
+                                    st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} {estado_html if valores else ""}</div>{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
             except Exception as e:
                 st.error(f"Error: {e}")
 
         with admin_tabs[3]:
             st.subheader("🗑️ Reset de Datos")
-            st.markdown("""
-                <div class="reset-box">
-                    <div class="reset-titulo">⚠️ Zona de Peligro</div>
-                    Esta acción borrará TODOS los datos de la sede seleccionada: cursos, alumnos, clases y notas. El usuario de la sede NO será eliminado.
-                </div>
-            """, unsafe_allow_html=True)
+            st.markdown('<div class="reset-box"><div class="reset-titulo">⚠️ Zona de Peligro</div>Esta acción borrará TODOS los datos de la sede seleccionada. El usuario NO será eliminado.</div>', unsafe_allow_html=True)
             st.markdown("---")
             sede_reset = st.selectbox("Sede a resetear:", sedes_disponibles, key="reset_sede_sel")
             if st.session_state.confirmar_reset != sede_reset:
@@ -319,13 +312,7 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                     st.session_state.confirmar_reset = sede_reset
                     st.rerun()
             else:
-                st.markdown(f"""
-                    <div class="advertencia-box">
-                        ⚠️ <b>ADVERTENCIA FINAL</b><br><br>
-                        Estás a punto de borrar TODOS los datos de la sede <b>{sede_reset.upper()}</b>.<br>
-                        Esta acción es <b>irreversible</b> y no se podrán recuperar los datos.
-                    </div>
-                """, unsafe_allow_html=True)
+                st.markdown(f'<div class="advertencia-box">⚠️ <b>ADVERTENCIA FINAL</b><br><br>Estás a punto de borrar TODOS los datos de <b>{sede_reset.upper()}</b>. Esta acción es <b>irreversible</b>.</div>', unsafe_allow_html=True)
                 col_si, col_no = st.columns(2)
                 if col_si.button("✅ SÍ, BORRAR TODO", type="primary", use_container_width=True):
                     ok, msg = reset_completo_sede(sede_reset)
@@ -355,22 +342,15 @@ else:
             st.markdown(f'<div class="stat-card">Total Alumnos 2026: <b>{len(res_total.data)}</b></div>', unsafe_allow_html=True)
         except:
             st.markdown('<div class="stat-card">Total Alumnos 2026: <b>-</b></div>', unsafe_allow_html=True)
-
         st.markdown("---")
-        col_prev, col_next = st.columns([1, 1])
+        col_prev, col_next = st.columns(2)
         if col_prev.button("◀", key="cal_prev"):
-            if st.session_state.cal_mes == 1:
-                st.session_state.cal_mes = 12
-                st.session_state.cal_anio -= 1
-            else:
-                st.session_state.cal_mes -= 1
+            if st.session_state.cal_mes == 1: st.session_state.cal_mes = 12; st.session_state.cal_anio -= 1
+            else: st.session_state.cal_mes -= 1
             st.rerun()
         if col_next.button("▶", key="cal_next"):
-            if st.session_state.cal_mes == 12:
-                st.session_state.cal_mes = 1
-                st.session_state.cal_anio += 1
-            else:
-                st.session_state.cal_mes += 1
+            if st.session_state.cal_mes == 12: st.session_state.cal_mes = 1; st.session_state.cal_anio += 1
+            else: st.session_state.cal_mes += 1
             st.rerun()
         st.markdown(render_calendario(st.session_state.cal_mes, st.session_state.cal_anio), unsafe_allow_html=True)
         st.markdown("---")
@@ -404,16 +384,14 @@ else:
             if agenda_sub == "📋 Registrar Clase":
                 c_ag = st.selectbox("Seleccione Curso:", list(mapa_cursos.keys()), key="ag_sel")
                 inscripcion_id = mapa_cursos[c_ag]
-
                 curso_sel_data = mapa_cursos_data.get(c_ag, {})
                 hi = str(curso_sel_data.get('hora_inicio', '') or '')[:5]
                 hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
                 if hi and hf:
                     st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
 
-                # --- TAREAS PENDIENTES DEL DÍA ---
                 try:
-                    res_tareas_hoy = supabase.table("bitacora").select("tarea1, tarea1_fecha, tarea2, tarea2_fecha, tarea3, tarea3_fecha").eq("inscripcion_id", inscripcion_id).execute()
+                    res_tareas_hoy = supabase.table("bitacora").select("tarea1,tarea1_fecha,tarea2,tarea2_fecha,tarea3,tarea3_fecha").eq("inscripcion_id", inscripcion_id).execute()
                     tareas_mostradas = 0
                     for reg in (res_tareas_hoy.data or []):
                         for i in range(1, 4):
@@ -422,23 +400,15 @@ else:
                             if txt and fecha and str(fecha) == str(f_hoy):
                                 if tareas_mostradas == 0:
                                     st.markdown('<div style="color:#ffc107;font-weight:700;margin-bottom:8px;">🔔 TAREAS PARA HOY:</div>', unsafe_allow_html=True)
-                                st.markdown(f'''
-                                    <div class="tarea-card">
-                                        <div class="tarea-titulo">Tarea {i}</div>
-                                        <div class="tarea-texto">{txt}</div>
-                                    </div>
-                                ''', unsafe_allow_html=True)
+                                st.markdown(f'<div class="tarea-card"><div class="tarea-titulo">Tarea {i}</div><div class="tarea-texto">{txt}</div></div>', unsafe_allow_html=True)
                                 tareas_mostradas += 1
-                except:
-                    pass
+                except: pass
 
-                # --- TAREA PENDIENTE CLASE ANTERIOR ---
                 try:
-                    res_t = supabase.table("bitacora").select("tarea_proxima, fecha").eq("inscripcion_id", inscripcion_id).lt("fecha", str(f_hoy)).order("fecha", desc=True).limit(1).execute()
+                    res_t = supabase.table("bitacora").select("tarea_proxima,fecha").eq("inscripcion_id", inscripcion_id).lt("fecha", str(f_hoy)).order("fecha", desc=True).limit(1).execute()
                     if res_t.data and res_t.data[0].get('tarea_proxima'):
-                        st.markdown(f'''<div class="tarea-alerta">🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({res_t.data[0]['fecha']})<br><div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1.1rem;">{res_t.data[0]["tarea_proxima"]}</div></div>''', unsafe_allow_html=True)
-                except:
-                    pass
+                        st.markdown(f'<div class="tarea-alerta">🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({res_t.data[0]["fecha"]})<br><div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1.1rem;">{res_t.data[0]["tarea_proxima"]}</div></div>', unsafe_allow_html=True)
+                except: pass
 
                 st.subheader("📋 Historial de Clases")
                 try:
@@ -462,31 +432,31 @@ else:
                                     col_t1, col_t2, col_t3 = st.columns(3)
                                     with col_t1:
                                         st.markdown("**Tarea 1**")
-                                        t1_edit = st.text_area("Descripción:", value=reg.get('tarea1', '') or '', key=f"et1_{reg['id']}")
-                                        f1_edit = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea1_fecha']) if reg.get('tarea1_fecha') else f_hoy, key=f"ef1_{reg['id']}")
+                                        t1_e = st.text_area("Descripción:", value=reg.get('tarea1','') or '', key=f"et1_{reg['id']}")
+                                        f1_e = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea1_fecha']) if reg.get('tarea1_fecha') else f_hoy, key=f"ef1_{reg['id']}")
                                     with col_t2:
                                         st.markdown("**Tarea 2**")
-                                        t2_edit = st.text_area("Descripción:", value=reg.get('tarea2', '') or '', key=f"et2_{reg['id']}")
-                                        f2_edit = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea2_fecha']) if reg.get('tarea2_fecha') else f_hoy, key=f"ef2_{reg['id']}")
+                                        t2_e = st.text_area("Descripción:", value=reg.get('tarea2','') or '', key=f"et2_{reg['id']}")
+                                        f2_e = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea2_fecha']) if reg.get('tarea2_fecha') else f_hoy, key=f"ef2_{reg['id']}")
                                     with col_t3:
                                         st.markdown("**Tarea 3**")
-                                        t3_edit = st.text_area("Descripción:", value=reg.get('tarea3', '') or '', key=f"et3_{reg['id']}")
-                                        f3_edit = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea3_fecha']) if reg.get('tarea3_fecha') else f_hoy, key=f"ef3_{reg['id']}")
+                                        t3_e = st.text_area("Descripción:", value=reg.get('tarea3','') or '', key=f"et3_{reg['id']}")
+                                        f3_e = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea3_fecha']) if reg.get('tarea3_fecha') else f_hoy, key=f"ef3_{reg['id']}")
                                     col_e1, col_e2 = st.columns(2)
                                     if col_e1.form_submit_button("💾 Guardar Cambios"):
                                         try:
                                             supabase.table("bitacora").update({
                                                 "contenido_clase": t_edit,
                                                 "profesor_suplente": sup_nombre_edit.strip() if es_sup_edit and sup_nombre_edit.strip() else None,
-                                                "tarea1": t1_edit or None, "tarea1_fecha": str(f1_edit) if t1_edit else None,
-                                                "tarea2": t2_edit or None, "tarea2_fecha": str(f2_edit) if t2_edit else None,
-                                                "tarea3": t3_edit or None, "tarea3_fecha": str(f3_edit) if t3_edit else None,
+                                                "tarea1": t1_e or None, "tarea1_fecha": str(f1_e) if t1_e else None,
+                                                "tarea2": t2_e or None, "tarea2_fecha": str(f2_e) if t2_e else None,
+                                                "tarea3": t3_e or None, "tarea3_fecha": str(f3_e) if t3_e else None,
                                             }).eq("id", reg['id']).execute()
                                             st.session_state.editando_bitacora = None
                                             st.success("Registro actualizado.")
                                             st.rerun()
                                         except Exception as e:
-                                            st.error(f"Error al actualizar: {e}")
+                                            st.error(f"Error: {e}")
                                     if col_e2.form_submit_button("❌ Cancelar"):
                                         st.session_state.editando_bitacora = None
                                         st.rerun()
@@ -500,13 +470,7 @@ else:
                                     txt = reg.get(f'tarea{i}')
                                     fecha = reg.get(f'tarea{i}_fecha')
                                     if txt:
-                                        st.markdown(f'''
-                                            <div class="tarea-card">
-                                                <div class="tarea-titulo">Tarea {i}</div>
-                                                <div class="tarea-texto">{txt}</div>
-                                                <div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha).strftime("%d/%m/%Y") if fecha else "-"}</div>
-                                            </div>
-                                        ''', unsafe_allow_html=True)
+                                        st.markdown(f'<div class="tarea-card"><div class="tarea-titulo">Tarea {i}</div><div class="tarea-texto">{txt}</div><div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha).strftime("%d/%m/%Y") if fecha else "-"}</div></div>', unsafe_allow_html=True)
                                 col_b1, col_b2 = st.columns([1, 5])
                                 if col_b1.button("✏️ Editar", key=f"edit_b_{reg['id']}"):
                                     st.session_state.editando_bitacora = reg['id']
@@ -517,7 +481,7 @@ else:
                                         st.success("Registro eliminado.")
                                         st.rerun()
                                     except Exception as e:
-                                        st.error(f"Error al borrar: {e}")
+                                        st.error(f"Error: {e}")
                 else:
                     st.info("No hay clases registradas para este curso aún.")
 
@@ -546,11 +510,9 @@ else:
                             if st.button("👤 Volver a titular", key="btn_titular"):
                                 st.session_state.es_suplente = False
                                 st.rerun()
-
                     suplente_nombre = ""
                     if st.session_state.es_suplente:
                         suplente_nombre = st.text_input("Apellido y Nombre del profesor suplente:", placeholder="Ej: García, María")
-
                     with st.form("f_agenda"):
                         temas = st.text_area("Contenido dictado hoy")
                         st.markdown("---")
@@ -576,8 +538,7 @@ else:
                             else:
                                 try:
                                     supabase.table("bitacora").insert({
-                                        "inscripcion_id": inscripcion_id,
-                                        "fecha": str(f_hoy),
+                                        "inscripcion_id": inscripcion_id, "fecha": str(f_hoy),
                                         "contenido_clase": temas,
                                         "profesor_suplente": suplente_nombre.strip() if st.session_state.es_suplente else None,
                                         "tarea_proxima": tarea1 or tarea2 or tarea3 or None,
@@ -590,30 +551,28 @@ else:
                                     st.success("Clase guardada satisfactoriamente.")
                                     st.rerun()
                                 except Exception as e:
-                                    st.error(f"Error al guardar: {e}")
+                                    st.error(f"Error: {e}")
 
-            # =========================================================
-            # --- BUSCADOR DE CLASES PASADAS ---
-            # =========================================================
             else:
                 st.subheader("🔍 Buscar Clases Pasadas")
                 st.markdown('<div class="filtros-box">', unsafe_allow_html=True)
                 col_f1, col_f2, col_f3 = st.columns(3)
-                curso_busq = col_f1.selectbox("Curso:", ["Todos"] + list(mapa_cursos.keys()), key="busq_curso_hist")
-                tipo_prof = col_f2.selectbox("Profesor:", ["Todos", "👤 Titular", "👥 Suplente"], key="busq_tipo_prof")
-                busq_contenido = col_f3.text_input("🔍 Buscar en contenido:", key="busq_contenido_hist")
+
+                curso_busq = col_f1.selectbox("Curso:", ["Todos"] + list(mapa_cursos.keys()), key="busq_curso_hist",
+                    on_change=lambda: st.session_state.update({'busq_contenido_hist_val': '', 'tipo_prof_val': 'Todos'}))
+                tipo_prof = col_f2.selectbox("Profesor:", ["Todos", "👤 Titular", "👥 Suplente"], key="tipo_prof_sel",
+                    index=["Todos", "👤 Titular", "👥 Suplente"].index(st.session_state.tipo_prof_val))
+                st.session_state.tipo_prof_val = tipo_prof
+                busq_contenido = col_f3.text_input("🔍 Buscar en contenido:", value=st.session_state.busq_contenido_hist_val, key="busq_contenido_hist")
+                st.session_state.busq_contenido_hist_val = busq_contenido
+
                 col_d1, col_d2 = st.columns(2)
                 fecha_desde = col_d1.date_input("Desde:", value=datetime.date(f_hoy.year, 1, 1), key="busq_desde")
                 fecha_hasta = col_d2.date_input("Hasta:", value=f_hoy, key="busq_hasta")
                 st.markdown('</div>', unsafe_allow_html=True)
 
                 try:
-                    # Determinar qué inscripciones buscar
-                    if curso_busq == "Todos":
-                        ids_insc = list(mapa_cursos.values())
-                    else:
-                        ids_insc = [mapa_cursos[curso_busq]]
-
+                    ids_insc = list(mapa_cursos.values()) if curso_busq == "Todos" else [mapa_cursos[curso_busq]]
                     todos_registros = []
                     for iid in ids_insc:
                         nombre_curso = [k for k, v in mapa_cursos.items() if v == iid][0]
@@ -622,7 +581,6 @@ else:
                             reg['_curso'] = nombre_curso
                             todos_registros.append(reg)
 
-                    # Aplicar filtros adicionales
                     filtrados = []
                     for reg in todos_registros:
                         suplente = reg.get('profesor_suplente')
@@ -631,9 +589,7 @@ else:
                         if busq_contenido.strip() and busq_contenido.lower() not in (reg.get('contenido_clase', '') or '').lower(): continue
                         filtrados.append(reg)
 
-                    # Ordenar por fecha desc
                     filtrados.sort(key=lambda x: x['fecha'], reverse=True)
-
                     st.caption(f"Se encontraron {len(filtrados)} clase/s")
 
                     for reg in filtrados:
@@ -649,17 +605,9 @@ else:
                                 txt = reg.get(f'tarea{i}')
                                 fecha = reg.get(f'tarea{i}_fecha')
                                 if txt:
-                                    st.markdown(f'''
-                                        <div class="tarea-card">
-                                            <div class="tarea-titulo">Tarea {i}</div>
-                                            <div class="tarea-texto">{txt}</div>
-                                            <div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha).strftime("%d/%m/%Y") if fecha else "-"}</div>
-                                        </div>
-                                    ''', unsafe_allow_html=True)
-
+                                    st.markdown(f'<div class="tarea-card"><div class="tarea-titulo">Tarea {i}</div><div class="tarea-texto">{txt}</div><div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha).strftime("%d/%m/%Y") if fecha else "-"}</div></div>', unsafe_allow_html=True)
                     if not filtrados:
                         st.info("No se encontraron clases con esos filtros.")
-
                 except Exception as e:
                     st.error(f"Error en la búsqueda: {e}")
 
@@ -687,20 +635,26 @@ else:
                                     st.success(f"Alumno {a.upper()}, {n} registrado en {c_sel}.")
                                     st.rerun()
                             except Exception as e:
-                                st.error(f"Error al registrar alumno: {e}")
+                                st.error(f"Error: {e}")
         else:
             if not mapa_cursos:
                 st.warning("No hay cursos creados.")
             else:
-                busqueda = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_alumno")
-                c_v = st.selectbox("Filtrar por curso:", ["---"] + list(mapa_cursos.keys()))
+                # Detectar cambio de curso → limpiar buscador
+                c_v = st.selectbox("Filtrar por curso:", ["---"] + list(mapa_cursos.keys()), key="curso_alumnos_sel",
+                    on_change=lambda: st.session_state.update({'busq_alumno_val': ''}))
+
+                busqueda = st.text_input("🔍 Buscar alumno por nombre o apellido:",
+                    value=st.session_state.busq_alumno_val, key="busq_alumno_input")
+                st.session_state.busq_alumno_val = busqueda
+
                 if c_v != "---":
                     try:
                         res_al = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
                         alumnos_filtrados = []
                         for r in res_al.data:
                             al_raw = r.get('alumnos')
-                            al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
+                            al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                             if al:
                                 if busqueda.strip() == "" or busqueda.lower() in al.get('nombre','').lower() or busqueda.lower() in al.get('apellido','').lower():
                                     alumnos_filtrados.append((r, al))
@@ -723,8 +677,8 @@ else:
                                         st.session_state.editando_alumno = None
                                         st.rerun()
                             else:
-                                st.markdown(f'<div class="planilla-row">👤 {al.get("apellido", "").upper()}, {al.get("nombre", "")}</div>', unsafe_allow_html=True)
-                                ab1, ab2 = st.columns([1, 1])
+                                st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>', unsafe_allow_html=True)
+                                ab1, ab2 = st.columns(2)
                                 if ab1.button("✏️ Editar", key=f"eal_{r['id']}"):
                                     st.session_state.editando_alumno = r['id']
                                     st.rerun()
@@ -734,7 +688,7 @@ else:
                                         st.success("Alumno eliminado del curso.")
                                         st.rerun()
                                     except Exception as e:
-                                        st.error(f"Error al borrar: {e}")
+                                        st.error(f"Error: {e}")
                     except Exception as e:
                         st.error(f"Error al cargar alumnos: {e}")
 
@@ -750,9 +704,20 @@ else:
 
             if sub_nt == "📋 Ver Notas por Curso":
                 col_f1, col_f2 = st.columns([2, 1])
-                c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver")
-                filtro_estado = col_f2.selectbox("Filtrar por estado:", ["Todos", "✅ Aprobados", "❌ Desaprobados"], key="filtro_estado")
-                busq_nota = st.text_input("🔍 Buscar alumno:", key="busq_nota")
+
+                # Detectar cambio de curso → limpiar buscador y filtro estado
+                c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver_sel",
+                    on_change=lambda: st.session_state.update({'busq_nota_val': '', 'filtro_estado_val': 'Todos'}))
+
+                filtro_estado = col_f2.selectbox("Filtrar por estado:",
+                    ["Todos", "✅ Aprobados", "❌ Desaprobados"],
+                    index=["Todos", "✅ Aprobados", "❌ Desaprobados"].index(st.session_state.filtro_estado_val),
+                    key="filtro_estado_sel",
+                    on_change=lambda: st.session_state.update({'busq_nota_val': ''}))
+                st.session_state.filtro_estado_val = filtro_estado
+
+                busq_nota = st.text_input("🔍 Buscar alumno:", value=st.session_state.busq_nota_val, key="busq_nota_input")
+                st.session_state.busq_nota_val = busq_nota
 
                 if c_ver != "---":
                     curso_data = mapa_cursos_data.get(c_ver, {})
@@ -767,7 +732,7 @@ else:
                             mostrados = 0
                             for r in res_al_v.data:
                                 al_raw = r.get('alumnos')
-                                al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
+                                al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                 if al:
                                     if busq_nota.strip() and busq_nota.lower() not in al.get('nombre','').lower() and busq_nota.lower() not in al.get('apellido','').lower():
                                         continue
@@ -782,36 +747,32 @@ else:
                                         val = float(nt['calificacion'])
                                         valores.append(val)
                                         fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
-                                        clase = color_nota(val)
-                                        filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {clase}">{val}</span></div>'
+                                        filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {color_nota(val)}">{val}</span></div>'
                                     if not valores:
                                         if filtro_estado != "Todos": continue
                                         filas_html = '<div class="nota-linea"><span style="color:#555">Sin notas cargadas</span></div>'
-                                        promedio_html = ""
-                                        estado_html = ""
+                                        promedio_html = estado_html = ""
                                     else:
-                                        promedio = round(sum(valores) / len(valores), 2)
-                                        clase_prom = color_nota(promedio)
+                                        promedio = round(sum(valores)/len(valores), 2)
                                         es_aprobado = nota_aprobacion is not None and promedio >= float(nota_aprobacion)
                                         if filtro_estado == "✅ Aprobados" and not es_aprobado: continue
                                         if filtro_estado == "❌ Desaprobados" and es_aprobado: continue
-                                        promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {clase_prom}">{promedio}</span></div>'
+                                        promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {color_nota(promedio)}">{promedio}</span></div>'
                                         estado_html = estado_aprobacion(promedio, nota_aprobacion)
                                     mostrados += 1
-                                    st.markdown(f'''
-                                        <div class="alumno-block">
-                                            <div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} &nbsp; {estado_html if valores else ""}</div>
-                                            {filas_html}
-                                            {promedio_html if valores else ""}
-                                        </div>
-                                    ''', unsafe_allow_html=True)
+                                    st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} &nbsp; {estado_html if valores else ""}</div>{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
                             st.caption(f"Mostrando {mostrados} alumno/s")
                     except Exception as e:
-                        st.error(f"Error al cargar alumnos: {e}")
+                        st.error(f"Error: {e}")
 
             else:
-                c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga")
-                busq_carga = st.text_input("🔍 Buscar alumno:", key="busq_carga")
+                # Detectar cambio de curso → limpiar buscador
+                c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga_sel",
+                    on_change=lambda: st.session_state.update({'busq_carga_val': ''}))
+
+                busq_carga = st.text_input("🔍 Buscar alumno:", value=st.session_state.busq_carga_val, key="busq_carga_input")
+                st.session_state.busq_carga_val = busq_carga
+
                 if c_nt != "---":
                     try:
                         res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
@@ -820,7 +781,7 @@ else:
                         else:
                             for r in res_al_n.data:
                                 al_raw = r.get('alumnos')
-                                al = al_raw[0] if isinstance(al_raw, list) and len(al_raw) > 0 else al_raw
+                                al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                 if al:
                                     if busq_carga.strip() and busq_carga.lower() not in al.get('nombre','').lower() and busq_carga.lower() not in al.get('apellido','').lower():
                                         continue
@@ -842,9 +803,9 @@ else:
                                                 st.success(f"Nota {nueva_nota} agregada para {al.get('apellido','').upper()}, {al.get('nombre','')}.")
                                                 st.rerun()
                                             except Exception as e:
-                                                st.error(f"Error al guardar nota: {e}")
+                                                st.error(f"Error: {e}")
                     except Exception as e:
-                        st.error(f"Error al cargar alumnos: {e}")
+                        st.error(f"Error: {e}")
 
     # =========================================================
     # --- TAB 3: CURSOS ---
@@ -875,18 +836,15 @@ else:
                         info = f"{mat.strip()} ({', '.join(dias)}) | {hora_ini.strip()} → {hora_fin.strip()}"
                         try:
                             supabase.table("inscripciones").insert({
-                                "profesor_id": u_data['id'],
-                                "nombre_curso_materia": info,
-                                "anio_lectivo": 2026,
-                                "nota_aprobacion": nota_ap,
+                                "profesor_id": u_data['id'], "nombre_curso_materia": info,
+                                "anio_lectivo": 2026, "nota_aprobacion": nota_ap,
                                 "bibliografia": biblio.strip() if biblio.strip() else None,
-                                "hora_inicio": hora_ini.strip(),
-                                "hora_fin": hora_fin.strip()
+                                "hora_inicio": hora_ini.strip(), "hora_fin": hora_fin.strip()
                             }).execute()
                             st.success(f"Curso '{info}' creado correctamente.")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Error al crear curso: {e}")
+                            st.error(f"Error: {e}")
         else:
             if not mapa_cursos:
                 st.info("No tenés cursos creados todavía.")
@@ -908,26 +866,19 @@ else:
                             val_nota_edit = float(nota_ap_cur) if nota_ap_cur is not None else None
                         except:
                             val_nota_edit = None
-
                         with st.form(f"edit_c_{i_c}"):
                             mat_e = st.text_input("Nombre del Curso:", value=mat_actual)
                             dias_e = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
                             col_h1e, col_h2e = st.columns(2)
                             hora_ini_e = col_h1e.text_input("Hora de inicio:", value=hi_cur, placeholder="hh:mm (hora y minutos, ej: 15:00)")
                             hora_fin_e = col_h2e.text_input("Hora de finalización:", value=hf_cur, placeholder="hh:mm (hora y minutos, ej: 17:00)")
-                            nota_ap_e = st.number_input(
-                                "Nota de aprobación * (ingresá un número del 1 al 10)",
-                                min_value=1.0, max_value=10.0,
-                                value=val_nota_edit,
-                                step=0.5,
-                                placeholder="Nota de aprobación"
-                            )
+                            nota_ap_e = st.number_input("Nota de aprobación * (ingresá un número del 1 al 10)", min_value=1.0, max_value=10.0, value=val_nota_edit, step=0.5, placeholder="Nota de aprobación")
                             biblio_e = st.text_area("Bibliografía / Fotocopias (opcional):", value=biblio_cur or "")
                             col_c1, col_c2 = st.columns(2)
                             if col_c1.form_submit_button("💾 Guardar"):
                                 errores = []
-                                if hora_ini_e.strip() and not validar_hora(hora_ini_e): errores.append("Hora de inicio inválida. Usá hh:mm (ej: 15:00).")
-                                if hora_fin_e.strip() and not validar_hora(hora_fin_e): errores.append("Hora de finalización inválida. Usá hh:mm (ej: 17:00).")
+                                if hora_ini_e.strip() and not validar_hora(hora_ini_e): errores.append("Hora de inicio inválida. Usá hh:mm.")
+                                if hora_fin_e.strip() and not validar_hora(hora_fin_e): errores.append("Hora de finalización inválida. Usá hh:mm.")
                                 if nota_ap_e is None: errores.append("La nota de aprobación es obligatoria.")
                                 if errores:
                                     for e in errores: st.error(e)
@@ -935,8 +886,7 @@ else:
                                     nuevo_nombre = f"{mat_e.strip()} ({', '.join(dias_e)}) | {hora_ini_e.strip()} → {hora_fin_e.strip()}" if dias_e else mat_e.strip()
                                     try:
                                         supabase.table("inscripciones").update({
-                                            "nombre_curso_materia": nuevo_nombre,
-                                            "nota_aprobacion": nota_ap_e,
+                                            "nombre_curso_materia": nuevo_nombre, "nota_aprobacion": nota_ap_e,
                                             "bibliografia": biblio_e.strip() if biblio_e.strip() else None,
                                             "hora_inicio": hora_ini_e.strip() if hora_ini_e.strip() else None,
                                             "hora_fin": hora_fin_e.strip() if hora_fin_e.strip() else None,
@@ -956,16 +906,9 @@ else:
                         except:
                             cant = 0
                         nota_display = nota_ap_cur if nota_ap_cur is not None else "Sin definir"
-                        horario_display = format_horario(hi_cur, hf_cur)
                         biblio_html = f'<div class="biblio-box">📚 {biblio_cur}</div>' if biblio_cur else ""
-                        st.markdown(f'''
-                            <div class="planilla-row">
-                                📖 {n_c}<br>
-                                <small style="color:#4facfe;">🕐 {horario_display} · Alumnos: {cant} · Aprobación: {nota_display}</small>
-                                {biblio_html}
-                            </div>
-                        ''', unsafe_allow_html=True)
-                        cb1, cb2 = st.columns([1, 1])
+                        st.markdown(f'<div class="planilla-row">📖 {n_c}<br><small style="color:#4facfe;">🕐 {format_horario(hi_cur, hf_cur)} · Alumnos: {cant} · Aprobación: {nota_display}</small>{biblio_html}</div>', unsafe_allow_html=True)
+                        cb1, cb2 = st.columns(2)
                         if cb1.button("✏️ Editar", key=f"ec_{i_c}"):
                             st.session_state.editando_curso = i_c
                             st.rerun()
@@ -975,4 +918,4 @@ else:
                                 st.success("Curso eliminado.")
                                 st.rerun()
                             except Exception as e:
-                                st.error(f"Error al borrar: {e}")
+                                st.error(f"Error: {e}")
