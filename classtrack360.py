@@ -3,9 +3,15 @@ from supabase import create_client
 import datetime
 import calendar
 import streamlit.components.v1 as components
+import io
+from reportlab.lib.pagesizes import A4
+from reportlab.lib import colors
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import cm
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-# --- 1. CONFIGURACIÓN DE NÚCLEO ---
-st.set_page_config(page_title="ClassTrack 360 v271", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v272", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -29,7 +35,6 @@ def init_state():
 
 init_state()
 
-# --- 2. ESTILO VISUAL ---
 st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400&display=swap');
@@ -83,6 +88,7 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# --- FUNCIONES ---
 def no_encontrado(msg):
     st.markdown(f'<div class="no-encontrado">🔍 {msg}</div>', unsafe_allow_html=True)
 
@@ -95,6 +101,10 @@ def estado_aprobacion(promedio, nota_aprobacion):
     if promedio is None or nota_aprobacion is None: return ""
     if promedio >= float(nota_aprobacion): return '<span class="aprobado">✅ APROBADO</span>'
     else: return '<span class="desaprobado">❌ DESAPROBADO</span>'
+
+def estado_texto(promedio, nota_aprobacion):
+    if promedio is None or nota_aprobacion is None: return "-"
+    return "APROBADO" if promedio >= float(nota_aprobacion) else "DESAPROBADO"
 
 def validar_hora(h):
     try:
@@ -140,6 +150,295 @@ def reset_completo_sede(sede_nombre):
         return False, str(e)
 
 # =========================================================
+# --- FUNCIÓN GENERADORA DE PDF ---
+# =========================================================
+def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, incluir_historial, incluir_resumen, datos):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4,
+        rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+
+    styles = getSampleStyleSheet()
+    azul = colors.HexColor('#1a5276')
+    gris = colors.HexColor('#555555')
+    gris_claro = colors.HexColor('#f2f2f2')
+    negro = colors.black
+
+    estilo_titulo = ParagraphStyle('titulo', parent=styles['Normal'],
+        fontSize=18, fontName='Helvetica-Bold', textColor=azul, spaceAfter=4, alignment=TA_CENTER)
+    estilo_subtitulo = ParagraphStyle('subtitulo', parent=styles['Normal'],
+        fontSize=11, fontName='Helvetica', textColor=gris, spaceAfter=12, alignment=TA_CENTER)
+    estilo_seccion = ParagraphStyle('seccion', parent=styles['Normal'],
+        fontSize=13, fontName='Helvetica-Bold', textColor=azul, spaceBefore=16, spaceAfter=8)
+    estilo_normal = ParagraphStyle('normal', parent=styles['Normal'],
+        fontSize=9, fontName='Helvetica', textColor=negro, spaceAfter=4)
+    estilo_small = ParagraphStyle('small', parent=styles['Normal'],
+        fontSize=8, fontName='Helvetica', textColor=gris, spaceAfter=2)
+
+    story = []
+
+    # ENCABEZADO
+    story.append(Paragraph("ClassTrack 360", estilo_titulo))
+    story.append(Paragraph(f"Sede: {sede.upper()}  ·  {curso_nombre}", estilo_subtitulo))
+    story.append(Paragraph(f"Generado el {datetime.date.today().strftime('%d/%m/%Y')}", estilo_small))
+    story.append(HRFlowable(width="100%", thickness=2, color=azul, spaceAfter=16))
+
+    hi = str(curso_data.get('hora_inicio','') or '')[:5]
+    hf = str(curso_data.get('hora_fin','') or '')[:5]
+    nota_ap = curso_data.get('nota_aprobacion')
+    biblio = curso_data.get('bibliografia','')
+    info_curso = []
+    if hi and hf: info_curso.append(f"Horario: {hi} → {hf}")
+    if nota_ap: info_curso.append(f"Nota de aprobación: {nota_ap}")
+    if biblio: info_curso.append(f"Bibliografía: {biblio}")
+    if info_curso:
+        story.append(Paragraph(" · ".join(info_curso), estilo_small))
+        story.append(Spacer(1, 8))
+
+    alumnos_data = datos.get('alumnos', [])
+    notas_data = datos.get('notas', {})
+    historial_data = datos.get('historial', [])
+
+    # RESUMEN
+    if incluir_resumen and alumnos_data:
+        story.append(Paragraph("📊 Resumen del Curso", estilo_seccion))
+        total = len(alumnos_data)
+        aprobados = 0
+        promedios = []
+        for al in alumnos_data:
+            notas_al = notas_data.get(al['insc_id'], [])
+            if notas_al:
+                prom = round(sum(notas_al) / len(notas_al), 2)
+                promedios.append(prom)
+                if nota_ap and prom >= float(nota_ap):
+                    aprobados += 1
+        prom_gral = round(sum(promedios)/len(promedios), 2) if promedios else "-"
+        porc_aprobados = f"{round(aprobados/total*100)}%" if total > 0 else "-"
+        resumen_tabla = [
+            ["Total alumnos", "Con notas", "Aprobados", "% Aprobados", "Promedio general"],
+            [str(total), str(len(promedios)), str(aprobados), porc_aprobados, str(prom_gral)]
+        ]
+        t = Table(resumen_tabla, colWidths=[3.2*cm]*5)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), azul),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 9),
+            ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('BACKGROUND', (0,1), (-1,-1), gris_claro),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, gris_claro]),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+    # LISTADO DE ALUMNOS
+    if incluir_alumnos and alumnos_data:
+        story.append(Paragraph("👥 Listado de Alumnos", estilo_seccion))
+        tabla_al = [["#", "Apellido", "Nombre"]]
+        for idx, al in enumerate(sorted(alumnos_data, key=lambda x: x['apellido']), 1):
+            tabla_al.append([str(idx), al['apellido'].upper(), al['nombre']])
+        t = Table(tabla_al, colWidths=[1*cm, 7*cm, 7*cm])
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), azul),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 9),
+            ('ALIGN', (0,0), (0,-1), 'CENTER'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, gris_claro]),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+    # NOTAS
+    if incluir_notas and alumnos_data:
+        story.append(Paragraph("📝 Notas y Promedios", estilo_seccion))
+        tabla_n = [["Alumno"] + [f"Nota {i+1}" for i in range(5)] + ["Promedio", "Estado"]]
+        for al in sorted(alumnos_data, key=lambda x: x['apellido']):
+            notas_al = notas_data.get(al['insc_id'], [])
+            fila = [f"{al['apellido'].upper()}, {al['nombre']}"]
+            for i in range(5):
+                fila.append(str(notas_al[i]) if i < len(notas_al) else "-")
+            if notas_al:
+                prom = round(sum(notas_al)/len(notas_al), 2)
+                est = estado_texto(prom, nota_ap)
+                fila += [str(prom), est]
+            else:
+                fila += ["-", "Sin notas"]
+            tabla_n.append(fila)
+        col_w = [5*cm] + [1.5*cm]*5 + [2*cm, 2.5*cm]
+        t = Table(tabla_n, colWidths=col_w)
+        t.setStyle(TableStyle([
+            ('BACKGROUND', (0,0), (-1,0), azul),
+            ('TEXTCOLOR', (0,0), (-1,0), colors.white),
+            ('FONTNAME', (0,0), (-1,0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0,0), (-1,-1), 8),
+            ('ALIGN', (1,0), (-1,-1), 'CENTER'),
+            ('GRID', (0,0), (-1,-1), 0.5, colors.grey),
+            ('ROWBACKGROUNDS', (0,1), (-1,-1), [colors.white, gris_claro]),
+            ('WORDWRAP', (0,0), (-1,-1), True),
+        ]))
+        story.append(t)
+        story.append(Spacer(1, 12))
+
+    # HISTORIAL DE CLASES
+    if incluir_historial and historial_data:
+        story.append(Paragraph("📅 Historial de Clases", estilo_seccion))
+        for reg in sorted(historial_data, key=lambda x: x['fecha']):
+            fecha_fmt = datetime.date.fromisoformat(reg['fecha']).strftime('%d/%m/%Y')
+            suplente = reg.get('profesor_suplente')
+            prof = f"Suplente: {suplente}" if suplente else "Titular"
+            story.append(Paragraph(f"<b>{fecha_fmt}</b> · {prof}", estilo_normal))
+            contenido = reg.get('contenido_clase', '') or ''
+            if contenido:
+                story.append(Paragraph(f"Contenido: {contenido}", estilo_small))
+            for i in range(1, 4):
+                txt = reg.get(f'tarea{i}')
+                fecha_t = reg.get(f'tarea{i}_fecha')
+                if txt:
+                    fecha_t_fmt = datetime.date.fromisoformat(fecha_t).strftime('%d/%m/%Y') if fecha_t else "-"
+                    story.append(Paragraph(f"  • Tarea {i}: {txt} (entrega: {fecha_t_fmt})", estilo_small))
+            story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc'), spaceAfter=6))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer.read()
+
+
+def generar_html_impresion(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, incluir_historial, incluir_resumen, datos):
+    hi = str(curso_data.get('hora_inicio','') or '')[:5]
+    hf = str(curso_data.get('hora_fin','') or '')[:5]
+    nota_ap = curso_data.get('nota_aprobacion')
+    biblio = curso_data.get('bibliografia','')
+    alumnos_data = datos.get('alumnos', [])
+    notas_data = datos.get('notas', {})
+    historial_data = datos.get('historial', [])
+
+    html = f"""<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>ClassTrack 360 - {curso_nombre}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; font-size: 11px; color: #111; margin: 20px; }}
+        h1 {{ color: #1a5276; font-size: 20px; margin-bottom: 2px; }}
+        h2 {{ color: #1a5276; font-size: 14px; border-bottom: 2px solid #1a5276; padding-bottom: 4px; margin-top: 20px; }}
+        .meta {{ color: #666; font-size: 10px; margin-bottom: 16px; }}
+        table {{ width: 100%; border-collapse: collapse; margin-bottom: 16px; }}
+        th {{ background: #1a5276; color: white; padding: 6px 8px; text-align: left; font-size: 10px; }}
+        td {{ padding: 5px 8px; border-bottom: 1px solid #ddd; font-size: 10px; }}
+        tr:nth-child(even) {{ background: #f5f5f5; }}
+        .aprobado {{ color: #1a5276; font-weight: bold; }}
+        .desaprobado {{ color: #c0392b; font-weight: bold; }}
+        .clase-row {{ border-bottom: 1px solid #eee; padding: 6px 0; margin-bottom: 4px; }}
+        .clase-fecha {{ font-weight: bold; color: #1a5276; }}
+        .clase-tarea {{ color: #555; margin-left: 12px; }}
+        @media print {{ body {{ margin: 10px; }} }}
+    </style></head><body>
+    <h1>ClassTrack 360</h1>
+    <div class="meta">Sede: <b>{sede.upper()}</b> · Curso: <b>{curso_nombre}</b>"""
+    if hi and hf: html += f" · Horario: <b>{hi} → {hf}</b>"
+    if nota_ap: html += f" · Aprobación: <b>{nota_ap}</b>"
+    html += f"<br>Generado el {datetime.date.today().strftime('%d/%m/%Y')}</div>"
+
+    if biblio: html += f"<p><b>Bibliografía:</b> {biblio}</p>"
+
+    # RESUMEN
+    if incluir_resumen and alumnos_data:
+        total = len(alumnos_data)
+        aprobados = 0
+        promedios = []
+        for al in alumnos_data:
+            ns = notas_data.get(al['insc_id'], [])
+            if ns:
+                prom = round(sum(ns)/len(ns), 2)
+                promedios.append(prom)
+                if nota_ap and prom >= float(nota_ap): aprobados += 1
+        prom_gral = round(sum(promedios)/len(promedios), 2) if promedios else "-"
+        porc = f"{round(aprobados/total*100)}%" if total > 0 else "-"
+        html += f"""<h2>Resumen del Curso</h2>
+        <table><tr><th>Total alumnos</th><th>Con notas</th><th>Aprobados</th><th>% Aprobados</th><th>Promedio general</th></tr>
+        <tr><td>{total}</td><td>{len(promedios)}</td><td>{aprobados}</td><td>{porc}</td><td>{prom_gral}</td></tr></table>"""
+
+    # ALUMNOS
+    if incluir_alumnos and alumnos_data:
+        html += "<h2>Listado de Alumnos</h2><table><tr><th>#</th><th>Apellido</th><th>Nombre</th></tr>"
+        for idx, al in enumerate(sorted(alumnos_data, key=lambda x: x['apellido']), 1):
+            html += f"<tr><td>{idx}</td><td>{al['apellido'].upper()}</td><td>{al['nombre']}</td></tr>"
+        html += "</table>"
+
+    # NOTAS
+    if incluir_notas and alumnos_data:
+        html += "<h2>Notas y Promedios</h2><table><tr><th>Alumno</th><th>Nota 1</th><th>Nota 2</th><th>Nota 3</th><th>Nota 4</th><th>Nota 5</th><th>Promedio</th><th>Estado</th></tr>"
+        for al in sorted(alumnos_data, key=lambda x: x['apellido']):
+            ns = notas_data.get(al['insc_id'], [])
+            celdas = "".join([f"<td>{ns[i] if i < len(ns) else '-'}</td>" for i in range(5)])
+            if ns:
+                prom = round(sum(ns)/len(ns), 2)
+                est = estado_texto(prom, nota_ap)
+                clase = "aprobado" if est == "APROBADO" else "desaprobado"
+                html += f"<tr><td>{al['apellido'].upper()}, {al['nombre']}</td>{celdas}<td>{prom}</td><td class='{clase}'>{est}</td></tr>"
+            else:
+                html += f"<tr><td>{al['apellido'].upper()}, {al['nombre']}</td>{celdas}<td>-</td><td>Sin notas</td></tr>"
+        html += "</table>"
+
+    # HISTORIAL
+    if incluir_historial and historial_data:
+        html += "<h2>Historial de Clases</h2>"
+        for reg in sorted(historial_data, key=lambda x: x['fecha']):
+            fecha_fmt = datetime.date.fromisoformat(reg['fecha']).strftime('%d/%m/%Y')
+            suplente = reg.get('profesor_suplente')
+            prof = f"Suplente: {suplente}" if suplente else "Titular"
+            html += f"<div class='clase-row'><span class='clase-fecha'>{fecha_fmt}</span> · {prof}"
+            contenido = reg.get('contenido_clase','') or ''
+            if contenido: html += f"<br><span style='color:#333'>{contenido}</span>"
+            for i in range(1,4):
+                txt = reg.get(f'tarea{i}')
+                ft = reg.get(f'tarea{i}_fecha')
+                if txt:
+                    ft_fmt = datetime.date.fromisoformat(ft).strftime('%d/%m/%Y') if ft else "-"
+                    html += f"<div class='clase-tarea'>• Tarea {i}: {txt} (entrega: {ft_fmt})</div>"
+            html += "</div>"
+
+    html += "<script>window.onload = function(){ window.print(); }</script></body></html>"
+    return html
+
+
+def cargar_datos_curso(inscripcion_id):
+    alumnos = []
+    notas = {}
+    historial = []
+    try:
+        res_al = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", None).not_.is_("alumno_id", "null").execute()
+    except: pass
+
+    try:
+        res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido)").eq("profesor_id", supabase.table("inscripciones").select("profesor_id").eq("id", inscripcion_id).limit(1).execute().data[0]['profesor_id']).not_.is_("alumno_id", "null").execute()
+    except: pass
+
+    # Mejor: traer alumnos del curso por nombre
+    return alumnos, notas, historial
+
+
+def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id):
+    alumnos = []
+    notas_dict = {}
+    historial = []
+    try:
+        res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido)").eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null").execute()
+        for r in (res_al.data or []):
+            al_raw = r.get('alumnos')
+            al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
+            if al:
+                alumnos.append({'insc_id': r['id'], 'nombre': al.get('nombre',''), 'apellido': al.get('apellido','')})
+                res_n = supabase.table("notas").select("calificacion").eq("inscripcion_id", r['id']).order("created_at").execute()
+                notas_dict[r['id']] = [float(n['calificacion']) for n in (res_n.data or [])]
+    except: pass
+    try:
+        res_h = supabase.table("bitacora").select("*").eq("inscripcion_id", inscripcion_id).order("fecha").execute()
+        historial = res_h.data or []
+    except: pass
+    return {'alumnos': alumnos, 'notas': notas_dict, 'historial': historial}
+
+
+# =========================================================
 # --- LOGIN ---
 # =========================================================
 if st.session_state.user is None:
@@ -165,7 +464,7 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v271</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v272</div>', unsafe_allow_html=True)
 
 # =========================================================
 # --- PANEL ADMIN ---
@@ -355,7 +654,7 @@ else:
     except Exception as e:
         st.error(f"Error al cargar cursos: {e}")
 
-    tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "📝 Notas", "🏗️ Cursos"])
+    tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "📝 Notas", "🏗️ Cursos", "🖨️ Impresión"])
 
     # =========================================================
     # --- TAB 0: AGENDA ---
@@ -563,7 +862,6 @@ else:
                         for reg in (res_b.data or []):
                             reg['_curso'] = nombre_curso
                             todos_registros.append(reg)
-
                     filtrados = []
                     for reg in todos_registros:
                         suplente = reg.get('profesor_suplente')
@@ -571,9 +869,7 @@ else:
                         if tipo_prof == "👥 Suplente" and not suplente: continue
                         if busq_contenido.strip() and busq_contenido.lower() not in (reg.get('contenido_clase', '') or '').lower(): continue
                         filtrados.append(reg)
-
                     filtrados.sort(key=lambda x: x['fecha'], reverse=True)
-
                     if filtrados:
                         st.caption(f"Se encontraron {len(filtrados)} clase/s")
                         for reg in filtrados:
@@ -629,7 +925,6 @@ else:
                 busqueda = st.text_input("🔍 Buscar alumno por nombre o apellido:",
                     value=st.session_state.busq_alumno_val, key="busq_alumno_input")
                 st.session_state.busq_alumno_val = busqueda
-
                 if c_v != "---":
                     try:
                         res_al = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
@@ -640,7 +935,6 @@ else:
                             if al:
                                 if busqueda.strip() == "" or busqueda.lower() in al.get('nombre','').lower() or busqueda.lower() in al.get('apellido','').lower():
                                     alumnos_filtrados.append((r, al))
-
                         if not res_al.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         elif not alumnos_filtrados:
@@ -689,7 +983,6 @@ else:
             no_encontrado("No hay cursos creados.")
         else:
             sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota"], horizontal=True)
-
             if sub_nt == "📋 Ver Notas por Curso":
                 col_f1, col_f2 = st.columns([2, 1])
                 c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver_sel",
@@ -702,7 +995,6 @@ else:
                 st.session_state.filtro_estado_val = filtro_estado
                 busq_nota = st.text_input("🔍 Buscar alumno:", value=st.session_state.busq_nota_val, key="busq_nota_input")
                 st.session_state.busq_nota_val = busq_nota
-
                 if c_ver != "---":
                     curso_data = mapa_cursos_data.get(c_ver, {})
                     nota_aprobacion = curso_data.get('nota_aprobacion')
@@ -745,7 +1037,6 @@ else:
                                         estado_html = estado_aprobacion(promedio, nota_aprobacion)
                                     mostrados += 1
                                     st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} &nbsp; {estado_html if valores else ""}</div>{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
-
                             if mostrados == 0:
                                 if busq_nota.strip():
                                     no_encontrado(f"No se encontró ningún alumno con '{busq_nota}'.")
@@ -755,13 +1046,11 @@ else:
                                 st.caption(f"Mostrando {mostrados} alumno/s")
                     except Exception as e:
                         st.error(f"Error: {e}")
-
             else:
                 c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga_sel",
                     on_change=lambda: st.session_state.update({'busq_carga_val': ''}))
                 busq_carga = st.text_input("🔍 Buscar alumno:", value=st.session_state.busq_carga_val, key="busq_carga_input")
                 st.session_state.busq_carga_val = busq_carga
-
                 if c_nt != "---":
                     try:
                         res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
@@ -844,7 +1133,6 @@ else:
             else:
                 busq_curso = st.text_input("🔍 Buscar curso:", key="busq_curso")
                 cursos_filtrados = {n: i for n, i in mapa_cursos.items() if not busq_curso.strip() or busq_curso.lower() in n.lower()}
-
                 if busq_curso.strip() and not cursos_filtrados:
                     no_encontrado(f"No se encontró ningún curso con '{busq_curso}'.")
                 else:
@@ -854,7 +1142,6 @@ else:
                         biblio_cur = curso_data.get('bibliografia', '')
                         hi_cur = str(curso_data.get('hora_inicio', '') or '')[:5]
                         hf_cur = str(curso_data.get('hora_fin', '') or '')[:5]
-
                         if st.session_state.editando_curso == i_c:
                             partes = n_c.split(" (")
                             mat_actual = partes[0] if partes else n_c
@@ -915,3 +1202,69 @@ else:
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Error: {e}")
+
+    # =========================================================
+    # --- TAB 4: IMPRESIÓN ---
+    # =========================================================
+    with tabs[4]:
+        st.subheader("🖨️ Impresión y Exportación")
+        if not mapa_cursos:
+            no_encontrado("No tenés cursos creados.")
+        else:
+            st.markdown("Seleccioná el curso y qué querés incluir en el documento.")
+            col_i1, col_i2 = st.columns([2, 1])
+            curso_imp = col_i1.selectbox("Seleccione Curso:", list(mapa_cursos.keys()), key="imp_curso")
+            accion_imp = col_i2.selectbox("Acción:", ["📄 Exportar PDF", "🖨️ Imprimir"], key="imp_accion")
+
+            st.markdown("**¿Qué incluir?**")
+            col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+            inc_resumen = col_c1.checkbox("📊 Resumen del curso", value=True, key="inc_resumen")
+            inc_alumnos = col_c2.checkbox("👥 Listado de alumnos", value=True, key="inc_alumnos")
+            inc_notas = col_c3.checkbox("📝 Notas y promedios", value=True, key="inc_notas")
+            inc_historial = col_c4.checkbox("📅 Historial de clases", value=False, key="inc_historial")
+
+            if not any([inc_resumen, inc_alumnos, inc_notas, inc_historial]):
+                st.warning("Seleccioná al menos una sección para incluir.")
+            else:
+                if st.button("⚙️ Generar documento", type="primary", use_container_width=True):
+                    with st.spinner("Generando..."):
+                        inscripcion_id_imp = mapa_cursos[curso_imp]
+                        curso_data_imp = mapa_cursos_data.get(curso_imp, {})
+                        datos_imp = cargar_datos_por_nombre_curso(curso_imp, inscripcion_id_imp)
+
+                        if accion_imp == "📄 Exportar PDF":
+                            pdf_bytes = generar_pdf(
+                                u_data['sede'], curso_imp, curso_data_imp,
+                                inc_alumnos, inc_notas, inc_historial, inc_resumen,
+                                datos_imp
+                            )
+                            nombre_archivo = f"ClassTrack_{u_data['sede']}_{curso_imp[:20].replace(' ','_')}_{datetime.date.today().strftime('%Y%m%d')}.pdf"
+                            st.download_button(
+                                label="⬇️ Descargar PDF",
+                                data=pdf_bytes,
+                                file_name=nombre_archivo,
+                                mime="application/pdf",
+                                use_container_width=True
+                            )
+                            st.success("PDF generado. Hacé clic en el botón de arriba para descargarlo.")
+
+                        else:  # Imprimir
+                            html_imp = generar_html_impresion(
+                                u_data['sede'], curso_imp, curso_data_imp,
+                                inc_alumnos, inc_notas, inc_historial, inc_resumen,
+                                datos_imp
+                            )
+                            # Abrir en nueva ventana via JS
+                            html_encoded = html_imp.replace("'", "\\'").replace("\n", "\\n")
+                            js_code = f"""
+                            <script>
+                            var w = window.open('', '_blank');
+                            w.document.write('{html_encoded}');
+                            w.document.close();
+                            </script>
+                            """
+                            components.html(js_code, height=0)
+                            st.success("✅ Se abrió la ventana de impresión en una nueva pestaña.")
+
+            st.markdown("---")
+            st.caption("💡 El PDF es ideal para enviar por mail. La opción Imprimir abre el diálogo del navegador directamente.")
