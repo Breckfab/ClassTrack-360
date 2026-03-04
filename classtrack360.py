@@ -13,7 +13,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v276", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v277", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -51,7 +51,9 @@ st.markdown("""
         background-size: 48px 48px;
     }
     .planilla-row { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #4facfe; border: 1px solid rgba(255,255,255,0.1); }
-    .tarea-alerta { background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 25px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+    .tarea-alerta { background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 10px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+    .tarea-alerta-done { background: rgba(79,172,254,0.08); border: 2px solid rgba(79,172,254,0.3); padding: 14px 20px; border-radius: 12px; color: #4facfe; text-align: center; font-weight: 700; margin-bottom: 10px; font-size: 0.9rem; opacity: 0.6; }
+    .tarea-alerta-done .tarea-texto-done { text-decoration: line-through; color: #556; font-size: 0.85rem; font-weight: 400; margin-top: 6px; }
     .tarea-card { background: rgba(255,193,7,0.08); border: 1px solid rgba(255,193,7,0.25); border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; }
     .tarea-card .tarea-titulo { color: #ffc107; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
     .tarea-card .tarea-texto { color: #e8eaf0; font-size: 0.9rem; margin-bottom: 4px; }
@@ -98,7 +100,7 @@ st.markdown("""
     .codigo-box { background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.3); border-radius: 8px; padding: 12px 18px; font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #4facfe; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 8px 0; }
     .habilitado-tag { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
     .deshabilitado-tag { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
-    .footer-cr { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 6px; font-size: 0.7rem; color: #8899bb; font-family: 'DM Mono', monospace; background: #080b10; border-top: 1px solid rgba(255,255,255,0.06); z-index: 999; letter-spacing: 0.05em; }
+    .footer-cr { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 6px; font-size: 0.72rem; color: #c8d8f0; font-family: 'DM Mono', monospace; background: #080b10; border-top: 1px solid rgba(255,255,255,0.08); z-index: 999; letter-spacing: 0.05em; }
     .tareas-pendientes-header { color: #ffc107; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; }
     .registro-link { text-align: center; margin-top: 16px; font-size: 0.78rem; color: #4a5568; }
     </style>
@@ -139,6 +141,13 @@ def generar_codigo():
 def marcar_tarea(bit_id, num_tarea, completada):
     try:
         supabase.table("bitacora").update({f"tarea{num_tarea}_completada": completada}).eq("id", bit_id).execute()
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+def marcar_tarea_proxima(bit_id, completada):
+    try:
+        supabase.table("bitacora").update({"tarea_proxima_completada": completada}).eq("id", bit_id).execute()
         st.rerun()
     except Exception as e:
         st.error(f"Error: {e}")
@@ -409,15 +418,12 @@ if st.session_state.user is None:
                                     st.error(f"La sede '{sede_norm}' ya está registrada. Elegí otro nombre.")
                                 else:
                                     supabase.table("usuarios").insert({
-                                        "sede": sede_norm,
-                                        "nombre": nombre_input.strip(),
-                                        "password_text": clave1,
-                                        "habilitado": True,
+                                        "sede": sede_norm, "nombre": nombre_input.strip(),
+                                        "password_text": clave1, "habilitado": True,
                                         "tipo_cuenta": cod.get('tipo_cuenta', 'permanente')
                                     }).execute()
                                     supabase.table("codigos_invitacion").update({
-                                        "usado": True,
-                                        "usado_por": sede_norm
+                                        "usado": True, "usado_por": sede_norm
                                     }).eq("id", cod['id']).execute()
                                     st.success(f"✅ Cuenta creada. Ya podés iniciar sesión con la sede '{sede_norm}'.")
                                     st.session_state.pantalla_login = 'login'
@@ -427,7 +433,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v276</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v277</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -457,7 +463,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v276</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v277</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -721,6 +727,8 @@ else:
                 hi = str(curso_sel_data.get('hora_inicio', '') or '')[:5]
                 hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
                 if hi and hf: st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
+
+                # --- TAREAS PENDIENTES NUEVAS (tarea1/2/3) ---
                 try:
                     res_tareas_pend = supabase.table("bitacora").select(
                         "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
@@ -748,11 +756,37 @@ else:
                                     marcar_tarea(tp['bit_id'], tp['num'], True)
                 except Exception as e:
                     st.error(f"Error al cargar tareas: {e}")
+
+                # --- TAREA LEGACY (tarea_proxima) CON TOGGLE ---
                 try:
-                    res_t = supabase.table("bitacora").select("tarea_proxima,fecha").eq("inscripcion_id", inscripcion_id).lt("fecha", str(f_hoy)).order("fecha", desc=True).limit(1).execute()
-                    if res_t.data and res_t.data[0].get('tarea_proxima'):
-                        st.markdown(f'<div class="tarea-alerta">🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({res_t.data[0]["fecha"]})<br><div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1.1rem;">{res_t.data[0]["tarea_proxima"]}</div></div>', unsafe_allow_html=True)
-                except: pass
+                    res_t = supabase.table("bitacora").select(
+                        "id, tarea_proxima, fecha, tarea_proxima_completada"
+                    ).eq("inscripcion_id", inscripcion_id).not_.is_("tarea_proxima", "null").order("fecha", desc=True).limit(1).execute()
+
+                    if res_t.data:
+                        reg_legacy = res_t.data[0]
+                        tarea_txt = reg_legacy.get('tarea_proxima', '')
+                        tarea_fecha = reg_legacy.get('fecha', '')
+                        completada_legacy = reg_legacy.get('tarea_proxima_completada', False)
+
+                        if tarea_txt:
+                            if not completada_legacy:
+                                st.markdown(f'''<div class="tarea-alerta">
+                                    🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({tarea_fecha})<br>
+                                    <div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1rem;">{tarea_txt}</div>
+                                </div>''', unsafe_allow_html=True)
+                                if st.button("✅ Marcar como hecha", key=f"legacy_done_{reg_legacy['id']}"):
+                                    marcar_tarea_proxima(reg_legacy['id'], True)
+                            else:
+                                st.markdown(f'''<div class="tarea-alerta-done">
+                                    ✅ TAREA COMPLETADA · Clase del {tarea_fecha}
+                                    <div class="tarea-texto-done">{tarea_txt}</div>
+                                </div>''', unsafe_allow_html=True)
+                                if st.button("↩️ Desmarcar como pendiente", key=f"legacy_undone_{reg_legacy['id']}"):
+                                    marcar_tarea_proxima(reg_legacy['id'], False)
+                except Exception as e:
+                    st.error(f"Error al cargar tarea legacy: {e}")
+
                 st.subheader("📋 Historial de Clases")
                 try:
                     res_hist = supabase.table("bitacora").select("*").eq("inscripcion_id", inscripcion_id).order("fecha", desc=True).limit(10).execute()
@@ -836,6 +870,7 @@ else:
                                         st.error(f"Error: {e}")
                 else:
                     no_encontrado("No hay clases registradas para este curso aún.")
+
                 st.subheader("📝 Registrar Clase de Hoy")
                 try:
                     res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(f_hoy)).execute()
@@ -895,6 +930,7 @@ else:
                                         "tarea2": tarea2 or None, "tarea2_fecha": str(fecha2) if tarea2 else None,
                                         "tarea3": tarea3 or None, "tarea3_fecha": str(fecha3) if tarea3 else None,
                                         "tarea1_completada": False, "tarea2_completada": False, "tarea3_completada": False,
+                                        "tarea_proxima_completada": False,
                                     }).execute()
                                     st.session_state.es_suplente = False
                                     st.success("Clase guardada satisfactoriamente."); st.rerun()
