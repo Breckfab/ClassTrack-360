@@ -13,7 +13,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v275", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v276", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -30,6 +30,7 @@ def init_state():
         'prev_curso_notas_carga': None, 'prev_curso_busq_hist': None,
         'busq_alumno_val': '', 'busq_nota_val': '', 'filtro_estado_val': 'Todos',
         'busq_carga_val': '', 'busq_contenido_hist_val': '', 'tipo_prof_val': 'Todos',
+        'pantalla_login': 'login',
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -97,8 +98,9 @@ st.markdown("""
     .codigo-box { background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.3); border-radius: 8px; padding: 12px 18px; font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #4facfe; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 8px 0; }
     .habilitado-tag { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
     .deshabilitado-tag { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
-    .footer-cr { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 5px; font-size: 0.65rem; color: #1e2535; font-family: 'DM Mono', monospace; background: #080b10; border-top: 1px solid rgba(255,255,255,0.03); z-index: 999; letter-spacing: 0.05em; }
+    .footer-cr { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 6px; font-size: 0.7rem; color: #8899bb; font-family: 'DM Mono', monospace; background: #080b10; border-top: 1px solid rgba(255,255,255,0.06); z-index: 999; letter-spacing: 0.05em; }
     .tareas-pendientes-header { color: #ffc107; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; }
+    .registro-link { text-align: center; margin-top: 16px; font-size: 0.78rem; color: #4a5568; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -134,6 +136,13 @@ def format_horario(inicio, fin):
 def generar_codigo():
     return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
+def marcar_tarea(bit_id, num_tarea, completada):
+    try:
+        supabase.table("bitacora").update({f"tarea{num_tarea}_completada": completada}).eq("id", bit_id).execute()
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error: {e}")
+
 def render_calendario(mes, anio):
     MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
     hoy = datetime.date.today()
@@ -165,13 +174,6 @@ def reset_completo_sede(sede_nombre):
         return True, f"Sede {sede_nombre.upper()} reseteada correctamente."
     except Exception as e:
         return False, str(e)
-
-def marcar_tarea(bit_id, num_tarea, completada):
-    try:
-        supabase.table("bitacora").update({f"tarea{num_tarea}_completada": completada}).eq("id", bit_id).execute()
-        st.rerun()
-    except Exception as e:
-        st.error(f"Error: {e}")
 
 def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, incluir_historial, incluir_resumen, datos):
     buffer = io.BytesIO()
@@ -269,9 +271,9 @@ def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, 
                     story.append(Paragraph(f"  Tarea {i}: {txt} (entrega: {ft_fmt}){estado}", estilo_small))
             story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc'), spaceAfter=6))
     story.append(Spacer(1,20))
-    estilo_footer = ParagraphStyle('footer', parent=styles['Normal'], fontSize=7, fontName='Helvetica', textColor=colors.HexColor('#aaaaaa'), alignment=TA_CENTER)
+    estilo_footer_pdf = ParagraphStyle('footer', parent=styles['Normal'], fontSize=7, fontName='Helvetica', textColor=colors.HexColor('#aaaaaa'), alignment=TA_CENTER)
     story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc'), spaceAfter=6))
-    story.append(Paragraph("® Sistema diseñado y realizado por Fabián Belledi · 2026", estilo_footer))
+    story.append(Paragraph("® Sistema diseñado y realizado por Fabián Belledi · 2026", estilo_footer_pdf))
     doc.build(story)
     buffer.seek(0)
     return buffer.read()
@@ -367,36 +369,95 @@ def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id):
     return {'alumnos': alumnos, 'notas': notas_dict, 'historial': historial}
 
 # =========================================================
-# --- LOGIN ---
+# --- LOGIN Y REGISTRO ---
 # =========================================================
 if st.session_state.user is None:
     _, col, _ = st.columns([1.5, 1, 1.5])
     with col:
-        st.markdown("""<div class="login-box">
-            <div class="login-logo">Class<span>Track</span> 360</div>
-            <div class="login-eyebrow">// Acceso al sistema</div>
-            <div class="login-title">Iniciar sesión</div></div>""", unsafe_allow_html=True)
-        with st.form("login", clear_on_submit=False):
-            sede_input = st.text_input("Sede", key="sede_input")
-            clave_input = st.text_input("Clave de acceso", type="password", key="clave_input")
-            submitted = st.form_submit_button("ENTRAR AL SISTEMA", use_container_width=True)
-            if submitted:
-                sede = sede_input.strip().lower()
-                clave = clave_input.strip()
-                try:
-                    res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
-                    if res.data:
-                        u = res.data[0]
-                        if u.get('habilitado') == False:
-                            st.error("Tu cuenta está deshabilitada. Contactá al administrador.")
-                        else:
-                            st.session_state.user = u
-                            st.rerun()
+        if st.session_state.pantalla_login == 'registro':
+            st.markdown("""<div class="login-box">
+                <div class="login-logo">Class<span>Track</span> 360</div>
+                <div class="login-eyebrow">// Crear cuenta nueva</div>
+                <div class="login-title">Registro</div></div>""", unsafe_allow_html=True)
+            with st.form("registro", clear_on_submit=False):
+                codigo_input = st.text_input("Código de invitación *", placeholder="Ej: AB12CD34")
+                sede_input_r = st.text_input("Nombre de sede *", placeholder="Ej: quilmes")
+                nombre_input = st.text_input("Tu nombre completo *", placeholder="Ej: García, María")
+                clave1 = st.text_input("Contraseña *", type="password")
+                clave2 = st.text_input("Repetir contraseña *", type="password")
+                submitted_r = st.form_submit_button("✅ CREAR CUENTA", use_container_width=True)
+                if submitted_r:
+                    errores = []
+                    if not codigo_input.strip(): errores.append("El código de invitación es obligatorio.")
+                    if not sede_input_r.strip(): errores.append("El nombre de sede es obligatorio.")
+                    if not nombre_input.strip(): errores.append("Tu nombre es obligatorio.")
+                    if not clave1.strip(): errores.append("La contraseña es obligatoria.")
+                    elif clave1 != clave2: errores.append("Las contraseñas no coinciden.")
+                    elif len(clave1) < 6: errores.append("La contraseña debe tener al menos 6 caracteres.")
+                    if errores:
+                        for e in errores: st.error(e)
                     else:
-                        st.error("Sede o clave incorrectos.")
-                except Exception as e:
-                    st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v275</div>', unsafe_allow_html=True)
+                        try:
+                            res_cod = supabase.table("codigos_invitacion").select("*").eq("codigo", codigo_input.strip().upper()).eq("usado", False).execute()
+                            if not res_cod.data:
+                                st.error("Código inválido o ya utilizado.")
+                            else:
+                                cod = res_cod.data[0]
+                                sede_norm = sede_input_r.strip().lower()
+                                res_sede = supabase.table("usuarios").select("id").eq("sede", sede_norm).execute()
+                                if res_sede.data:
+                                    st.error(f"La sede '{sede_norm}' ya está registrada. Elegí otro nombre.")
+                                else:
+                                    supabase.table("usuarios").insert({
+                                        "sede": sede_norm,
+                                        "nombre": nombre_input.strip(),
+                                        "password_text": clave1,
+                                        "habilitado": True,
+                                        "tipo_cuenta": cod.get('tipo_cuenta', 'permanente')
+                                    }).execute()
+                                    supabase.table("codigos_invitacion").update({
+                                        "usado": True,
+                                        "usado_por": sede_norm
+                                    }).eq("id", cod['id']).execute()
+                                    st.success(f"✅ Cuenta creada. Ya podés iniciar sesión con la sede '{sede_norm}'.")
+                                    st.session_state.pantalla_login = 'login'
+                                    st.rerun()
+                        except Exception as e:
+                            st.error(f"Error: {e}")
+            if st.button("← Volver al inicio de sesión", use_container_width=True):
+                st.session_state.pantalla_login = 'login'
+                st.rerun()
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v276</div>', unsafe_allow_html=True)
+        else:
+            st.markdown("""<div class="login-box">
+                <div class="login-logo">Class<span>Track</span> 360</div>
+                <div class="login-eyebrow">// Acceso al sistema</div>
+                <div class="login-title">Iniciar sesión</div></div>""", unsafe_allow_html=True)
+            with st.form("login", clear_on_submit=False):
+                sede_input = st.text_input("Sede", key="sede_input")
+                clave_input = st.text_input("Clave de acceso", type="password", key="clave_input")
+                submitted = st.form_submit_button("ENTRAR AL SISTEMA", use_container_width=True)
+                if submitted:
+                    sede = sede_input.strip().lower()
+                    clave = clave_input.strip()
+                    try:
+                        res = supabase.table("usuarios").select("*").eq("sede", sede).eq("password_text", clave).execute()
+                        if res.data:
+                            u = res.data[0]
+                            if u.get('habilitado') == False:
+                                st.error("Tu cuenta está deshabilitada. Contactá al administrador.")
+                            else:
+                                st.session_state.user = u
+                                st.rerun()
+                        else:
+                            st.error("Sede o clave incorrectos.")
+                    except Exception as e:
+                        st.error(f"Error de conexión: {e}")
+            st.markdown('<div class="registro-link">¿Primera vez? Si tenés un código de invitación podés crear tu cuenta.</div>', unsafe_allow_html=True)
+            if st.button("➕ Crear cuenta nueva", use_container_width=True):
+                st.session_state.pantalla_login = 'registro'
+                st.rerun()
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v276</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -414,10 +475,12 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
         except:
             sedes_disponibles = []
         if sedes_disponibles:
-            sede_sel = st.selectbox("Ver sede:", sedes_disponibles, key="admin_sede_sel")
-            st.session_state.sede_admin = sede_sel
+            opciones_sede = ["— Todas las sedes —"] + sedes_disponibles
+            sede_sel = st.selectbox("Ver sede:", opciones_sede, key="admin_sede_sel")
+            st.session_state.sede_admin = None if sede_sel == "— Todas las sedes —" else sede_sel
         else:
             st.warning("No hay sedes registradas.")
+            sedes_disponibles = []
         st.markdown("---")
         if st.button("🚪 SALIR"):
             st.session_state.user = None
@@ -443,39 +506,33 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                     tipo = prof.get('tipo_cuenta', 'permanente')
                     tag_hab = '<span class="habilitado-tag">✅ HABILITADO</span>' if habilitado else '<span class="deshabilitado-tag">🚫 DESHABILITADO</span>'
                     tag_tipo = f'<span style="color:#aaa;font-size:0.75rem">{tipo.upper()}</span>'
-                    st.markdown(f'''<div class="planilla-row"><b>{prof.get("sede","").upper()}</b> · {prof.get("nombre","Sin nombre")} &nbsp; {tag_hab} &nbsp; {tag_tipo}</div>''', unsafe_allow_html=True)
+                    st.markdown(f'<div class="planilla-row"><b>{prof.get("sede","").upper()}</b> · {prof.get("nombre","Sin nombre")} &nbsp; {tag_hab} &nbsp; {tag_tipo}</div>', unsafe_allow_html=True)
                     col_h, col_t, col_d = st.columns(3)
                     if habilitado:
                         if col_h.button("🚫 Deshabilitar", key=f"desh_{prof['id']}"):
                             supabase.table("usuarios").update({"habilitado": False}).eq("id", prof['id']).execute()
-                            st.success(f"Profesor {prof.get('sede','').upper()} deshabilitado.")
-                            st.rerun()
+                            st.success(f"Profesor {prof.get('sede','').upper()} deshabilitado."); st.rerun()
                     else:
                         if col_h.button("✅ Habilitar", key=f"hab_{prof['id']}"):
                             supabase.table("usuarios").update({"habilitado": True}).eq("id", prof['id']).execute()
-                            st.success(f"Profesor {prof.get('sede','').upper()} habilitado.")
-                            st.rerun()
+                            st.success(f"Profesor {prof.get('sede','').upper()} habilitado."); st.rerun()
                     if tipo == 'provisorio':
                         if col_t.button("⬆️ Hacer Permanente", key=f"perm_{prof['id']}"):
                             supabase.table("usuarios").update({"tipo_cuenta": "permanente"}).eq("id", prof['id']).execute()
-                            st.success(f"Cuenta de {prof.get('sede','').upper()} cambiada a Permanente.")
-                            st.rerun()
+                            st.success(f"Cuenta de {prof.get('sede','').upper()} cambiada a Permanente."); st.rerun()
                     else:
                         col_t.caption("Cuenta permanente")
                     if col_d.button("🗑️ Eliminar cuenta", key=f"del_prof_{prof['id']}"):
-                        st.session_state[f'confirm_del_{prof["id"]}'] = True
-                        st.rerun()
+                        st.session_state[f'confirm_del_{prof["id"]}'] = True; st.rerun()
                     if st.session_state.get(f'confirm_del_{prof["id"]}'):
                         st.warning(f"⚠️ ¿Confirmar eliminación de la cuenta {prof.get('sede','').upper()}?")
                         c1, c2 = st.columns(2)
                         if c1.button("✅ Confirmar", key=f"conf_del_{prof['id']}"):
                             supabase.table("usuarios").delete().eq("id", prof['id']).execute()
                             st.session_state[f'confirm_del_{prof["id"]}'] = False
-                            st.success("Cuenta eliminada.")
-                            st.rerun()
+                            st.success("Cuenta eliminada."); st.rerun()
                         if c2.button("❌ Cancelar", key=f"canc_del_{prof['id']}"):
-                            st.session_state[f'confirm_del_{prof["id"]}'] = False
-                            st.rerun()
+                            st.session_state[f'confirm_del_{prof["id"]}'] = False; st.rerun()
         except Exception as e:
             st.error(f"Error: {e}")
 
@@ -488,12 +545,10 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
             try:
                 supabase.table("codigos_invitacion").insert({"codigo": nuevo_codigo, "tipo_cuenta": tipo_nuevo}).execute()
                 st.markdown(f'<div class="codigo-box">🔑 {nuevo_codigo}</div>', unsafe_allow_html=True)
-                st.success(f"Código generado. Tipo: {tipo_nuevo.upper()}")
-                st.rerun()
+                st.success(f"Código generado. Tipo: {tipo_nuevo.upper()}"); st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
         st.markdown("---")
-        st.markdown("**Códigos existentes:**")
         try:
             res_cod = supabase.table("codigos_invitacion").select("*").order("created_at", desc=True).execute()
             codigos = res_cod.data or []
@@ -514,38 +569,41 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                     col_b.markdown(f'<span style="font-size:0.8rem;color:#aaa">{tipo.upper()} · {estado_txt}</span>', unsafe_allow_html=True)
                     if not usado:
                         if col_c.button("🗑️", key=f"del_cod_{cod['id']}"):
-                            supabase.table("codigos_invitacion").delete().eq("id", cod['id']).execute()
-                            st.rerun()
+                            supabase.table("codigos_invitacion").delete().eq("id", cod['id']).execute(); st.rerun()
         except Exception as e:
             st.error(f"Error: {e}")
 
     with admin_tabs[2]:
-        if st.session_state.sede_admin:
-            sede_activa = st.session_state.sede_admin
-            st.subheader(f"Resumen — Sede {sede_activa.upper()}")
+        sedes_a_mostrar = sedes_disponibles if not st.session_state.sede_admin else [st.session_state.sede_admin]
+        st.subheader("📊 Resumen General" if not st.session_state.sede_admin else f"📊 Resumen — {st.session_state.sede_admin.upper()}")
+        for sede_activa in sedes_a_mostrar:
             try:
                 res_u = supabase.table("usuarios").select("id, nombre").eq("sede", sede_activa).execute()
                 if res_u.data:
                     prof_id = res_u.data[0]['id']
                     res_cursos = supabase.table("inscripciones").select("nombre_curso_materia, hora_inicio, hora_fin").eq("profesor_id", prof_id).is_("alumno_id", "null").execute()
                     res_alumnos = supabase.table("inscripciones").select("id").eq("profesor_id", prof_id).not_.is_("alumno_id", "null").execute()
-                    col1, col2 = st.columns(2)
-                    col1.metric("Cursos", len(res_cursos.data) if res_cursos.data else 0)
-                    col2.metric("Alumnos", len(res_alumnos.data) if res_alumnos.data else 0)
-                    if res_cursos.data:
-                        for c in res_cursos.data:
-                            st.markdown(f'<div class="planilla-row">📖 {c["nombre_curso_materia"]}<br><small style="color:#4facfe;">🕐 {format_horario(c.get("hora_inicio",""), c.get("hora_fin",""))}</small></div>', unsafe_allow_html=True)
-                    else:
-                        no_encontrado("No hay cursos registrados.")
+                    cant_cursos = len(res_cursos.data) if res_cursos.data else 0
+                    cant_alumnos = len(res_alumnos.data) if res_alumnos.data else 0
+                    with st.expander(f"🏫 {sede_activa.upper()} · {cant_cursos} cursos · {cant_alumnos} alumnos", expanded=len(sedes_a_mostrar) == 1):
+                        col1, col2 = st.columns(2)
+                        col1.metric("Cursos", cant_cursos)
+                        col2.metric("Alumnos", cant_alumnos)
+                        if res_cursos.data:
+                            for c in res_cursos.data:
+                                st.markdown(f'<div class="planilla-row">📖 {c["nombre_curso_materia"]}<br><small style="color:#4facfe;">🕐 {format_horario(c.get("hora_inicio",""), c.get("hora_fin",""))}</small></div>', unsafe_allow_html=True)
+                        else:
+                            no_encontrado("No hay cursos registrados.")
             except Exception as e:
-                st.error(f"Error: {e}")
+                st.error(f"Error en sede {sede_activa}: {e}")
 
     with admin_tabs[3]:
-        if st.session_state.sede_admin:
-            sede_activa = st.session_state.sede_admin
-            st.subheader(f"Notas — Sede {sede_activa.upper()}")
+        st.subheader("📝 Notas")
+        sedes_a_mostrar_n = sedes_disponibles if not st.session_state.sede_admin else [st.session_state.sede_admin]
+        sede_sel_notas = st.selectbox("Sede:", sedes_a_mostrar_n, key="admin_notas_sede") if len(sedes_a_mostrar_n) > 1 else (sedes_a_mostrar_n[0] if sedes_a_mostrar_n else None)
+        if sede_sel_notas:
             try:
-                res_u = supabase.table("usuarios").select("id").eq("sede", sede_activa).execute()
+                res_u = supabase.table("usuarios").select("id").eq("sede", sede_sel_notas).execute()
                 if res_u.data:
                     prof_id = res_u.data[0]['id']
                     res_cursos = supabase.table("inscripciones").select("nombre_curso_materia").eq("profesor_id", prof_id).is_("alumno_id", "null").execute()
@@ -590,22 +648,18 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
             sede_reset = st.selectbox("Sede a resetear:", sedes_disponibles, key="reset_sede_sel")
             if st.session_state.confirmar_reset != sede_reset:
                 if st.button(f"🔴 BORRAR TODOS LOS DATOS DE {sede_reset.upper()}", type="primary"):
-                    st.session_state.confirmar_reset = sede_reset
-                    st.rerun()
+                    st.session_state.confirmar_reset = sede_reset; st.rerun()
             else:
                 st.markdown(f'<div class="advertencia-box">⚠️ <b>ADVERTENCIA FINAL</b><br><br>Estás a punto de borrar TODOS los datos de <b>{sede_reset.upper()}</b>. Esta acción es <b>irreversible</b>.</div>', unsafe_allow_html=True)
                 col_si, col_no = st.columns(2)
                 if col_si.button("✅ SÍ, BORRAR TODO", type="primary", use_container_width=True):
                     ok, msg = reset_completo_sede(sede_reset)
                     if ok:
-                        st.success(f"✅ {msg}")
-                        st.session_state.confirmar_reset = None
-                        st.rerun()
+                        st.success(f"✅ {msg}"); st.session_state.confirmar_reset = None; st.rerun()
                     else:
                         st.error(f"Error: {msg}")
                 if col_no.button("❌ NO, CANCELAR", use_container_width=True):
-                    st.session_state.confirmar_reset = None
-                    st.rerun()
+                    st.session_state.confirmar_reset = None; st.rerun()
 
 # =========================================================
 # --- APP NORMAL ---
@@ -655,15 +709,11 @@ else:
 
     tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "📝 Notas", "🏗️ Cursos", "🖨️ Impresión"])
 
-    # =========================================================
-    # --- TAB 0: AGENDA ---
-    # =========================================================
     with tabs[0]:
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados. Andá a la pestaña 🏗️ Cursos para crear uno.")
         else:
             agenda_sub = st.radio("Sección:", ["📋 Registrar Clase", "🔍 Buscar Clases Pasadas"], horizontal=True, key="agenda_sub")
-
             if agenda_sub == "📋 Registrar Clase":
                 c_ag = st.selectbox("Seleccione Curso:", list(mapa_cursos.keys()), key="ag_sel")
                 inscripcion_id = mapa_cursos[c_ag]
@@ -671,15 +721,10 @@ else:
                 hi = str(curso_sel_data.get('hora_inicio', '') or '')[:5]
                 hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
                 if hi and hf: st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
-
-                # -----------------------------------------------
-                # TAREAS PENDIENTES (no completadas)
-                # -----------------------------------------------
                 try:
                     res_tareas_pend = supabase.table("bitacora").select(
                         "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
                     ).eq("inscripcion_id", inscripcion_id).execute()
-
                     tareas_pendientes = []
                     for reg in (res_tareas_pend.data or []):
                         for i in range(1, 4):
@@ -687,14 +732,7 @@ else:
                             fecha_t = reg.get(f'tarea{i}_fecha')
                             completada = reg.get(f'tarea{i}_completada', False)
                             if txt and not completada:
-                                tareas_pendientes.append({
-                                    'bit_id': reg['id'],
-                                    'num': i,
-                                    'texto': txt,
-                                    'fecha': fecha_t,
-                                    'clase_fecha': reg['fecha']
-                                })
-
+                                tareas_pendientes.append({'bit_id': reg['id'], 'num': i, 'texto': txt, 'fecha': fecha_t, 'clase_fecha': reg['fecha']})
                     if tareas_pendientes:
                         st.markdown('<div class="tareas-pendientes-header">📌 TAREAS PENDIENTES DE ESTE CURSO:</div>', unsafe_allow_html=True)
                         for tp in tareas_pendientes:
@@ -702,33 +740,24 @@ else:
                             clase_fmt = datetime.date.fromisoformat(tp['clase_fecha']).strftime('%d/%m/%Y') if tp['clase_fecha'] else "-"
                             col_t, col_b = st.columns([5, 1])
                             with col_t:
-                                st.markdown(f'''<div class="tarea-card">
-                                    <div class="tarea-titulo">Tarea {tp["num"]} · Clase del {clase_fmt}</div>
-                                    <div class="tarea-texto">{tp["texto"]}</div>
-                                    <div class="tarea-fecha">📅 Entrega: {fecha_fmt}</div>
-                                </div>''', unsafe_allow_html=True)
+                                st.markdown(f'''<div class="tarea-card"><div class="tarea-titulo">Tarea {tp["num"]} · Clase del {clase_fmt}</div>
+                                    <div class="tarea-texto">{tp["texto"]}</div><div class="tarea-fecha">📅 Entrega: {fecha_fmt}</div></div>''', unsafe_allow_html=True)
                             with col_b:
                                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
                                 if st.button("✅ Hecha", key=f"comp_{tp['bit_id']}_{tp['num']}"):
                                     marcar_tarea(tp['bit_id'], tp['num'], True)
                 except Exception as e:
                     st.error(f"Error al cargar tareas: {e}")
-
-                # -----------------------------------------------
-                # TAREA PENDIENTE LEGACY (campo tarea_proxima)
-                # -----------------------------------------------
                 try:
                     res_t = supabase.table("bitacora").select("tarea_proxima,fecha").eq("inscripcion_id", inscripcion_id).lt("fecha", str(f_hoy)).order("fecha", desc=True).limit(1).execute()
                     if res_t.data and res_t.data[0].get('tarea_proxima'):
                         st.markdown(f'<div class="tarea-alerta">🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({res_t.data[0]["fecha"]})<br><div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1.1rem;">{res_t.data[0]["tarea_proxima"]}</div></div>', unsafe_allow_html=True)
                 except: pass
-
                 st.subheader("📋 Historial de Clases")
                 try:
                     res_hist = supabase.table("bitacora").select("*").eq("inscripcion_id", inscripcion_id).order("fecha", desc=True).limit(10).execute()
                 except:
                     res_hist = type('obj', (object,), {'data': []})()
-
                 if res_hist.data:
                     for reg in res_hist.data:
                         suplente_hist = reg.get('profesor_suplente')
@@ -766,8 +795,7 @@ else:
                                                 "tarea3": t3_e or None, "tarea3_fecha": str(f3_e) if t3_e else None,
                                             }).eq("id", reg['id']).execute()
                                             st.session_state.editando_bitacora = None
-                                            st.success("Registro actualizado.")
-                                            st.rerun()
+                                            st.success("Registro actualizado."); st.rerun()
                                         except Exception as e:
                                             st.error(f"Error: {e}")
                                     if col_e2.form_submit_button("❌ Cancelar"):
@@ -808,7 +836,6 @@ else:
                                         st.error(f"Error: {e}")
                 else:
                     no_encontrado("No hay clases registradas para este curso aún.")
-
                 st.subheader("📝 Registrar Clase de Hoy")
                 try:
                     res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(f_hoy)).execute()
@@ -870,11 +897,9 @@ else:
                                         "tarea1_completada": False, "tarea2_completada": False, "tarea3_completada": False,
                                     }).execute()
                                     st.session_state.es_suplente = False
-                                    st.success("Clase guardada satisfactoriamente.")
-                                    st.rerun()
+                                    st.success("Clase guardada satisfactoriamente."); st.rerun()
                                 except Exception as e:
                                     st.error(f"Error: {e}")
-
             else:
                 st.subheader("🔍 Buscar Clases Pasadas")
                 st.markdown('<div class="filtros-box">', unsafe_allow_html=True)
@@ -924,10 +949,8 @@ else:
                                     if txt:
                                         estilo = "tarea-card-done" if completada else "tarea-card"
                                         titulo = f"✅ Tarea {i} — COMPLETADA" if completada else f"Tarea {i}"
-                                        texto_clase = "tarea-texto" if not completada else "tarea-texto"
-                                        st.markdown(f'''<div class="{estilo}">
-                                            <div class="tarea-titulo">{titulo}</div>
-                                            <div class="{texto_clase}">{txt}</div>
+                                        st.markdown(f'''<div class="{estilo}"><div class="tarea-titulo">{titulo}</div>
+                                            <div class="tarea-texto">{txt}</div>
                                             <div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha_t).strftime("%d/%m/%Y") if fecha_t else "-"}</div>
                                         </div>''', unsafe_allow_html=True)
                     else:
@@ -935,9 +958,6 @@ else:
                 except Exception as e:
                     st.error(f"Error en la búsqueda: {e}")
 
-    # =========================================================
-    # --- TAB 1: ALUMNOS ---
-    # =========================================================
     with tabs[1]:
         sub_al = st.radio("Acción:", ["Ver Lista", "Registrar Alumno Nuevo"], horizontal=True)
         if sub_al == "Registrar Alumno Nuevo":
@@ -955,8 +975,7 @@ else:
                                 ra = supabase.table("alumnos").insert({"nombre": n.strip(), "apellido": a.strip()}).execute()
                                 if ra.data:
                                     supabase.table("inscripciones").insert({"alumno_id": ra.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": c_sel, "anio_lectivo": 2026}).execute()
-                                    st.success(f"Alumno {a.upper()}, {n} registrado en {c_sel}.")
-                                    st.rerun()
+                                    st.success(f"Alumno {a.upper()}, {n} registrado en {c_sel}."); st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
         else:
@@ -991,8 +1010,7 @@ else:
                                             try:
                                                 supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip()}).eq("id", al['id']).execute()
                                                 st.session_state.editando_alumno = None
-                                                st.success("Alumno actualizado.")
-                                                st.rerun()
+                                                st.success("Alumno actualizado."); st.rerun()
                                             except Exception as e:
                                                 st.error(f"Error: {e}")
                                         if col_a2.form_submit_button("❌ Cancelar"):
@@ -1011,9 +1029,6 @@ else:
                     except Exception as e:
                         st.error(f"Error al cargar alumnos: {e}")
 
-    # =========================================================
-    # --- TAB 2: NOTAS ---
-    # =========================================================
     with tabs[2]:
         st.subheader("📝 Notas y Calificaciones")
         if not mapa_cursos:
@@ -1105,8 +1120,7 @@ else:
                                         if st.form_submit_button("💾 Agregar Nota"):
                                             try:
                                                 supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
-                                                st.success(f"Nota {nueva_nota} agregada.")
-                                                st.rerun()
+                                                st.success(f"Nota {nueva_nota} agregada."); st.rerun()
                                             except Exception as e:
                                                 st.error(f"Error: {e}")
                             if mostrados_carga == 0:
@@ -1114,9 +1128,6 @@ else:
                     except Exception as e:
                         st.error(f"Error: {e}")
 
-    # =========================================================
-    # --- TAB 3: CURSOS ---
-    # =========================================================
     with tabs[3]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
         if sub_cu == "Crear Nuevo Curso":
@@ -1148,8 +1159,7 @@ else:
                                 "bibliografia": biblio.strip() if biblio.strip() else None,
                                 "hora_inicio": hora_ini.strip(), "hora_fin": hora_fin.strip()
                             }).execute()
-                            st.success(f"Curso '{info}' creado correctamente.")
-                            st.rerun()
+                            st.success(f"Curso '{info}' creado correctamente."); st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
         else:
@@ -1198,8 +1208,7 @@ else:
                                                 "hora_fin": hora_fin_e.strip() if hora_fin_e.strip() else None,
                                             }).eq("id", i_c).execute()
                                             st.session_state.editando_curso = None
-                                            st.success("Curso actualizado.")
-                                            st.rerun()
+                                            st.success("Curso actualizado."); st.rerun()
                                         except Exception as e:
                                             st.error(f"Error: {e}")
                                 if col_c2.form_submit_button("❌ Cancelar"):
@@ -1222,9 +1231,6 @@ else:
                                 except Exception as e:
                                     st.error(f"Error: {e}")
 
-    # =========================================================
-    # --- TAB 4: IMPRESIÓN ---
-    # =========================================================
     with tabs[4]:
         st.subheader("🖨️ Impresión y Exportación")
         if not mapa_cursos:
