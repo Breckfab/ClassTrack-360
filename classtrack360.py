@@ -13,7 +13,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v273", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v274", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -36,6 +36,9 @@ def init_state():
             st.session_state[k] = v
 
 init_state()
+
+def footer():
+    st.markdown('<div class="footer-cr">&#174; Sistema diseñado y realizado por Fabián Belledi &nbsp;·&nbsp; 2026</div>', unsafe_allow_html=True)
 
 st.markdown("""
     <style>
@@ -88,9 +91,9 @@ st.markdown("""
     .login-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.6rem; margin-bottom: 28px; color: #e8eaf0; }
     .login-footer { font-size: 0.72rem; color: #3a4358; text-align: center; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; }
     .codigo-box { background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.3); border-radius: 8px; padding: 12px 18px; font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #4facfe; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 8px 0; }
-    .prof-row { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 12px 16px; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
     .habilitado-tag { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
     .deshabilitado-tag { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
+    .footer-cr { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 5px; font-size: 0.65rem; color: #1e2535; font-family: 'DM Mono', monospace; background: #080b10; border-top: 1px solid rgba(255,255,255,0.03); z-index: 999; letter-spacing: 0.05em; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -160,8 +163,7 @@ def reset_completo_sede(sede_nombre):
 
 def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, incluir_historial, incluir_resumen, datos):
     buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4,
-        rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=2*cm, leftMargin=2*cm, topMargin=2*cm, bottomMargin=2*cm)
     styles = getSampleStyleSheet()
     azul = colors.HexColor('#1a5276')
     gris = colors.HexColor('#555555')
@@ -181,9 +183,9 @@ def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, 
     nota_ap = curso_data.get('nota_aprobacion')
     biblio = curso_data.get('bibliografia','')
     info_curso = []
-    if hi and hf: info_curso.append(f"Horario: {hi} → {hf}")
-    if nota_ap: info_curso.append(f"Nota de aprobación: {nota_ap}")
-    if biblio: info_curso.append(f"Bibliografía: {biblio}")
+    if hi and hf: info_curso.append(f"Horario: {hi} -> {hf}")
+    if nota_ap: info_curso.append(f"Nota de aprobacion: {nota_ap}")
+    if biblio: info_curso.append(f"Bibliografia: {biblio}")
     if info_curso:
         story.append(Paragraph(" · ".join(info_curso), estilo_small))
         story.append(Spacer(1, 8))
@@ -192,14 +194,11 @@ def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, 
     historial_data = datos.get('historial', [])
     if incluir_resumen and alumnos_data:
         story.append(Paragraph("Resumen del Curso", estilo_seccion))
-        total = len(alumnos_data)
-        aprobados = 0
-        promedios = []
+        total = len(alumnos_data); aprobados = 0; promedios = []
         for al in alumnos_data:
             ns = notas_data.get(al['insc_id'], [])
             if ns:
-                prom = round(sum(ns)/len(ns), 2)
-                promedios.append(prom)
+                prom = round(sum(ns)/len(ns), 2); promedios.append(prom)
                 if nota_ap and prom >= float(nota_ap): aprobados += 1
         prom_gral = round(sum(promedios)/len(promedios), 2) if promedios else "-"
         porc = f"{round(aprobados/total*100)}%" if total > 0 else "-"
@@ -250,12 +249,15 @@ def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, 
             contenido = reg.get('contenido_clase','') or ''
             if contenido: story.append(Paragraph(f"Contenido: {contenido}", estilo_small))
             for i in range(1,4):
-                txt = reg.get(f'tarea{i}')
-                ft = reg.get(f'tarea{i}_fecha')
+                txt = reg.get(f'tarea{i}'); ft = reg.get(f'tarea{i}_fecha')
                 if txt:
                     ft_fmt = datetime.date.fromisoformat(ft).strftime('%d/%m/%Y') if ft else "-"
                     story.append(Paragraph(f"  Tarea {i}: {txt} (entrega: {ft_fmt})", estilo_small))
             story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc'), spaceAfter=6))
+    story.append(Spacer(1,20))
+    estilo_footer = ParagraphStyle('footer', parent=styles['Normal'], fontSize=7, fontName='Helvetica', textColor=colors.HexColor('#aaaaaa'), alignment=TA_CENTER)
+    story.append(HRFlowable(width="100%", thickness=0.5, color=colors.HexColor('#cccccc'), spaceAfter=6))
+    story.append(Paragraph("® Sistema diseñado y realizado por Fabián Belledi · 2026", estilo_footer))
     doc.build(story)
     buffer.seek(0)
     return buffer.read()
@@ -275,7 +277,8 @@ def generar_html_impresion(sede, curso_nombre, curso_data, incluir_alumnos, incl
     th{{background:#1a5276;color:white;padding:6px 8px;text-align:left;font-size:10px}}td{{padding:5px 8px;border-bottom:1px solid #ddd;font-size:10px}}
     tr:nth-child(even){{background:#f5f5f5}}.aprobado{{color:#1a5276;font-weight:bold}}.desaprobado{{color:#c0392b;font-weight:bold}}
     .clase-row{{border-bottom:1px solid #eee;padding:6px 0;margin-bottom:4px}}.clase-fecha{{font-weight:bold;color:#1a5276}}
-    .clase-tarea{{color:#555;margin-left:12px}}@media print{{body{{margin:10px}}}}</style></head><body>
+    .clase-tarea{{color:#555;margin-left:12px}}.footer-doc{{text-align:center;font-size:9px;color:#aaa;margin-top:30px;padding-top:10px;border-top:1px solid #ddd}}
+    @media print{{body{{margin:10px}}}}</style></head><body>
     <h1>ClassTrack 360</h1><div class="meta">Sede: <b>{sede.upper()}</b> · Curso: <b>{curso_nombre}</b>"""
     if hi and hf: html += f" · Horario: <b>{hi} → {hf}</b>"
     if nota_ap: html += f" · Aprobación: <b>{nota_ap}</b>"
@@ -324,6 +327,7 @@ def generar_html_impresion(sede, curso_nombre, curso_data, incluir_alumnos, incl
                     ft_fmt = datetime.date.fromisoformat(ft).strftime('%d/%m/%Y') if ft else "-"
                     html += f"<div class='clase-tarea'>Tarea {i}: {txt} (entrega: {ft_fmt})</div>"
             html += "</div>"
+    html += "<div class='footer-doc'>® Sistema diseñado y realizado por Fabián Belledi · 2026</div>"
     html += "<script>window.onload=function(){window.print();}</script></body></html>"
     return html
 
@@ -375,7 +379,8 @@ if st.session_state.user is None:
                         st.error("Sede o clave incorrectos.")
                 except Exception as e:
                     st.error(f"Error de conexión: {e}")
-        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v273</div>', unsafe_allow_html=True)
+        st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v274</div>', unsafe_allow_html=True)
+    footer()
 
 # =========================================================
 # --- PANEL ADMIN ---
@@ -404,12 +409,10 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
 
     st.markdown('<div class="admin-badge">⚡ Panel de Administración</div>', unsafe_allow_html=True)
     st.title("ClassTrack 360 · Admin")
+    footer()
 
     admin_tabs = st.tabs(["👥 Profesores", "🔑 Códigos de Invitación", "📊 Resumen", "📝 Notas", "🗑️ Reset de Datos"])
 
-    # =========================================================
-    # --- ADMIN TAB 0: PROFESORES ---
-    # =========================================================
     with admin_tabs[0]:
         st.subheader("👥 Gestión de Profesores")
         try:
@@ -423,12 +426,8 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                     tipo = prof.get('tipo_cuenta', 'permanente')
                     tag_hab = '<span class="habilitado-tag">✅ HABILITADO</span>' if habilitado else '<span class="deshabilitado-tag">🚫 DESHABILITADO</span>'
                     tag_tipo = f'<span style="color:#aaa;font-size:0.75rem">{tipo.upper()}</span>'
-                    st.markdown(f'''<div class="planilla-row">
-                        <b>{prof.get("sede","").upper()}</b> · {prof.get("nombre","Sin nombre")} &nbsp; {tag_hab} &nbsp; {tag_tipo}
-                    </div>''', unsafe_allow_html=True)
+                    st.markdown(f'''<div class="planilla-row"><b>{prof.get("sede","").upper()}</b> · {prof.get("nombre","Sin nombre")} &nbsp; {tag_hab} &nbsp; {tag_tipo}</div>''', unsafe_allow_html=True)
                     col_h, col_t, col_d = st.columns(3)
-
-                    # Habilitar / Deshabilitar
                     if habilitado:
                         if col_h.button("🚫 Deshabilitar", key=f"desh_{prof['id']}"):
                             supabase.table("usuarios").update({"habilitado": False}).eq("id", prof['id']).execute()
@@ -439,8 +438,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                             supabase.table("usuarios").update({"habilitado": True}).eq("id", prof['id']).execute()
                             st.success(f"Profesor {prof.get('sede','').upper()} habilitado.")
                             st.rerun()
-
-                    # Cambiar tipo de cuenta
                     if tipo == 'provisorio':
                         if col_t.button("⬆️ Hacer Permanente", key=f"perm_{prof['id']}"):
                             supabase.table("usuarios").update({"tipo_cuenta": "permanente"}).eq("id", prof['id']).execute()
@@ -448,14 +445,11 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                             st.rerun()
                     else:
                         col_t.caption("Cuenta permanente")
-
-                    # Eliminar cuenta
                     if col_d.button("🗑️ Eliminar cuenta", key=f"del_prof_{prof['id']}"):
                         st.session_state[f'confirm_del_{prof["id"]}'] = True
                         st.rerun()
-
                     if st.session_state.get(f'confirm_del_{prof["id"]}'):
-                        st.warning(f"⚠️ ¿Confirmar eliminación de la cuenta {prof.get('sede','').upper()}? Esta acción NO borra los datos del curso.")
+                        st.warning(f"⚠️ ¿Confirmar eliminación de la cuenta {prof.get('sede','').upper()}?")
                         c1, c2 = st.columns(2)
                         if c1.button("✅ Confirmar", key=f"conf_del_{prof['id']}"):
                             supabase.table("usuarios").delete().eq("id", prof['id']).execute()
@@ -468,27 +462,19 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
         except Exception as e:
             st.error(f"Error: {e}")
 
-    # =========================================================
-    # --- ADMIN TAB 1: CÓDIGOS DE INVITACIÓN ---
-    # =========================================================
     with admin_tabs[1]:
         st.subheader("🔑 Códigos de Invitación")
-
         col_g1, col_g2 = st.columns([2, 1])
         tipo_nuevo = col_g1.selectbox("Tipo de cuenta:", ["permanente", "provisorio"], key="tipo_cod")
         if col_g2.button("➕ Generar Código", use_container_width=True):
             nuevo_codigo = generar_codigo()
             try:
-                supabase.table("codigos_invitacion").insert({
-                    "codigo": nuevo_codigo,
-                    "tipo_cuenta": tipo_nuevo
-                }).execute()
+                supabase.table("codigos_invitacion").insert({"codigo": nuevo_codigo, "tipo_cuenta": tipo_nuevo}).execute()
                 st.markdown(f'<div class="codigo-box">🔑 {nuevo_codigo}</div>', unsafe_allow_html=True)
                 st.success(f"Código generado. Tipo: {tipo_nuevo.upper()}")
                 st.rerun()
             except Exception as e:
                 st.error(f"Error: {e}")
-
         st.markdown("---")
         st.markdown("**Códigos existentes:**")
         try:
@@ -500,7 +486,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                 disponibles = [c for c in codigos if not c.get('usado')]
                 usados = [c for c in codigos if c.get('usado')]
                 st.caption(f"Disponibles: {len(disponibles)} · Usados: {len(usados)}")
-
                 for cod in codigos:
                     usado = cod.get('usado', False)
                     tipo = cod.get('tipo_cuenta', 'permanente')
@@ -517,9 +502,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
         except Exception as e:
             st.error(f"Error: {e}")
 
-    # =========================================================
-    # --- ADMIN TAB 2: RESUMEN ---
-    # =========================================================
     with admin_tabs[2]:
         if st.session_state.sede_admin:
             sede_activa = st.session_state.sede_admin
@@ -541,9 +523,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
             except Exception as e:
                 st.error(f"Error: {e}")
 
-    # =========================================================
-    # --- ADMIN TAB 3: NOTAS ---
-    # =========================================================
     with admin_tabs[3]:
         if st.session_state.sede_admin:
             sede_activa = st.session_state.sede_admin
@@ -566,11 +545,9 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                     if al:
                                         res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas = res_notas.data if res_notas.data else []
-                                        filas_html = ""
-                                        valores = []
+                                        filas_html = ""; valores = []
                                         for i, nt in enumerate(notas):
-                                            val = float(nt['calificacion'])
-                                            valores.append(val)
+                                            val = float(nt['calificacion']); valores.append(val)
                                             fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
                                             filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {color_nota(val)}">{val}</span></div>'
                                         if not filas_html:
@@ -588,9 +565,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
             except Exception as e:
                 st.error(f"Error: {e}")
 
-    # =========================================================
-    # --- ADMIN TAB 4: RESET ---
-    # =========================================================
     with admin_tabs[4]:
         st.subheader("🗑️ Reset de Datos")
         st.markdown('<div class="reset-box"><div class="reset-titulo">⚠️ Zona de Peligro</div>Esta acción borrará TODOS los datos de la sede seleccionada. El usuario NO será eliminado.</div>', unsafe_allow_html=True)
@@ -647,6 +621,8 @@ else:
         if st.button("🚪 SALIR"):
             st.session_state.user = None
             st.rerun()
+
+    footer()
 
     mapa_cursos = {}
     mapa_cursos_data = {}
@@ -737,8 +713,7 @@ else:
                                         except Exception as e:
                                             st.error(f"Error: {e}")
                                     if col_e2.form_submit_button("❌ Cancelar"):
-                                        st.session_state.editando_bitacora = None
-                                        st.rerun()
+                                        st.session_state.editando_bitacora = None; st.rerun()
                             else:
                                 if suplente_hist:
                                     st.markdown(f'<span class="suplente-badge">👤 Clase dictada por suplente: {suplente_hist}</span>', unsafe_allow_html=True)
@@ -751,13 +726,11 @@ else:
                                         st.markdown(f'<div class="tarea-card"><div class="tarea-titulo">Tarea {i}</div><div class="tarea-texto">{txt}</div><div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha).strftime("%d/%m/%Y") if fecha else "-"}</div></div>', unsafe_allow_html=True)
                                 col_b1, col_b2 = st.columns([1, 5])
                                 if col_b1.button("✏️ Editar", key=f"edit_b_{reg['id']}"):
-                                    st.session_state.editando_bitacora = reg['id']
-                                    st.rerun()
+                                    st.session_state.editando_bitacora = reg['id']; st.rerun()
                                 if col_b2.button("🗑️ Borrar", key=f"del_b_{reg['id']}"):
                                     try:
                                         supabase.table("bitacora").delete().eq("id", reg['id']).execute()
-                                        st.success("Registro eliminado.")
-                                        st.rerun()
+                                        st.success("Registro eliminado."); st.rerun()
                                     except Exception as e:
                                         st.error(f"Error: {e}")
                 else:
