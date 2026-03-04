@@ -13,7 +13,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v277", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v278", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -103,6 +103,7 @@ st.markdown("""
     .footer-cr { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 6px; font-size: 0.72rem; color: #c8d8f0; font-family: 'DM Mono', monospace; background: #080b10; border-top: 1px solid rgba(255,255,255,0.08); z-index: 999; letter-spacing: 0.05em; }
     .tareas-pendientes-header { color: #ffc107; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; }
     .registro-link { text-align: center; margin-top: 16px; font-size: 0.78rem; color: #4a5568; }
+    .email-tag { color: #4facfe; font-size: 0.78rem; margin-top: 2px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -234,10 +235,10 @@ def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, 
         story.append(t); story.append(Spacer(1,12))
     if incluir_alumnos and alumnos_data:
         story.append(Paragraph("Listado de Alumnos", estilo_seccion))
-        rows = [["#","Apellido","Nombre"]]
+        rows = [["#","Apellido","Nombre","Email"]]
         for idx, al in enumerate(sorted(alumnos_data, key=lambda x: x['apellido']), 1):
-            rows.append([str(idx), al['apellido'].upper(), al['nombre']])
-        t = Table(rows, colWidths=[1*cm,7*cm,7*cm])
+            rows.append([str(idx), al['apellido'].upper(), al['nombre'], al.get('email','') or '-'])
+        t = Table(rows, colWidths=[1*cm,5*cm,5*cm,5*cm])
         t.setStyle(TableStyle([('BACKGROUND',(0,0),(-1,0),azul),('TEXTCOLOR',(0,0),(-1,0),colors.white),
             ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'),('FONTSIZE',(0,0),(-1,-1),9),
             ('ALIGN',(0,0),(0,-1),'CENTER'),('GRID',(0,0),(-1,-1),0.5,colors.grey),
@@ -322,9 +323,9 @@ def generar_html_impresion(sede, curso_nombre, curso_data, incluir_alumnos, incl
         html += f"""<h2>Resumen del Curso</h2><table><tr><th>Total alumnos</th><th>Con notas</th><th>Aprobados</th><th>% Aprobados</th><th>Promedio general</th></tr>
         <tr><td>{total}</td><td>{len(promedios)}</td><td>{aprobados}</td><td>{porc}</td><td>{prom_gral}</td></tr></table>"""
     if incluir_alumnos and alumnos_data:
-        html += "<h2>Listado de Alumnos</h2><table><tr><th>#</th><th>Apellido</th><th>Nombre</th></tr>"
+        html += "<h2>Listado de Alumnos</h2><table><tr><th>#</th><th>Apellido</th><th>Nombre</th><th>Email</th></tr>"
         for idx, al in enumerate(sorted(alumnos_data, key=lambda x: x['apellido']), 1):
-            html += f"<tr><td>{idx}</td><td>{al['apellido'].upper()}</td><td>{al['nombre']}</td></tr>"
+            html += f"<tr><td>{idx}</td><td>{al['apellido'].upper()}</td><td>{al['nombre']}</td><td>{al.get('email','') or '-'}</td></tr>"
         html += "</table>"
     if incluir_notas and alumnos_data:
         html += "<h2>Notas y Promedios</h2><table><tr><th>Alumno</th><th>Nota 1</th><th>Nota 2</th><th>Nota 3</th><th>Nota 4</th><th>Nota 5</th><th>Promedio</th><th>Estado</th></tr>"
@@ -362,12 +363,12 @@ def generar_html_impresion(sede, curso_nombre, curso_data, incluir_alumnos, incl
 def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id):
     alumnos = []; notas_dict = {}; historial = []
     try:
-        res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido)").eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null").execute()
+        res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null").execute()
         for r in (res_al.data or []):
             al_raw = r.get('alumnos')
             al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
             if al:
-                alumnos.append({'insc_id': r['id'], 'nombre': al.get('nombre',''), 'apellido': al.get('apellido','')})
+                alumnos.append({'insc_id': r['id'], 'nombre': al.get('nombre',''), 'apellido': al.get('apellido',''), 'email': al.get('email','') or ''})
                 res_n = supabase.table("notas").select("calificacion").eq("inscripcion_id", r['id']).order("created_at").execute()
                 notas_dict[r['id']] = [float(n['calificacion']) for n in (res_n.data or [])]
     except: pass
@@ -433,7 +434,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v277</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v278</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -463,7 +464,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v277</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v278</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -618,7 +619,7 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                         if curso_sel != "---":
                             res_cur_data = supabase.table("inscripciones").select("nota_aprobacion").eq("nombre_curso_materia", curso_sel).is_("alumno_id", "null").limit(1).execute()
                             nota_ap_admin = res_cur_data.data[0].get('nota_aprobacion') if res_cur_data.data else None
-                            res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido)").eq("nombre_curso_materia", curso_sel).not_.is_("alumno_id", "null").execute()
+                            res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("nombre_curso_materia", curso_sel).not_.is_("alumno_id", "null").execute()
                             if res_al.data:
                                 for r in res_al.data:
                                     al_raw = r.get('alumnos')
@@ -638,7 +639,8 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                             promedio = round(sum(valores)/len(valores), 2)
                                             promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {color_nota(promedio)}">{promedio}</span></div>'
                                             estado_html = estado_aprobacion(promedio, nota_ap_admin)
-                                        st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} {estado_html if valores else ""}</div>{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
+                                        email_html = f'<div class="email-tag">✉️ {al.get("email","")}</div>' if al.get("email") else ""
+                                        st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} {estado_html if valores else ""}</div>{email_html}{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
                             else:
                                 no_encontrado("No hay alumnos inscriptos en este curso.")
                     else:
@@ -727,8 +729,6 @@ else:
                 hi = str(curso_sel_data.get('hora_inicio', '') or '')[:5]
                 hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
                 if hi and hf: st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
-
-                # --- TAREAS PENDIENTES NUEVAS (tarea1/2/3) ---
                 try:
                     res_tareas_pend = supabase.table("bitacora").select(
                         "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
@@ -756,19 +756,15 @@ else:
                                     marcar_tarea(tp['bit_id'], tp['num'], True)
                 except Exception as e:
                     st.error(f"Error al cargar tareas: {e}")
-
-                # --- TAREA LEGACY (tarea_proxima) CON TOGGLE ---
                 try:
                     res_t = supabase.table("bitacora").select(
                         "id, tarea_proxima, fecha, tarea_proxima_completada"
                     ).eq("inscripcion_id", inscripcion_id).not_.is_("tarea_proxima", "null").order("fecha", desc=True).limit(1).execute()
-
                     if res_t.data:
                         reg_legacy = res_t.data[0]
                         tarea_txt = reg_legacy.get('tarea_proxima', '')
                         tarea_fecha = reg_legacy.get('fecha', '')
                         completada_legacy = reg_legacy.get('tarea_proxima_completada', False)
-
                         if tarea_txt:
                             if not completada_legacy:
                                 st.markdown(f'''<div class="tarea-alerta">
@@ -786,7 +782,6 @@ else:
                                     marcar_tarea_proxima(reg_legacy['id'], False)
                 except Exception as e:
                     st.error(f"Error al cargar tarea legacy: {e}")
-
                 st.subheader("📋 Historial de Clases")
                 try:
                     res_hist = supabase.table("bitacora").select("*").eq("inscripcion_id", inscripcion_id).order("fecha", desc=True).limit(10).execute()
@@ -870,7 +865,6 @@ else:
                                         st.error(f"Error: {e}")
                 else:
                     no_encontrado("No hay clases registradas para este curso aún.")
-
                 st.subheader("📝 Registrar Clase de Hoy")
                 try:
                     res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(f_hoy)).execute()
@@ -1001,19 +995,23 @@ else:
                 no_encontrado("Primero creá un curso en la pestaña 🏗️ Cursos.")
             else:
                 with st.form("new_al"):
-                    n = st.text_input("Nombre"); a = st.text_input("Apellido")
-                    c_sel = st.selectbox("Asignar a:", list(mapa_cursos.keys()))
+                    n = st.text_input("Nombre *")
+                    a = st.text_input("Apellido *")
+                    e = st.text_input("Email (opcional)", placeholder="alumno@mail.com")
+                    c_sel = st.selectbox("Asignar a curso:", list(mapa_cursos.keys()))
                     if st.form_submit_button("💾 REGISTRAR"):
                         if not n.strip() or not a.strip():
                             st.error("Nombre y Apellido son obligatorios.")
                         else:
                             try:
-                                ra = supabase.table("alumnos").insert({"nombre": n.strip(), "apellido": a.strip()}).execute()
+                                datos_alumno = {"nombre": n.strip(), "apellido": a.strip()}
+                                if e.strip(): datos_alumno["email"] = e.strip()
+                                ra = supabase.table("alumnos").insert(datos_alumno).execute()
                                 if ra.data:
                                     supabase.table("inscripciones").insert({"alumno_id": ra.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": c_sel, "anio_lectivo": 2026}).execute()
                                     st.success(f"Alumno {a.upper()}, {n} registrado en {c_sel}."); st.rerun()
-                            except Exception as e:
-                                st.error(f"Error: {e}")
+                            except Exception as e_err:
+                                st.error(f"Error: {e_err}")
         else:
             if not mapa_cursos:
                 no_encontrado("No hay cursos creados.")
@@ -1024,7 +1022,7 @@ else:
                 st.session_state.busq_alumno_val = busqueda
                 if c_v != "---":
                     try:
-                        res_al = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
+                        res_al = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
                         alumnos_filtrados = []
                         for r in res_al.data:
                             al_raw = r.get('alumnos')
@@ -1041,18 +1039,21 @@ else:
                                     with st.form(f"edit_al_{r['id']}"):
                                         n_edit = st.text_input("Nombre:", value=al.get('nombre', ''))
                                         a_edit = st.text_input("Apellido:", value=al.get('apellido', ''))
+                                        e_edit = st.text_input("Email (opcional):", value=al.get('email', '') or '', placeholder="alumno@mail.com")
                                         col_a1, col_a2 = st.columns(2)
                                         if col_a1.form_submit_button("💾 Guardar"):
                                             try:
-                                                supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip()}).eq("id", al['id']).execute()
+                                                datos_upd = {"nombre": n_edit.strip(), "apellido": a_edit.strip(), "email": e_edit.strip() if e_edit.strip() else None}
+                                                supabase.table("alumnos").update(datos_upd).eq("id", al['id']).execute()
                                                 st.session_state.editando_alumno = None
                                                 st.success("Alumno actualizado."); st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Error: {e}")
+                                            except Exception as e_err:
+                                                st.error(f"Error: {e_err}")
                                         if col_a2.form_submit_button("❌ Cancelar"):
                                             st.session_state.editando_alumno = None; st.rerun()
                                 else:
-                                    st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>', unsafe_allow_html=True)
+                                    email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
+                                    st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</div>', unsafe_allow_html=True)
                                     ab1, ab2 = st.columns(2)
                                     if ab1.button("✏️ Editar", key=f"eal_{r['id']}"):
                                         st.session_state.editando_alumno = r['id']; st.rerun()
@@ -1060,8 +1061,8 @@ else:
                                         try:
                                             supabase.table("inscripciones").delete().eq("id", r['id']).execute()
                                             st.success("Alumno eliminado del curso."); st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Error: {e}")
+                                        except Exception as e_err:
+                                            st.error(f"Error: {e_err}")
                     except Exception as e:
                         st.error(f"Error al cargar alumnos: {e}")
 
@@ -1086,7 +1087,7 @@ else:
                     nota_aprobacion = curso_data.get('nota_aprobacion')
                     if nota_aprobacion: st.caption(f"Nota de aprobación del curso: {nota_aprobacion}")
                     try:
-                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
                         if not res_al_v.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -1116,8 +1117,9 @@ else:
                                         if filtro_estado == "❌ Desaprobados" and es_aprobado: continue
                                         promedio_html = f'<div class="promedio-linea"><span>Promedio</span><span class="nota-badge {color_nota(promedio)}">{promedio}</span></div>'
                                         estado_html = estado_aprobacion(promedio, nota_aprobacion)
+                                    email_html = f'<div class="email-tag">✉️ {al.get("email","")}</div>' if al.get("email") else ""
                                     mostrados += 1
-                                    st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} &nbsp; {estado_html if valores else ""}</div>{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
+                                    st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} &nbsp; {estado_html if valores else ""}</div>{email_html}{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
                             if mostrados == 0:
                                 no_encontrado(f"No se encontró ningún alumno con '{busq_nota}'." if busq_nota.strip() else "No hay alumnos que coincidan con el filtro.")
                             else:
@@ -1131,7 +1133,7 @@ else:
                 st.session_state.busq_carga_val = busq_carga
                 if c_nt != "---":
                     try:
-                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
+                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
                         if not res_al_n.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -1146,7 +1148,8 @@ else:
                                         res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas_existentes = res_notas.data if res_notas.data else []
                                     except: notas_existentes = []
-                                    st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}</div>', unsafe_allow_html=True)
+                                    email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
+                                    st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</div>', unsafe_allow_html=True)
                                     if notas_existentes:
                                         for i, nt in enumerate(notas_existentes):
                                             fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
@@ -1157,8 +1160,8 @@ else:
                                             try:
                                                 supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
                                                 st.success(f"Nota {nueva_nota} agregada."); st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Error: {e}")
+                                            except Exception as e_err:
+                                                st.error(f"Error: {e_err}")
                             if mostrados_carga == 0:
                                 no_encontrado(f"No se encontró ningún alumno con '{busq_carga}'." if busq_carga.strip() else "No hay alumnos inscriptos.")
                     except Exception as e:
