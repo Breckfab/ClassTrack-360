@@ -13,7 +13,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v278", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v279", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -104,6 +104,12 @@ st.markdown("""
     .tareas-pendientes-header { color: #ffc107; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; }
     .registro-link { text-align: center; margin-top: 16px; font-size: 0.78rem; color: #4a5568; }
     .email-tag { color: #4facfe; font-size: 0.78rem; margin-top: 2px; }
+    .calendario-box { background: rgba(79,172,254,0.06); border: 1px solid rgba(79,172,254,0.2); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+    .calendario-box .cal-header { color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
+    .calendario-box .cal-fechas { color: #e8eaf0; font-size: 0.9rem; }
+    .calendario-box .cal-dias { color: #778; font-size: 0.78rem; margin-top: 4px; }
+    .cronograma-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
+    .cronograma-titulo { color: #4facfe; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -167,6 +173,74 @@ def render_calendario(mes, anio):
         filas += f"<tr>{fila}</tr>"
     return f"""<div class="cal-box"><div class="cal-titulo">{MESES_ES[mes-1]} {anio}</div>
     <table class="cal-tabla"><tr><th>Lu</th><th>Ma</th><th>Mi</th><th>Ju</th><th>Vi</th><th>Sa</th><th>Do</th></tr>{filas}</table></div>"""
+
+def get_calendario_sede(sede):
+    try:
+        res = supabase.table("calendario_sede").select("*").eq("sede", sede).execute()
+        return res.data[0] if res.data else None
+    except: return None
+
+def upsert_calendario_sede(sede, fecha_inicio, fecha_fin):
+    try:
+        existing = get_calendario_sede(sede)
+        if existing:
+            supabase.table("calendario_sede").update({
+                "fecha_inicio": str(fecha_inicio) if fecha_inicio else None,
+                "fecha_fin": str(fecha_fin) if fecha_fin else None,
+                "updated_at": datetime.datetime.now().isoformat()
+            }).eq("sede", sede).execute()
+        else:
+            supabase.table("calendario_sede").insert({
+                "sede": sede,
+                "fecha_inicio": str(fecha_inicio) if fecha_inicio else None,
+                "fecha_fin": str(fecha_fin) if fecha_fin else None,
+            }).execute()
+        return True
+    except Exception as e:
+        st.error(f"Error guardando calendario: {e}")
+        return False
+
+def subir_cronograma(sede, cuatrimestre, archivo):
+    try:
+        ext = archivo.name.split('.')[-1].lower()
+        path = f"{sede}/cronograma_{cuatrimestre}c.{ext}"
+        data = archivo.read()
+        try:
+            supabase.storage.from_("cronogramas").remove([path])
+        except: pass
+        supabase.storage.from_("cronogramas").upload(path, data, {"content-type": archivo.type, "upsert": "true"})
+        url = supabase.storage.from_("cronogramas").get_public_url(path)
+        existing = get_calendario_sede(sede)
+        campo_url = f"cronograma_{cuatrimestre}c_url"
+        campo_nombre = f"cronograma_{cuatrimestre}c_nombre"
+        if existing:
+            supabase.table("calendario_sede").update({
+                campo_url: url,
+                campo_nombre: archivo.name,
+                "updated_at": datetime.datetime.now().isoformat()
+            }).eq("sede", sede).execute()
+        else:
+            supabase.table("calendario_sede").insert({
+                "sede": sede,
+                campo_url: url,
+                campo_nombre: archivo.name,
+            }).execute()
+        return url
+    except Exception as e:
+        st.error(f"Error subiendo cronograma: {e}")
+        return None
+
+def render_cronograma_visor(url, nombre, titulo):
+    if not url: return
+    ext = nombre.split('.')[-1].lower() if nombre else ''
+    st.markdown(f'<div class="cronograma-box"><div class="cronograma-titulo">📅 {titulo}</div>', unsafe_allow_html=True)
+    if ext in ['jpg', 'jpeg', 'png', 'gif', 'webp']:
+        st.image(url, use_container_width=True)
+    elif ext == 'pdf':
+        components.html(f'<iframe src="{url}" width="100%" height="600px" style="border:none;border-radius:8px;"></iframe>', height=620)
+    else:
+        st.markdown(f'⚠️ Este formato ({ext.upper()}) no se puede previsualizar. <a href="{url}" target="_blank" style="color:#4facfe;">Descargar archivo</a>', unsafe_allow_html=True)
+    st.markdown('</div>', unsafe_allow_html=True)
 
 def reset_completo_sede(sede_nombre):
     try:
@@ -378,6 +452,51 @@ def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id):
     except: pass
     return {'alumnos': alumnos, 'notas': notas_dict, 'historial': historial}
 
+def render_seccion_calendario(sede, es_admin=False):
+    cal = get_calendario_sede(sede)
+    fecha_inicio = datetime.date.fromisoformat(cal['fecha_inicio']) if cal and cal.get('fecha_inicio') else None
+    fecha_fin = datetime.date.fromisoformat(cal['fecha_fin']) if cal and cal.get('fecha_fin') else None
+    if fecha_inicio and fecha_fin:
+        hoy = datetime.date.today()
+        total_dias = (fecha_fin - fecha_inicio).days
+        dias_transcurridos = max(0, (hoy - fecha_inicio).days)
+        dias_restantes = max(0, (fecha_fin - hoy).days)
+        st.markdown(f'''<div class="calendario-box">
+            <div class="cal-header">📆 Año Lectivo {fecha_inicio.year}</div>
+            <div class="cal-fechas">🟢 Inicio: <b>{fecha_inicio.strftime("%d/%m/%Y")}</b> &nbsp;·&nbsp; 🔴 Fin: <b>{fecha_fin.strftime("%d/%m/%Y")}</b></div>
+            <div class="cal-dias">Total: {total_dias} días · Transcurridos: {dias_transcurridos} · Restantes: {dias_restantes}</div>
+        </div>''', unsafe_allow_html=True)
+    else:
+        st.markdown('<div class="calendario-box"><div class="cal-header">📆 Año Lectivo</div><div class="cal-fechas" style="color:#556">Sin fechas configuradas aún.</div></div>', unsafe_allow_html=True)
+    if cal:
+        url_1c = cal.get('cronograma_1c_url')
+        nombre_1c = cal.get('cronograma_1c_nombre')
+        url_2c = cal.get('cronograma_2c_url')
+        nombre_2c = cal.get('cronograma_2c_nombre')
+        if url_1c: render_cronograma_visor(url_1c, nombre_1c, "Cronograma 1° Cuatrimestre")
+        if url_2c: render_cronograma_visor(url_2c, nombre_2c, "Cronograma 2° Cuatrimestre")
+    with st.expander("✏️ Editar calendario y cronogramas", expanded=not fecha_inicio):
+        with st.form(f"cal_form_{sede}"):
+            col1, col2 = st.columns(2)
+            fi = col1.date_input("Fecha de inicio del año lectivo:",
+                value=fecha_inicio if fecha_inicio else datetime.date(datetime.date.today().year, 3, 1))
+            ff = col2.date_input("Fecha de fin del año lectivo:",
+                value=fecha_fin if fecha_fin else datetime.date(datetime.date.today().year, 11, 30))
+            st.markdown("**📁 Subir cronograma 1° Cuatrimestre** (PDF, JPG, PNG, Excel, Word)")
+            arch_1c = st.file_uploader("Cronograma 1C:", type=['pdf','jpg','jpeg','png','gif','webp','xlsx','xls','docx','doc'], key=f"arch1c_{sede}")
+            st.markdown("**📁 Subir cronograma 2° Cuatrimestre** (PDF, JPG, PNG, Excel, Word)")
+            arch_2c = st.file_uploader("Cronograma 2C:", type=['pdf','jpg','jpeg','png','gif','webp','xlsx','xls','docx','doc'], key=f"arch2c_{sede}")
+            if st.form_submit_button("💾 Guardar", use_container_width=True):
+                if fi >= ff:
+                    st.error("La fecha de inicio debe ser anterior a la fecha de fin.")
+                else:
+                    ok = upsert_calendario_sede(sede, fi, ff)
+                    if ok:
+                        if arch_1c: subir_cronograma(sede, 1, arch_1c)
+                        if arch_2c: subir_cronograma(sede, 2, arch_2c)
+                        st.success("✅ Calendario actualizado correctamente.")
+                        st.rerun()
+
 # =========================================================
 # --- LOGIN Y REGISTRO ---
 # =========================================================
@@ -434,7 +553,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v278</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v279</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -464,7 +583,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v278</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v279</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -498,7 +617,7 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
     st.title("ClassTrack 360 · Admin")
     footer()
 
-    admin_tabs = st.tabs(["👥 Profesores", "🔑 Códigos de Invitación", "📊 Resumen", "📝 Notas", "🗑️ Reset de Datos"])
+    admin_tabs = st.tabs(["👥 Profesores", "🔑 Códigos de Invitación", "📊 Resumen", "📝 Notas", "📆 Calendarios", "🗑️ Reset de Datos"])
 
     with admin_tabs[0]:
         st.subheader("👥 Gestión de Profesores")
@@ -649,6 +768,17 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                 st.error(f"Error: {e}")
 
     with admin_tabs[4]:
+        st.subheader("📆 Calendarios por Sede")
+        sedes_cal = sedes_disponibles if not st.session_state.sede_admin else [st.session_state.sede_admin]
+        if not sedes_cal:
+            no_encontrado("No hay sedes registradas.")
+        elif st.session_state.sede_admin:
+            render_seccion_calendario(st.session_state.sede_admin, es_admin=True)
+        else:
+            sede_cal_sel = st.selectbox("Seleccionar sede:", sedes_cal, key="admin_cal_sede")
+            render_seccion_calendario(sede_cal_sel, es_admin=True)
+
+    with admin_tabs[5]:
         st.subheader("🗑️ Reset de Datos")
         st.markdown('<div class="reset-box"><div class="reset-titulo">⚠️ Zona de Peligro</div>Esta acción borrará TODOS los datos de la sede seleccionada. El usuario NO será eliminado.</div>', unsafe_allow_html=True)
         st.markdown("---")
@@ -685,6 +815,12 @@ else:
             st.markdown(f'<div class="stat-card">Total Alumnos 2026: <b>{len(res_total.data)}</b></div>', unsafe_allow_html=True)
         except:
             st.markdown('<div class="stat-card">Total Alumnos 2026: <b>-</b></div>', unsafe_allow_html=True)
+        cal_sede = get_calendario_sede(u_data['sede'])
+        if cal_sede and cal_sede.get('fecha_inicio') and cal_sede.get('fecha_fin'):
+            fi_s = datetime.date.fromisoformat(cal_sede['fecha_inicio'])
+            ff_s = datetime.date.fromisoformat(cal_sede['fecha_fin'])
+            dias_r = max(0, (ff_s - f_hoy).days)
+            st.markdown(f'<div class="stat-card" style="font-size:0.72rem;">📆 Año lectivo<br><b>{fi_s.strftime("%d/%m")}</b> → <b>{ff_s.strftime("%d/%m")}</b><br>{dias_r} días restantes</div>', unsafe_allow_html=True)
         st.markdown("---")
         col_prev, col_next = st.columns(2)
         if col_prev.button("◀", key="cal_prev"):
@@ -715,7 +851,7 @@ else:
     except Exception as e:
         st.error(f"Error al cargar cursos: {e}")
 
-    tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "📝 Notas", "🏗️ Cursos", "🖨️ Impresión"])
+    tabs = st.tabs(["📅 Agenda", "👥 Alumnos", "📝 Notas", "🏗️ Cursos", "📆 Calendario", "🖨️ Impresión"])
 
     with tabs[0]:
         if not mapa_cursos:
@@ -1271,6 +1407,10 @@ else:
                                     st.error(f"Error: {e}")
 
     with tabs[4]:
+        st.subheader("📆 Calendario del Año Lectivo")
+        render_seccion_calendario(u_data['sede'])
+
+    with tabs[5]:
         st.subheader("🖨️ Impresión y Exportación")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
