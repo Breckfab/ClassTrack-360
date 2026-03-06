@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v281
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v281 (corregida)
 # ============================================================
 
 import streamlit as st
@@ -35,7 +35,7 @@ def init_state():
         'busq_alumno_val': '', 'busq_nota_val': '', 'filtro_estado_val': 'Todos',
         'busq_carga_val': '', 'busq_contenido_hist_val': '', 'tipo_prof_val': 'Todos',
         'pantalla_login': 'login',
-        'editando_tarea': None,  # v281: key = f"{bit_id}_{num_tarea}"
+        'editando_tarea': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -164,7 +164,6 @@ def marcar_tarea_proxima(bit_id, completada):
     except Exception as e:
         st.error(f"Error: {e}")
 
-# v281: función para editar texto y fecha de una tarea individual
 def guardar_edicion_tarea(bit_id, num_tarea, nuevo_texto, nueva_fecha):
     try:
         supabase.table("bitacora").update({
@@ -909,7 +908,6 @@ else:
                             fecha_fmt = datetime.date.fromisoformat(tp['fecha']).strftime('%d/%m/%Y') if tp['fecha'] else "-"
                             clase_fmt = datetime.date.fromisoformat(tp['clase_fecha']).strftime('%d/%m/%Y') if tp['clase_fecha'] else "-"
                             key_edit = f"{tp['bit_id']}_{tp['num']}"
-                            # v281: modo edición inline de tarea pendiente
                             if st.session_state.editando_tarea == key_edit:
                                 with st.form(f"edit_tarea_{key_edit}"):
                                     st.markdown(f"**✏️ Editando Tarea {tp['num']} · Clase del {clase_fmt}**")
@@ -934,7 +932,6 @@ else:
                                         marcar_tarea(tp['bit_id'], tp['num'], True)
                                 with col_b2:
                                     st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                                    # v281: botón editar tarea pendiente
                                     if st.button("✏️ Editar", key=f"edit_tp_{tp['bit_id']}_{tp['num']}"):
                                         st.session_state.editando_tarea = key_edit; st.rerun()
                 except Exception as e:
@@ -1035,7 +1032,6 @@ else:
                                             if st.button("↩️ Desmarcar", key=f"descomp_{reg['id']}_{i}"):
                                                 marcar_tarea(reg['id'], i, False)
                                         else:
-                                            # v281: edición inline desde historial
                                             if st.session_state.editando_tarea == key_edit_hist:
                                                 with st.form(f"edit_tarea_hist_{key_edit_hist}"):
                                                     st.markdown(f"**✏️ Editando Tarea {i}**")
@@ -1052,7 +1048,6 @@ else:
                                                     <div class="tarea-texto">{txt}</div>
                                                     <div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha_t).strftime("%d/%m/%Y") if fecha_t else "-"}</div>
                                                 </div>''', unsafe_allow_html=True)
-                                                # v281: botón editar tarea en historial
                                                 if st.button(f"✏️ Editar tarea {i}", key=f"edit_th_{reg['id']}_{i}"):
                                                     st.session_state.editando_tarea = key_edit_hist; st.rerun()
                                 col_b1, col_b2 = st.columns([1, 5])
