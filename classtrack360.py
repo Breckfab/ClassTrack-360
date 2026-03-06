@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v280
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v281
 # ============================================================
 
 import streamlit as st
@@ -17,7 +17,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v280", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v281", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -35,6 +35,7 @@ def init_state():
         'busq_alumno_val': '', 'busq_nota_val': '', 'filtro_estado_val': 'Todos',
         'busq_carga_val': '', 'busq_contenido_hist_val': '', 'tipo_prof_val': 'Todos',
         'pantalla_login': 'login',
+        'editando_tarea': None,  # v281: key = f"{bit_id}_{num_tarea}"
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -159,6 +160,18 @@ def marcar_tarea(bit_id, num_tarea, completada):
 def marcar_tarea_proxima(bit_id, completada):
     try:
         supabase.table("bitacora").update({"tarea_proxima_completada": completada}).eq("id", bit_id).execute()
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+# v281: función para editar texto y fecha de una tarea individual
+def guardar_edicion_tarea(bit_id, num_tarea, nuevo_texto, nueva_fecha):
+    try:
+        supabase.table("bitacora").update({
+            f"tarea{num_tarea}": nuevo_texto.strip() or None,
+            f"tarea{num_tarea}_fecha": str(nueva_fecha) if nuevo_texto.strip() else None,
+        }).eq("id", bit_id).execute()
+        st.session_state.editando_tarea = None
         st.rerun()
     except Exception as e:
         st.error(f"Error: {e}")
@@ -564,7 +577,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v280</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v281</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -594,7 +607,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v280</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v281</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -755,7 +768,6 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                     al_raw = r.get('alumnos')
                                     al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                     if al:
-                                        # v280: traemos id de cada nota para poder borrarla
                                         res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas = res_notas.data if res_notas.data else []
                                         filas_html = ""; valores = []
@@ -877,6 +889,8 @@ else:
                 hi = str(curso_sel_data.get('hora_inicio', '') or '')[:5]
                 hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
                 if hi and hf: st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
+
+                # --- TAREAS PENDIENTES ---
                 try:
                     res_tareas_pend = supabase.table("bitacora").select(
                         "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
@@ -894,16 +908,38 @@ else:
                         for tp in tareas_pendientes:
                             fecha_fmt = datetime.date.fromisoformat(tp['fecha']).strftime('%d/%m/%Y') if tp['fecha'] else "-"
                             clase_fmt = datetime.date.fromisoformat(tp['clase_fecha']).strftime('%d/%m/%Y') if tp['clase_fecha'] else "-"
-                            col_t, col_b = st.columns([5, 1])
-                            with col_t:
-                                st.markdown(f'''<div class="tarea-card"><div class="tarea-titulo">Tarea {tp["num"]} · Clase del {clase_fmt}</div>
-                                    <div class="tarea-texto">{tp["texto"]}</div><div class="tarea-fecha">📅 Entrega: {fecha_fmt}</div></div>''', unsafe_allow_html=True)
-                            with col_b:
-                                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
-                                if st.button("✅ Hecha", key=f"comp_{tp['bit_id']}_{tp['num']}"):
-                                    marcar_tarea(tp['bit_id'], tp['num'], True)
+                            key_edit = f"{tp['bit_id']}_{tp['num']}"
+                            # v281: modo edición inline de tarea pendiente
+                            if st.session_state.editando_tarea == key_edit:
+                                with st.form(f"edit_tarea_{key_edit}"):
+                                    st.markdown(f"**✏️ Editando Tarea {tp['num']} · Clase del {clase_fmt}**")
+                                    nuevo_texto = st.text_area("Descripción:", value=tp['texto'], key=f"et_txt_{key_edit}")
+                                    nueva_fecha = st.date_input("Fecha de entrega:", value=datetime.date.fromisoformat(tp['fecha']) if tp['fecha'] else f_hoy, key=f"et_fch_{key_edit}")
+                                    col_g, col_c = st.columns(2)
+                                    if col_g.form_submit_button("💾 Guardar"):
+                                        guardar_edicion_tarea(tp['bit_id'], tp['num'], nuevo_texto, nueva_fecha)
+                                    if col_c.form_submit_button("❌ Cancelar"):
+                                        st.session_state.editando_tarea = None; st.rerun()
+                            else:
+                                col_t, col_b1, col_b2 = st.columns([5, 1, 1])
+                                with col_t:
+                                    st.markdown(f'''<div class="tarea-card">
+                                        <div class="tarea-titulo">Tarea {tp["num"]} · Clase del {clase_fmt}</div>
+                                        <div class="tarea-texto">{tp["texto"]}</div>
+                                        <div class="tarea-fecha">📅 Entrega: {fecha_fmt}</div>
+                                    </div>''', unsafe_allow_html=True)
+                                with col_b1:
+                                    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                                    if st.button("✅ Hecha", key=f"comp_{tp['bit_id']}_{tp['num']}"):
+                                        marcar_tarea(tp['bit_id'], tp['num'], True)
+                                with col_b2:
+                                    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                                    # v281: botón editar tarea pendiente
+                                    if st.button("✏️ Editar", key=f"edit_tp_{tp['bit_id']}_{tp['num']}"):
+                                        st.session_state.editando_tarea = key_edit; st.rerun()
                 except Exception as e:
                     st.error(f"Error al cargar tareas: {e}")
+
                 try:
                     res_t = supabase.table("bitacora").select(
                         "id, tarea_proxima, fecha, tarea_proxima_completada"
@@ -930,6 +966,7 @@ else:
                                     marcar_tarea_proxima(reg_legacy['id'], False)
                 except Exception as e:
                     st.error(f"Error al cargar tarea legacy: {e}")
+
                 st.subheader("📋 Historial de Clases")
                 try:
                     res_hist = supabase.table("bitacora").select("*").eq("inscripcion_id", inscripcion_id).order("fecha", desc=True).limit(10).execute()
@@ -988,6 +1025,7 @@ else:
                                     fecha_t = reg.get(f'tarea{i}_fecha')
                                     completada = reg.get(f'tarea{i}_completada', False)
                                     if txt:
+                                        key_edit_hist = f"{reg['id']}_{i}"
                                         if completada:
                                             st.markdown(f'''<div class="tarea-card-done">
                                                 <div class="tarea-titulo">✅ Tarea {i} — COMPLETADA</div>
@@ -997,11 +1035,26 @@ else:
                                             if st.button("↩️ Desmarcar", key=f"descomp_{reg['id']}_{i}"):
                                                 marcar_tarea(reg['id'], i, False)
                                         else:
-                                            st.markdown(f'''<div class="tarea-card">
-                                                <div class="tarea-titulo">Tarea {i}</div>
-                                                <div class="tarea-texto">{txt}</div>
-                                                <div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha_t).strftime("%d/%m/%Y") if fecha_t else "-"}</div>
-                                            </div>''', unsafe_allow_html=True)
+                                            # v281: edición inline desde historial
+                                            if st.session_state.editando_tarea == key_edit_hist:
+                                                with st.form(f"edit_tarea_hist_{key_edit_hist}"):
+                                                    st.markdown(f"**✏️ Editando Tarea {i}**")
+                                                    nuevo_texto_h = st.text_area("Descripción:", value=txt, key=f"eth_txt_{key_edit_hist}")
+                                                    nueva_fecha_h = st.date_input("Fecha de entrega:", value=datetime.date.fromisoformat(fecha_t) if fecha_t else f_hoy, key=f"eth_fch_{key_edit_hist}")
+                                                    col_gh, col_ch = st.columns(2)
+                                                    if col_gh.form_submit_button("💾 Guardar"):
+                                                        guardar_edicion_tarea(reg['id'], i, nuevo_texto_h, nueva_fecha_h)
+                                                    if col_ch.form_submit_button("❌ Cancelar"):
+                                                        st.session_state.editando_tarea = None; st.rerun()
+                                            else:
+                                                st.markdown(f'''<div class="tarea-card">
+                                                    <div class="tarea-titulo">Tarea {i}</div>
+                                                    <div class="tarea-texto">{txt}</div>
+                                                    <div class="tarea-fecha">📅 {datetime.date.fromisoformat(fecha_t).strftime("%d/%m/%Y") if fecha_t else "-"}</div>
+                                                </div>''', unsafe_allow_html=True)
+                                                # v281: botón editar tarea en historial
+                                                if st.button(f"✏️ Editar tarea {i}", key=f"edit_th_{reg['id']}_{i}"):
+                                                    st.session_state.editando_tarea = key_edit_hist; st.rerun()
                                 col_b1, col_b2 = st.columns([1, 5])
                                 if col_b1.button("✏️ Editar", key=f"edit_b_{reg['id']}"):
                                     st.session_state.editando_bitacora = reg['id']; st.rerun()
@@ -1013,6 +1066,7 @@ else:
                                         st.error(f"Error: {e}")
                 else:
                     no_encontrado("No hay clases registradas para este curso aún.")
+
                 st.subheader("📝 Registrar Clase de Hoy")
                 try:
                     res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(f_hoy)).execute()
@@ -1246,7 +1300,6 @@ else:
                                 if al:
                                     if busq_nota.strip() and busq_nota.lower() not in al.get('nombre','').lower() and busq_nota.lower() not in al.get('apellido','').lower(): continue
                                     try:
-                                        # v280: traemos id para poder borrar nota individual
                                         res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas = res_notas.data if res_notas.data else []
                                     except: notas = []
@@ -1269,7 +1322,6 @@ else:
                                     email_html = f'<div class="email-tag">✉️ {al.get("email","")}</div>' if al.get("email") else ""
                                     mostrados += 1
                                     st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} &nbsp; {estado_html if valores else ""}</div>{email_html}{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
-                                    # v280: botones para borrar cada nota individual
                                     if notas:
                                         for i, nt in enumerate(notas):
                                             col_n, col_d = st.columns([6, 1])
@@ -1313,7 +1365,6 @@ else:
                                     if busq_carga.strip() and busq_carga.lower() not in al.get('nombre','').lower() and busq_carga.lower() not in al.get('apellido','').lower(): continue
                                     mostrados_carga += 1
                                     try:
-                                        # v280: traemos id para poder borrar nota individual
                                         res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas_existentes = res_notas.data if res_notas.data else []
                                     except: notas_existentes = []
@@ -1496,5 +1547,5 @@ else:
             st.caption("💡 El PDF es ideal para enviar por mail. La opción Imprimir abre el diálogo del navegador directamente.")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v280 completa ✅
+# FIN PARTE 2 DE 2 — v281 completa ✅
 # ============================================================
