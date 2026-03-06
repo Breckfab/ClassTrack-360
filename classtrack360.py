@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v281 (corregida)
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v282
 # ============================================================
 
 import streamlit as st
@@ -17,7 +17,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v281", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v282", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -36,6 +36,7 @@ def init_state():
         'busq_carga_val': '', 'busq_contenido_hist_val': '', 'tipo_prof_val': 'Todos',
         'pantalla_login': 'login',
         'editando_tarea': None,
+        'editando_tarea_legacy': None,  # v282: para editar tarea legacy
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -171,6 +172,17 @@ def guardar_edicion_tarea(bit_id, num_tarea, nuevo_texto, nueva_fecha):
             f"tarea{num_tarea}_fecha": str(nueva_fecha) if nuevo_texto.strip() else None,
         }).eq("id", bit_id).execute()
         st.session_state.editando_tarea = None
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+# v282: guardar edición de tarea legacy
+def guardar_edicion_tarea_legacy(bit_id, nuevo_texto):
+    try:
+        supabase.table("bitacora").update({
+            "tarea_proxima": nuevo_texto.strip() or None,
+        }).eq("id", bit_id).execute()
+        st.session_state.editando_tarea_legacy = None
         st.rerun()
     except Exception as e:
         st.error(f"Error: {e}")
@@ -576,7 +588,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v281</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v282</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -606,7 +618,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v281</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v282</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -889,7 +901,7 @@ else:
                 hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
                 if hi and hf: st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
 
-                # --- TAREAS PENDIENTES ---
+                # --- TAREAS PENDIENTES (sistema nuevo tarea1/2/3) ---
                 try:
                     res_tareas_pend = supabase.table("bitacora").select(
                         "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
@@ -937,6 +949,7 @@ else:
                 except Exception as e:
                     st.error(f"Error al cargar tareas: {e}")
 
+                # --- TAREA LEGACY (tarea_proxima) ---
                 try:
                     res_t = supabase.table("bitacora").select(
                         "id, tarea_proxima, fecha, tarea_proxima_completada"
@@ -948,12 +961,27 @@ else:
                         completada_legacy = reg_legacy.get('tarea_proxima_completada', False)
                         if tarea_txt:
                             if not completada_legacy:
-                                st.markdown(f'''<div class="tarea-alerta">
-                                    🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({tarea_fecha})<br>
-                                    <div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1rem;">{tarea_txt}</div>
-                                </div>''', unsafe_allow_html=True)
-                                if st.button("✅ Marcar como hecha", key=f"legacy_done_{reg_legacy['id']}"):
-                                    marcar_tarea_proxima(reg_legacy['id'], True)
+                                # v282: si está en modo edición legacy
+                                if st.session_state.editando_tarea_legacy == reg_legacy['id']:
+                                    with st.form(f"edit_legacy_{reg_legacy['id']}"):
+                                        st.markdown(f"**✏️ Editando tarea de la clase del {tarea_fecha}**")
+                                        nuevo_txt_legacy = st.text_area("Descripción:", value=tarea_txt, key=f"etl_txt_{reg_legacy['id']}")
+                                        col_gl, col_cl = st.columns(2)
+                                        if col_gl.form_submit_button("💾 Guardar"):
+                                            guardar_edicion_tarea_legacy(reg_legacy['id'], nuevo_txt_legacy)
+                                        if col_cl.form_submit_button("❌ Cancelar"):
+                                            st.session_state.editando_tarea_legacy = None; st.rerun()
+                                else:
+                                    st.markdown(f'''<div class="tarea-alerta">
+                                        🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({tarea_fecha})<br>
+                                        <div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1rem;">{tarea_txt}</div>
+                                    </div>''', unsafe_allow_html=True)
+                                    col_l1, col_l2 = st.columns(2)
+                                    if col_l1.button("✅ Marcar como hecha", key=f"legacy_done_{reg_legacy['id']}"):
+                                        marcar_tarea_proxima(reg_legacy['id'], True)
+                                    # v282: botón editar tarea legacy
+                                    if col_l2.button("✏️ Editar tarea", key=f"legacy_edit_{reg_legacy['id']}"):
+                                        st.session_state.editando_tarea_legacy = reg_legacy['id']; st.rerun()
                             else:
                                 st.markdown(f'''<div class="tarea-alerta-done">
                                     ✅ TAREA COMPLETADA · Clase del {tarea_fecha}
@@ -1542,5 +1570,5 @@ else:
             st.caption("💡 El PDF es ideal para enviar por mail. La opción Imprimir abre el diálogo del navegador directamente.")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v281 completa ✅
+# FIN PARTE 2 DE 2 — v282 completa ✅
 # ============================================================
