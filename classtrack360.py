@@ -1,3 +1,7 @@
+# ============================================================
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v280
+# ============================================================
+
 import streamlit as st
 from supabase import create_client
 import datetime
@@ -13,7 +17,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v279", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v280", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -497,6 +501,13 @@ def render_seccion_calendario(sede, es_admin=False):
                         st.success("✅ Calendario actualizado correctamente.")
                         st.rerun()
 
+# ============================================================
+# FIN PARTE 1 DE 2 — Continuá pegando desde aquí en Parte 2
+# ============================================================
+# ============================================================
+# INICIO PARTE 2 DE 2 — Pegá esto a continuación de Parte 1
+# ============================================================
+
 # =========================================================
 # --- LOGIN Y REGISTRO ---
 # =========================================================
@@ -553,7 +564,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v279</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v280</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -583,7 +594,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v279</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v280</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -744,7 +755,8 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                     al_raw = r.get('alumnos')
                                     al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                     if al:
-                                        res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
+                                        # v280: traemos id de cada nota para poder borrarla
+                                        res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas = res_notas.data if res_notas.data else []
                                         filas_html = ""; valores = []
                                         for i, nt in enumerate(notas):
@@ -1234,7 +1246,8 @@ else:
                                 if al:
                                     if busq_nota.strip() and busq_nota.lower() not in al.get('nombre','').lower() and busq_nota.lower() not in al.get('apellido','').lower(): continue
                                     try:
-                                        res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
+                                        # v280: traemos id para poder borrar nota individual
+                                        res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas = res_notas.data if res_notas.data else []
                                     except: notas = []
                                     filas_html = ""; valores = []
@@ -1256,6 +1269,25 @@ else:
                                     email_html = f'<div class="email-tag">✉️ {al.get("email","")}</div>' if al.get("email") else ""
                                     mostrados += 1
                                     st.markdown(f'<div class="alumno-block"><div class="nombre">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} &nbsp; {estado_html if valores else ""}</div>{email_html}{filas_html}{promedio_html if valores else ""}</div>', unsafe_allow_html=True)
+                                    # v280: botones para borrar cada nota individual
+                                    if notas:
+                                        for i, nt in enumerate(notas):
+                                            col_n, col_d = st.columns([6, 1])
+                                            col_n.caption(f"Nota {i+1}: {nt['calificacion']}")
+                                            if col_d.button("🗑️", key=f"del_nota_{nt['id']}"):
+                                                st.session_state[f'confirm_nota_{nt["id"]}'] = True; st.rerun()
+                                            if st.session_state.get(f'confirm_nota_{nt["id"]}'):
+                                                st.warning(f"⚠️ ¿Borrar Nota {i+1}: {nt['calificacion']}?")
+                                                c1, c2 = st.columns(2)
+                                                if c1.button("✅ Sí, borrar", key=f"conf_nota_{nt['id']}"):
+                                                    try:
+                                                        supabase.table("notas").delete().eq("id", nt['id']).execute()
+                                                        st.session_state[f'confirm_nota_{nt["id"]}'] = False
+                                                        st.success("Nota eliminada."); st.rerun()
+                                                    except Exception as e_err:
+                                                        st.error(f"Error: {e_err}")
+                                                if c2.button("❌ Cancelar", key=f"canc_nota_{nt['id']}"):
+                                                    st.session_state[f'confirm_nota_{nt["id"]}'] = False; st.rerun()
                             if mostrados == 0:
                                 no_encontrado(f"No se encontró ningún alumno con '{busq_nota}'." if busq_nota.strip() else "No hay alumnos que coincidan con el filtro.")
                             else:
@@ -1281,7 +1313,8 @@ else:
                                     if busq_carga.strip() and busq_carga.lower() not in al.get('nombre','').lower() and busq_carga.lower() not in al.get('apellido','').lower(): continue
                                     mostrados_carga += 1
                                     try:
-                                        res_notas = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
+                                        # v280: traemos id para poder borrar nota individual
+                                        res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas_existentes = res_notas.data if res_notas.data else []
                                     except: notas_existentes = []
                                     email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
@@ -1289,7 +1322,22 @@ else:
                                     if notas_existentes:
                                         for i, nt in enumerate(notas_existentes):
                                             fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
-                                            st.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{nt["calificacion"]}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
+                                            col_n, col_d = st.columns([6, 1])
+                                            col_n.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{nt["calificacion"]}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
+                                            if col_d.button("🗑️", key=f"del_nota_c_{nt['id']}"):
+                                                st.session_state[f'confirm_nota_c_{nt["id"]}'] = True; st.rerun()
+                                            if st.session_state.get(f'confirm_nota_c_{nt["id"]}'):
+                                                st.warning(f"⚠️ ¿Borrar Nota {i+1}: {nt['calificacion']}?")
+                                                c1, c2 = st.columns(2)
+                                                if c1.button("✅ Sí, borrar", key=f"conf_nota_c_{nt['id']}"):
+                                                    try:
+                                                        supabase.table("notas").delete().eq("id", nt['id']).execute()
+                                                        st.session_state[f'confirm_nota_c_{nt["id"]}'] = False
+                                                        st.success("Nota eliminada."); st.rerun()
+                                                    except Exception as e_err:
+                                                        st.error(f"Error: {e_err}")
+                                                if c2.button("❌ Cancelar", key=f"canc_nota_c_{nt['id']}"):
+                                                    st.session_state[f'confirm_nota_c_{nt["id"]}'] = False; st.rerun()
                                     with st.form(f"nt_{r['id']}"):
                                         nueva_nota = st.number_input("Nueva calificación:", 0.0, 10.0, value=0.0, step=0.1, key=f"ni_{r['id']}")
                                         if st.form_submit_button("💾 Agregar Nota"):
@@ -1446,3 +1494,7 @@ else:
                             st.success("✅ Se abrió la ventana de impresión en una nueva pestaña.")
             st.markdown("---")
             st.caption("💡 El PDF es ideal para enviar por mail. La opción Imprimir abre el diálogo del navegador directamente.")
+
+# ============================================================
+# FIN PARTE 2 DE 2 — v280 completa ✅
+# ============================================================
