@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v285
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v286
 # ============================================================
 
 import streamlit as st
@@ -17,7 +17,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v285", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v286", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -64,8 +64,6 @@ st.markdown("""
     }
     .planilla-row { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #4facfe; border: 1px solid rgba(255,255,255,0.1); }
     .tarea-alerta { background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 10px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-    .tarea-alerta-done { background: rgba(79,172,254,0.08); border: 2px solid rgba(79,172,254,0.3); padding: 14px 20px; border-radius: 12px; color: #4facfe; text-align: center; font-weight: 700; margin-bottom: 10px; font-size: 0.9rem; opacity: 0.6; }
-    .tarea-alerta-done .tarea-texto-done { text-decoration: line-through; color: #556; font-size: 0.85rem; font-weight: 400; margin-top: 6px; }
     .tarea-card { background: rgba(255,193,7,0.08); border: 1px solid rgba(255,193,7,0.25); border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; }
     .tarea-card .tarea-titulo { color: #ffc107; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
     .tarea-card .tarea-texto { color: #e8eaf0; font-size: 0.9rem; margin-bottom: 4px; }
@@ -80,6 +78,10 @@ st.markdown("""
     .tarea-card-vencida .tarea-fecha { color: #ff4d6d; font-size: 0.75rem; font-weight: 700; }
     .vencidas-header { color: #ff4d6d; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; background: rgba(255,77,109,0.07); border: 1px solid rgba(255,77,109,0.25); border-radius: 8px; padding: 8px 14px; }
     .badge-vencidas { background: #ff4d6d; color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.8rem; border-radius: 20px; padding: 4px 14px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.05em; }
+    .proxima-clase-card { background: rgba(79,172,254,0.07); border: 1px solid rgba(79,172,254,0.25); border-radius: 10px; padding: 12px 18px; margin-bottom: 12px; }
+    .proxima-clase-card .pc-titulo { color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
+    .proxima-clase-card .pc-fecha { color: #e8eaf0; font-size: 1rem; font-weight: 700; margin-bottom: 2px; }
+    .proxima-clase-card .pc-detalle { color: #778; font-size: 0.78rem; }
     .stat-card { background: rgba(79,172,254,0.1); border: 1px solid #4facfe; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .nota-existente { color: #4facfe; font-size: 0.85rem; margin-top: 4px; }
     .alumno-block { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
@@ -220,7 +222,6 @@ def get_tareas_vencidas_count(profesor_id):
         return total_vencidas
     except: return 0
 
-# v285: contador de clases y última clase por inscripcion_id
 def get_stats_curso(inscripcion_id):
     try:
         res = supabase.table("bitacora").select("fecha").eq("inscripcion_id", inscripcion_id).order("fecha", desc=True).execute()
@@ -229,6 +230,48 @@ def get_stats_curso(inscripcion_id):
         return cant, ultima
     except:
         return 0, None
+
+# v286: calcular próxima clase a partir de los días del curso
+DIAS_SEMANA_MAP = {
+    'lunes': 0, 'martes': 1, 'miércoles': 2, 'miercoles': 2,
+    'jueves': 3, 'viernes': 4, 'sábado': 5, 'sabado': 5, 'domingo': 6
+}
+DIAS_SEMANA_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
+MESES_ES_LARGO = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
+
+def extraer_dias_curso(nombre_curso):
+    """Extrae lista de números de día de semana (0=lunes) del nombre del curso."""
+    dias = []
+    try:
+        if '(' in nombre_curso and ')' in nombre_curso:
+            parte = nombre_curso.split('(')[1].split(')')[0]
+            for token in parte.split(','):
+                t = token.strip().lower()
+                if t in DIAS_SEMANA_MAP:
+                    dias.append(DIAS_SEMANA_MAP[t])
+    except: pass
+    return sorted(set(dias))
+
+def get_proxima_clase(nombre_curso, hora_inicio, hora_fin):
+    """Devuelve dict con fecha, dias_faltan, horario. None si no hay días configurados."""
+    dias = extraer_dias_curso(nombre_curso)
+    if not dias: return None
+    hoy = datetime.date.today()
+    # buscar el próximo día de clase (puede ser hoy mismo si aún no pasó)
+    for offset in range(1, 8):
+        candidato = hoy + datetime.timedelta(days=offset)
+        if candidato.weekday() in dias:
+            dias_faltan = offset
+            nombre_dia = DIAS_SEMANA_ES[candidato.weekday()]
+            fecha_fmt = f"{nombre_dia} {candidato.day} de {MESES_ES_LARGO[candidato.month - 1]}"
+            horario = format_horario(str(hora_inicio or '')[:5], str(hora_fin or '')[:5])
+            return {
+                'fecha_fmt': fecha_fmt,
+                'dias_faltan': dias_faltan,
+                'horario': horario,
+                'fecha': candidato,
+            }
+    return None
 
 def render_calendario(mes, anio):
     MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
@@ -631,7 +674,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v285</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v286</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -661,7 +704,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v285</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v286</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -949,6 +992,17 @@ else:
             hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
             if hi and hf: st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
 
+            # v286: próxima clase
+            proxima = get_proxima_clase(c_ag, hi, hf)
+            if proxima:
+                dias_txt = "mañana" if proxima['dias_faltan'] == 1 else f"en {proxima['dias_faltan']} días"
+                st.markdown(f'''<div class="proxima-clase-card">
+                    <div class="pc-titulo">📅 PRÓXIMA CLASE</div>
+                    <div class="pc-fecha">{proxima["fecha_fmt"]}</div>
+                    <div class="pc-detalle">🕐 {proxima["horario"]} &nbsp;·&nbsp; {dias_txt}</div>
+                </div>''', unsafe_allow_html=True)
+
+            # Tareas vencidas y pendientes
             try:
                 res_tareas_pend = supabase.table("bitacora").select(
                     "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
@@ -1032,9 +1086,11 @@ else:
                                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
                                 if st.button("✏️ Editar", key=f"edit_tp_{tp['bit_id']}_{tp['num']}"):
                                     st.session_state.editando_tarea = key_edit; st.rerun()
+
             except Exception as e:
                 st.error(f"Error al cargar tareas: {e}")
 
+            # v286: tarea legacy — solo mostrar si NO está completada
             try:
                 res_t = supabase.table("bitacora").select(
                     "id, tarea_proxima, fecha, tarea_proxima_completada"
@@ -1044,34 +1100,27 @@ else:
                     tarea_txt = reg_legacy.get('tarea_proxima', '')
                     tarea_fecha = reg_legacy.get('fecha', '')
                     completada_legacy = reg_legacy.get('tarea_proxima_completada', False)
-                    if tarea_txt:
-                        if not completada_legacy:
-                            if st.session_state.editando_tarea_legacy == reg_legacy['id']:
-                                with st.form(f"edit_legacy_{reg_legacy['id']}"):
-                                    st.markdown(f"**✏️ Editando tarea de la clase del {tarea_fecha}**")
-                                    nuevo_txt_legacy = st.text_area("Descripción:", value=tarea_txt, key=f"etl_txt_{reg_legacy['id']}")
-                                    col_gl, col_cl = st.columns(2)
-                                    if col_gl.form_submit_button("💾 Guardar"):
-                                        guardar_edicion_tarea_legacy(reg_legacy['id'], nuevo_txt_legacy)
-                                    if col_cl.form_submit_button("❌ Cancelar"):
-                                        st.session_state.editando_tarea_legacy = None; st.rerun()
-                            else:
-                                st.markdown(f'''<div class="tarea-alerta">
-                                    🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({tarea_fecha})<br>
-                                    <div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1rem;">{tarea_txt}</div>
-                                </div>''', unsafe_allow_html=True)
-                                col_l1, col_l2 = st.columns(2)
-                                if col_l1.button("✅ Marcar como hecha", key=f"legacy_done_{reg_legacy['id']}"):
-                                    marcar_tarea_proxima(reg_legacy['id'], True)
-                                if col_l2.button("✏️ Editar tarea", key=f"legacy_edit_{reg_legacy['id']}"):
-                                    st.session_state.editando_tarea_legacy = reg_legacy['id']; st.rerun()
+                    # v286: si está completada NO se muestra
+                    if tarea_txt and not completada_legacy:
+                        if st.session_state.editando_tarea_legacy == reg_legacy['id']:
+                            with st.form(f"edit_legacy_{reg_legacy['id']}"):
+                                st.markdown(f"**✏️ Editando tarea de la clase del {tarea_fecha}**")
+                                nuevo_txt_legacy = st.text_area("Descripción:", value=tarea_txt, key=f"etl_txt_{reg_legacy['id']}")
+                                col_gl, col_cl = st.columns(2)
+                                if col_gl.form_submit_button("💾 Guardar"):
+                                    guardar_edicion_tarea_legacy(reg_legacy['id'], nuevo_txt_legacy)
+                                if col_cl.form_submit_button("❌ Cancelar"):
+                                    st.session_state.editando_tarea_legacy = None; st.rerun()
                         else:
-                            st.markdown(f'''<div class="tarea-alerta-done">
-                                ✅ TAREA COMPLETADA · Clase del {tarea_fecha}
-                                <div class="tarea-texto-done">{tarea_txt}</div>
+                            st.markdown(f'''<div class="tarea-alerta">
+                                🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({tarea_fecha})<br>
+                                <div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1rem;">{tarea_txt}</div>
                             </div>''', unsafe_allow_html=True)
-                            if st.button("↩️ Desmarcar como pendiente", key=f"legacy_undone_{reg_legacy['id']}"):
-                                marcar_tarea_proxima(reg_legacy['id'], False)
+                            col_l1, col_l2 = st.columns(2)
+                            if col_l1.button("✅ Marcar como hecha", key=f"legacy_done_{reg_legacy['id']}"):
+                                marcar_tarea_proxima(reg_legacy['id'], True)
+                            if col_l2.button("✏️ Editar tarea", key=f"legacy_edit_{reg_legacy['id']}"):
+                                st.session_state.editando_tarea_legacy = reg_legacy['id']; st.rerun()
             except Exception as e:
                 st.error(f"Error al cargar tarea legacy: {e}")
 
@@ -1488,7 +1537,7 @@ else:
                         st.error(f"Error: {e}")
 
     # =========================================================
-    # TAB 4 — CURSOS (v285: contador de clases + última clase)
+    # TAB 4 — CURSOS
     # =========================================================
     with tabs[4]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
@@ -1580,7 +1629,6 @@ else:
                                 res_count = supabase.table("inscripciones").select("id", count="exact").eq("nombre_curso_materia", n_c).not_.is_("alumno_id", "null").execute()
                                 cant = res_count.count if res_count.count else 0
                             except: cant = 0
-                            # v285: contador clases + última clase
                             cant_clases, ultima_clase = get_stats_curso(i_c)
                             nota_display = nota_ap_cur if nota_ap_cur is not None else "Sin definir"
                             biblio_html = f'<div class="biblio-box">📚 {biblio_cur}</div>' if biblio_cur else ""
@@ -1648,6 +1696,5 @@ else:
             st.caption("💡 El PDF es ideal para enviar por mail. La opción Imprimir abre el diálogo del navegador directamente.")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v285 completa ✅
+# FIN PARTE 2 DE 2 — v286 completa ✅
 # ============================================================
-
