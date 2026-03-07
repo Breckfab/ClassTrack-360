@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v287
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v288
 # ============================================================
 
 import streamlit as st
@@ -16,12 +16,20 @@ from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
+try:
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+    EXCEL_OK = True
+except ImportError:
+    EXCEL_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v287", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v288", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+ANIO_ACTUAL = datetime.date.today().year
 
 def init_state():
     defaults = {
@@ -78,6 +86,7 @@ st.markdown("""
     .tarea-card-vencida .tarea-fecha { color: #ff4d6d; font-size: 0.75rem; font-weight: 700; }
     .vencidas-header { color: #ff4d6d; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; background: rgba(255,77,109,0.07); border: 1px solid rgba(255,77,109,0.25); border-radius: 8px; padding: 8px 14px; }
     .badge-vencidas { background: #ff4d6d; color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.8rem; border-radius: 20px; padding: 4px 14px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.05em; }
+    .badge-clases { background: rgba(79,172,254,0.15); border: 1px solid rgba(79,172,254,0.4); color: #4facfe; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.8rem; border-radius: 20px; padding: 4px 14px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.05em; }
     .proxima-clase-card { background: rgba(79,172,254,0.07); border: 1px solid rgba(79,172,254,0.25); border-radius: 10px; padding: 12px 18px; margin-bottom: 12px; }
     .proxima-clase-card .pc-titulo { color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
     .proxima-clase-card .pc-fecha { color: #e8eaf0; font-size: 1rem; font-weight: 700; margin-bottom: 2px; }
@@ -235,6 +244,18 @@ def get_stats_curso(inscripcion_id):
     except:
         return 0, None
 
+def get_total_clases_sidebar(profesor_id):
+    """v288: total de clases dictadas en todos los cursos para el sidebar."""
+    try:
+        res_insc = supabase.table("inscripciones").select("id").eq("profesor_id", profesor_id).is_("alumno_id", "null").execute()
+        if not res_insc.data: return 0
+        total = 0
+        for r in res_insc.data:
+            cant, _ = get_stats_curso(r['id'])
+            total += cant
+        return total
+    except: return 0
+
 DIAS_SEMANA_MAP = {
     'lunes': 0, 'martes': 1, 'miércoles': 2, 'miercoles': 2,
     'jueves': 3, 'viernes': 4, 'sábado': 5, 'sabado': 5, 'domingo': 6
@@ -372,6 +393,120 @@ def reset_completo_sede(sede_nombre):
         return True, f"Sede {sede_nombre.upper()} reseteada correctamente."
     except Exception as e:
         return False, str(e)
+
+def generar_excel(sede, curso_nombre, curso_data, datos):
+    """v288: genera Excel con alumnos y notas."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Alumnos y Notas"
+
+    azul = "1A5276"
+    azul_claro = "D6EAF8"
+    gris = "F2F2F2"
+
+    header_font = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    header_fill = PatternFill("solid", fgColor=azul)
+    header_align = Alignment(horizontal="center", vertical="center")
+    subheader_fill = PatternFill("solid", fgColor=azul_claro)
+    subheader_font = Font(name="Calibri", bold=True, size=10)
+    normal_font = Font(name="Calibri", size=10)
+    center_align = Alignment(horizontal="center", vertical="center")
+    thin = Side(style="thin", color="CCCCCC")
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+
+    # Título
+    ws.merge_cells("A1:J1")
+    ws["A1"] = f"ClassTrack 360 — Sede: {sede.upper()}"
+    ws["A1"].font = Font(name="Calibri", bold=True, size=14, color="FFFFFF")
+    ws["A1"].fill = header_fill
+    ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
+    ws.row_dimensions[1].height = 28
+
+    ws.merge_cells("A2:J2")
+    ws["A2"] = f"Curso: {curso_nombre}"
+    ws["A2"].font = subheader_font
+    ws["A2"].fill = subheader_fill
+    ws["A2"].alignment = Alignment(horizontal="center")
+    ws.row_dimensions[2].height = 20
+
+    hi = str(curso_data.get('hora_inicio','') or '')[:5]
+    hf = str(curso_data.get('hora_fin','') or '')[:5]
+    nota_ap = curso_data.get('nota_aprobacion')
+    biblio = curso_data.get('bibliografia','') or ''
+    info_txt = f"Horario: {format_horario(hi, hf)}   |   Aprobación: {nota_ap if nota_ap else 'Sin definir'}   |   Generado: {datetime.date.today().strftime('%d/%m/%Y')}"
+    ws.merge_cells("A3:J3")
+    ws["A3"] = info_txt
+    ws["A3"].font = Font(name="Calibri", size=9, color="555555")
+    ws["A3"].alignment = Alignment(horizontal="center")
+    ws.row_dimensions[3].height = 16
+
+    if biblio:
+        ws.merge_cells("A4:J4")
+        ws["A4"] = f"Bibliografía: {biblio}"
+        ws["A4"].font = Font(name="Calibri", size=9, italic=True, color="777777")
+        ws["A4"].alignment = Alignment(horizontal="center")
+        ws.row_dimensions[4].height = 14
+        fila_headers = 6
+    else:
+        fila_headers = 5
+
+    # Headers tabla
+    headers = ["#", "Apellido", "Nombre", "Email", "Nota 1", "Nota 2", "Nota 3", "Nota 4", "Nota 5", "Promedio", "Estado"]
+    col_widths = [5, 20, 18, 28, 9, 9, 9, 9, 9, 11, 14]
+    for col_idx, (h, w) in enumerate(zip(headers, col_widths), 1):
+        cell = ws.cell(row=fila_headers, column=col_idx, value=h)
+        cell.font = header_font
+        cell.fill = header_fill
+        cell.alignment = header_align
+        cell.border = border
+        ws.column_dimensions[cell.column_letter].width = w
+    ws.row_dimensions[fila_headers].height = 22
+
+    alumnos_data = datos.get('alumnos', [])
+    notas_data = datos.get('notas', {})
+
+    for idx, al in enumerate(sorted(alumnos_data, key=lambda x: x['apellido']), 1):
+        fila = fila_headers + idx
+        ns = notas_data.get(al['insc_id'], [])
+        promedio = round(sum(ns)/len(ns), 2) if ns else None
+        estado = estado_texto(promedio, nota_ap) if promedio is not None else "Sin notas"
+
+        row_fill = PatternFill("solid", fgColor="FFFFFF") if idx % 2 != 0 else PatternFill("solid", fgColor=gris)
+
+        datos_fila = [
+            idx,
+            al['apellido'].upper(),
+            al['nombre'],
+            al.get('email','') or '',
+            ns[0] if len(ns) > 0 else '',
+            ns[1] if len(ns) > 1 else '',
+            ns[2] if len(ns) > 2 else '',
+            ns[3] if len(ns) > 3 else '',
+            ns[4] if len(ns) > 4 else '',
+            promedio if promedio is not None else '',
+            estado,
+        ]
+        for col_idx, val in enumerate(datos_fila, 1):
+            cell = ws.cell(row=fila, column=col_idx, value=val)
+            cell.font = normal_font
+            cell.fill = row_fill
+            cell.border = border
+            if col_idx in [1, 5, 6, 7, 8, 9, 10]:
+                cell.alignment = center_align
+            if col_idx == 11 and val == "APROBADO":
+                cell.font = Font(name="Calibri", size=10, bold=True, color="1A5276")
+            elif col_idx == 11 and val == "DESAPROBADO":
+                cell.font = Font(name="Calibri", size=10, bold=True, color="C0392B")
+
+        ws.row_dimensions[fila].height = 18
+
+    # Freeze headers
+    ws.freeze_panes = ws.cell(row=fila_headers + 1, column=1)
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return buf.read()
 
 def generar_pdf(sede, curso_nombre, curso_data, incluir_alumnos, incluir_notas, incluir_historial, incluir_resumen, datos):
     buffer = io.BytesIO()
@@ -674,7 +809,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v287</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v288</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -704,7 +839,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v287</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v288</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -928,6 +1063,7 @@ else:
     f_hoy = datetime.date.today()
 
     total_vencidas_sidebar = get_tareas_vencidas_count(u_data['id'])
+    total_clases_sidebar = get_total_clases_sidebar(u_data['id'])  # v288
 
     with st.sidebar:
         st.header(f"Sede: {u_data['sede'].upper()}")
@@ -938,6 +1074,9 @@ else:
             st.markdown(f'<div class="stat-card">Total Alumnos 2026: <b>{len(res_total.data)}</b></div>', unsafe_allow_html=True)
         except:
             st.markdown('<div class="stat-card">Total Alumnos 2026: <b>-</b></div>', unsafe_allow_html=True)
+        # v288: contador de clases en sidebar
+        if total_clases_sidebar > 0:
+            st.markdown(f'<div class="badge-clases">🔢 {total_clases_sidebar} clase{"s" if total_clases_sidebar != 1 else ""} dictada{"s" if total_clases_sidebar != 1 else ""}</div>', unsafe_allow_html=True)
         if total_vencidas_sidebar > 0:
             st.markdown(f'<div class="badge-vencidas">⚠️ {total_vencidas_sidebar} tarea{"s" if total_vencidas_sidebar > 1 else ""} vencida{"s" if total_vencidas_sidebar > 1 else ""}</div>', unsafe_allow_html=True)
         cal_sede = get_calendario_sede(u_data['sede'])
@@ -976,8 +1115,17 @@ else:
     except Exception as e:
         st.error(f"Error al cargar cursos: {e}")
 
-    # v287: 8 tabs — se agrega "🔢 Contador de Clases"
-    tabs = st.tabs(["📅 Agenda", "📋 Historial de Clases", "👥 Alumnos", "📝 Notas", "🔢 Contador de Clases", "🏗️ Cursos", "📆 Calendario", "🖨️ Impresión"])
+    # v288: tab Calendario con año dinámico
+    tabs = st.tabs([
+        "📅 Agenda",
+        "📋 Historial de Clases",
+        "👥 Alumnos",
+        "📝 Notas",
+        "🔢 Contador de Clases",
+        "🏗️ Cursos",
+        f"📆 Calendario Académico {ANIO_ACTUAL}",
+        "🖨️ Impresión"
+    ])
 
     # =========================================================
     # TAB 0 — AGENDA
@@ -1534,7 +1682,7 @@ else:
                         st.error(f"Error: {e}")
 
     # =========================================================
-    # TAB 4 — CONTADOR DE CLASES (v287: nueva pestaña)
+    # TAB 4 — CONTADOR DE CLASES
     # =========================================================
     with tabs[4]:
         st.subheader("🔢 Contador de Clases")
@@ -1581,7 +1729,7 @@ else:
                     </div>''', unsafe_allow_html=True)
 
     # =========================================================
-    # TAB 5 — CURSOS (v287: sin contador, solo datos del curso)
+    # TAB 5 — CURSOS
     # =========================================================
     with tabs[5]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
@@ -1675,7 +1823,6 @@ else:
                             except: cant = 0
                             nota_display = nota_ap_cur if nota_ap_cur is not None else "Sin definir"
                             biblio_html = f'<div class="biblio-box">📚 {biblio_cur}</div>' if biblio_cur else ""
-                            # v287: sin contador de clases en esta pestaña — bug </div> corregido
                             st.markdown(
                                 f'<div class="planilla-row">'
                                 f'📖 {n_c}<br>'
@@ -1695,14 +1842,14 @@ else:
                                     st.error(f"Error: {e}")
 
     # =========================================================
-    # TAB 6 — CALENDARIO
+    # TAB 6 — CALENDARIO ACADÉMICO (v288: año dinámico)
     # =========================================================
     with tabs[6]:
-        st.subheader("📆 Calendario del Año Lectivo")
+        st.subheader(f"📆 Calendario Académico {ANIO_ACTUAL}")
         render_seccion_calendario(u_data['sede'])
 
     # =========================================================
-    # TAB 7 — IMPRESIÓN
+    # TAB 7 — IMPRESIÓN (v288: + exportar Excel)
     # =========================================================
     with tabs[7]:
         st.subheader("🖨️ Impresión y Exportación")
@@ -1711,35 +1858,57 @@ else:
         else:
             col_i1, col_i2 = st.columns([2, 1])
             curso_imp = col_i1.selectbox("Seleccione Curso:", list(mapa_cursos.keys()), key="imp_curso")
-            accion_imp = col_i2.selectbox("Acción:", ["📄 Exportar PDF", "🖨️ Imprimir"], key="imp_accion")
-            st.markdown("**¿Qué incluir?**")
-            col_c1, col_c2, col_c3, col_c4 = st.columns(4)
-            inc_resumen = col_c1.checkbox("📊 Resumen del curso", value=True, key="inc_resumen")
-            inc_alumnos = col_c2.checkbox("👥 Listado de alumnos", value=True, key="inc_alumnos")
-            inc_notas = col_c3.checkbox("📝 Notas y promedios", value=True, key="inc_notas")
-            inc_historial = col_c4.checkbox("📅 Historial de clases", value=False, key="inc_historial")
-            if not any([inc_resumen, inc_alumnos, inc_notas, inc_historial]):
-                st.warning("Seleccioná al menos una sección para incluir.")
+            accion_imp = col_i2.selectbox("Acción:", ["📄 Exportar PDF", "📊 Exportar Excel", "🖨️ Imprimir"], key="imp_accion")
+
+            if accion_imp == "📊 Exportar Excel":
+                st.info("📊 El Excel incluirá el listado completo de alumnos con todas sus notas y promedios.")
+                if st.button("⚙️ Generar Excel", type="primary", use_container_width=True):
+                    if not EXCEL_OK:
+                        st.error("La librería openpyxl no está instalada. Agregá 'openpyxl' a requirements.txt y redesplegá.")
+                    else:
+                        with st.spinner("Generando Excel..."):
+                            inscripcion_id_imp = mapa_cursos[curso_imp]
+                            curso_data_imp = mapa_cursos_data.get(curso_imp, {})
+                            datos_imp = cargar_datos_por_nombre_curso(curso_imp, inscripcion_id_imp)
+                            xlsx_bytes = generar_excel(u_data['sede'], curso_imp, curso_data_imp, datos_imp)
+                            nombre_xlsx = f"ClassTrack_{u_data['sede']}_{curso_imp[:20].replace(' ','_')}_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
+                            st.download_button(
+                                label="⬇️ Descargar Excel",
+                                data=xlsx_bytes,
+                                file_name=nombre_xlsx,
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                use_container_width=True
+                            )
+                            st.success("Excel generado. Hacé clic arriba para descargarlo.")
             else:
-                if st.button("⚙️ Generar documento", type="primary", use_container_width=True):
-                    with st.spinner("Generando..."):
-                        inscripcion_id_imp = mapa_cursos[curso_imp]
-                        curso_data_imp = mapa_cursos_data.get(curso_imp, {})
-                        datos_imp = cargar_datos_por_nombre_curso(curso_imp, inscripcion_id_imp)
-                        if accion_imp == "📄 Exportar PDF":
-                            pdf_bytes = generar_pdf(u_data['sede'], curso_imp, curso_data_imp, inc_alumnos, inc_notas, inc_historial, inc_resumen, datos_imp)
-                            nombre_archivo = f"ClassTrack_{u_data['sede']}_{curso_imp[:20].replace(' ','_')}_{datetime.date.today().strftime('%Y%m%d')}.pdf"
-                            st.download_button(label="⬇️ Descargar PDF", data=pdf_bytes, file_name=nombre_archivo, mime="application/pdf", use_container_width=True)
-                            st.success("PDF generado. Hacé clic arriba para descargarlo.")
-                        else:
-                            html_imp = generar_html_impresion(u_data['sede'], curso_imp, curso_data_imp, inc_alumnos, inc_notas, inc_historial, inc_resumen, datos_imp)
-                            html_encoded = html_imp.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "")
-                            js_code = f"<script>var w=window.open('','_blank');w.document.write('{html_encoded}');w.document.close();</script>"
-                            components.html(js_code, height=0)
-                            st.success("✅ Se abrió la ventana de impresión en una nueva pestaña.")
+                st.markdown("**¿Qué incluir?**")
+                col_c1, col_c2, col_c3, col_c4 = st.columns(4)
+                inc_resumen = col_c1.checkbox("📊 Resumen del curso", value=True, key="inc_resumen")
+                inc_alumnos = col_c2.checkbox("👥 Listado de alumnos", value=True, key="inc_alumnos")
+                inc_notas = col_c3.checkbox("📝 Notas y promedios", value=True, key="inc_notas")
+                inc_historial = col_c4.checkbox("📅 Historial de clases", value=False, key="inc_historial")
+                if not any([inc_resumen, inc_alumnos, inc_notas, inc_historial]):
+                    st.warning("Seleccioná al menos una sección para incluir.")
+                else:
+                    if st.button("⚙️ Generar documento", type="primary", use_container_width=True):
+                        with st.spinner("Generando..."):
+                            inscripcion_id_imp = mapa_cursos[curso_imp]
+                            curso_data_imp = mapa_cursos_data.get(curso_imp, {})
+                            datos_imp = cargar_datos_por_nombre_curso(curso_imp, inscripcion_id_imp)
+                            if accion_imp == "📄 Exportar PDF":
+                                pdf_bytes = generar_pdf(u_data['sede'], curso_imp, curso_data_imp, inc_alumnos, inc_notas, inc_historial, inc_resumen, datos_imp)
+                                nombre_archivo = f"ClassTrack_{u_data['sede']}_{curso_imp[:20].replace(' ','_')}_{datetime.date.today().strftime('%Y%m%d')}.pdf"
+                                st.download_button(label="⬇️ Descargar PDF", data=pdf_bytes, file_name=nombre_archivo, mime="application/pdf", use_container_width=True)
+                                st.success("PDF generado. Hacé clic arriba para descargarlo.")
+                            else:
+                                html_imp = generar_html_impresion(u_data['sede'], curso_imp, curso_data_imp, inc_alumnos, inc_notas, inc_historial, inc_resumen, datos_imp)
+                                html_encoded = html_imp.replace("\\", "\\\\").replace("'", "\\'").replace("\n", "\\n").replace("\r", "")
+                                js_code = f"<script>var w=window.open('','_blank');w.document.write('{html_encoded}');w.document.close();</script>"
+                                components.html(js_code, height=0)
+                                st.success("✅ Se abrió la ventana de impresión en una nueva pestaña.")
             st.markdown("---")
-            st.caption("💡 El PDF es ideal para enviar por mail. La opción Imprimir abre el diálogo del navegador directamente.")
+            st.caption("💡 PDF ideal para enviar por mail · Excel para trabajar los datos · Imprimir abre el diálogo del navegador.")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v287 completa ✅
+# FIN PARTE 2 DE 2 — v288 completa ✅
 # ============================================================
