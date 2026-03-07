@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v286
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v287
 # ============================================================
 
 import streamlit as st
@@ -17,7 +17,7 @@ from reportlab.lib.units import cm
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
 from reportlab.lib.enums import TA_CENTER, TA_LEFT
 
-st.set_page_config(page_title="ClassTrack 360 v286", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v287", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -82,6 +82,10 @@ st.markdown("""
     .proxima-clase-card .pc-titulo { color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
     .proxima-clase-card .pc-fecha { color: #e8eaf0; font-size: 1rem; font-weight: 700; margin-bottom: 2px; }
     .proxima-clase-card .pc-detalle { color: #778; font-size: 0.78rem; }
+    .contador-card { background: rgba(79,172,254,0.05); border: 1px solid rgba(79,172,254,0.2); border-radius: 12px; padding: 18px 22px; margin-bottom: 12px; }
+    .contador-card .cc-nombre { color: #e8eaf0; font-size: 0.95rem; font-weight: 700; margin-bottom: 8px; }
+    .contador-card .cc-info { color: #4facfe; font-size: 0.78rem; margin-bottom: 4px; }
+    .contador-card .cc-clases { color: #a0c4ff; font-size: 0.82rem; margin-top: 6px; }
     .stat-card { background: rgba(79,172,254,0.1); border: 1px solid #4facfe; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
     .nota-existente { color: #4facfe; font-size: 0.85rem; margin-top: 4px; }
     .alumno-block { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
@@ -231,7 +235,6 @@ def get_stats_curso(inscripcion_id):
     except:
         return 0, None
 
-# v286: calcular próxima clase a partir de los días del curso
 DIAS_SEMANA_MAP = {
     'lunes': 0, 'martes': 1, 'miércoles': 2, 'miercoles': 2,
     'jueves': 3, 'viernes': 4, 'sábado': 5, 'sabado': 5, 'domingo': 6
@@ -240,7 +243,6 @@ DIAS_SEMANA_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado
 MESES_ES_LARGO = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 
 def extraer_dias_curso(nombre_curso):
-    """Extrae lista de números de día de semana (0=lunes) del nombre del curso."""
     dias = []
     try:
         if '(' in nombre_curso and ')' in nombre_curso:
@@ -253,11 +255,9 @@ def extraer_dias_curso(nombre_curso):
     return sorted(set(dias))
 
 def get_proxima_clase(nombre_curso, hora_inicio, hora_fin):
-    """Devuelve dict con fecha, dias_faltan, horario. None si no hay días configurados."""
     dias = extraer_dias_curso(nombre_curso)
     if not dias: return None
     hoy = datetime.date.today()
-    # buscar el próximo día de clase (puede ser hoy mismo si aún no pasó)
     for offset in range(1, 8):
         candidato = hoy + datetime.timedelta(days=offset)
         if candidato.weekday() in dias:
@@ -674,7 +674,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v286</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v287</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -704,7 +704,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v286</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v287</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -976,7 +976,8 @@ else:
     except Exception as e:
         st.error(f"Error al cargar cursos: {e}")
 
-    tabs = st.tabs(["📅 Agenda", "📋 Historial de Clases", "👥 Alumnos", "📝 Notas", "🏗️ Cursos", "📆 Calendario", "🖨️ Impresión"])
+    # v287: 8 tabs — se agrega "🔢 Contador de Clases"
+    tabs = st.tabs(["📅 Agenda", "📋 Historial de Clases", "👥 Alumnos", "📝 Notas", "🔢 Contador de Clases", "🏗️ Cursos", "📆 Calendario", "🖨️ Impresión"])
 
     # =========================================================
     # TAB 0 — AGENDA
@@ -992,7 +993,6 @@ else:
             hf = str(curso_sel_data.get('hora_fin', '') or '')[:5]
             if hi and hf: st.caption(f"🕐 Horario: {format_horario(hi, hf)}")
 
-            # v286: próxima clase
             proxima = get_proxima_clase(c_ag, hi, hf)
             if proxima:
                 dias_txt = "mañana" if proxima['dias_faltan'] == 1 else f"en {proxima['dias_faltan']} días"
@@ -1002,7 +1002,6 @@ else:
                     <div class="pc-detalle">🕐 {proxima["horario"]} &nbsp;·&nbsp; {dias_txt}</div>
                 </div>''', unsafe_allow_html=True)
 
-            # Tareas vencidas y pendientes
             try:
                 res_tareas_pend = supabase.table("bitacora").select(
                     "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
@@ -1090,7 +1089,6 @@ else:
             except Exception as e:
                 st.error(f"Error al cargar tareas: {e}")
 
-            # v286: tarea legacy — solo mostrar si NO está completada
             try:
                 res_t = supabase.table("bitacora").select(
                     "id, tarea_proxima, fecha, tarea_proxima_completada"
@@ -1100,7 +1098,6 @@ else:
                     tarea_txt = reg_legacy.get('tarea_proxima', '')
                     tarea_fecha = reg_legacy.get('fecha', '')
                     completada_legacy = reg_legacy.get('tarea_proxima_completada', False)
-                    # v286: si está completada NO se muestra
                     if tarea_txt and not completada_legacy:
                         if st.session_state.editando_tarea_legacy == reg_legacy['id']:
                             with st.form(f"edit_legacy_{reg_legacy['id']}"):
@@ -1537,9 +1534,56 @@ else:
                         st.error(f"Error: {e}")
 
     # =========================================================
-    # TAB 4 — CURSOS
+    # TAB 4 — CONTADOR DE CLASES (v287: nueva pestaña)
     # =========================================================
     with tabs[4]:
+        st.subheader("🔢 Contador de Clases")
+        if not mapa_cursos:
+            no_encontrado("No tenés cursos creados.")
+        else:
+            st.caption("Seleccioná un curso para ver el detalle de clases dictadas.")
+            curso_cont = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="cont_curso_sel")
+            if curso_cont != "---":
+                i_c = mapa_cursos[curso_cont]
+                cd = mapa_cursos_data.get(curso_cont, {})
+                hi_c = str(cd.get('hora_inicio', '') or '')[:5]
+                hf_c = str(cd.get('hora_fin', '') or '')[:5]
+                nota_ap_c = cd.get('nota_aprobacion')
+                try:
+                    res_count = supabase.table("inscripciones").select("id", count="exact").eq("nombre_curso_materia", curso_cont).not_.is_("alumno_id", "null").execute()
+                    cant_alumnos = res_count.count if res_count.count else 0
+                except: cant_alumnos = 0
+                cant_clases, ultima_clase = get_stats_curso(i_c)
+                ultima_html = f"Última clase: <b>{ultima_clase}</b>" if ultima_clase else "Sin clases registradas aún"
+                st.markdown(f'''<div class="contador-card">
+                    <div class="cc-nombre">📖 {curso_cont}</div>
+                    <div class="cc-info">🕐 {format_horario(hi_c, hf_c)} &nbsp;·&nbsp; Alumnos: {cant_alumnos} &nbsp;·&nbsp; Aprobación: {nota_ap_c if nota_ap_c else "Sin definir"}</div>
+                    <div class="cc-clases">📅 Clases dictadas: <b style="font-size:1.1rem;color:#4facfe">{cant_clases}</b> &nbsp;·&nbsp; {ultima_html}</div>
+                </div>''', unsafe_allow_html=True)
+            else:
+                st.markdown("---")
+                st.caption("📊 Resumen de todos los cursos:")
+                for n_c, i_c in mapa_cursos.items():
+                    cd = mapa_cursos_data.get(n_c, {})
+                    hi_c = str(cd.get('hora_inicio', '') or '')[:5]
+                    hf_c = str(cd.get('hora_fin', '') or '')[:5]
+                    nota_ap_c = cd.get('nota_aprobacion')
+                    try:
+                        res_count = supabase.table("inscripciones").select("id", count="exact").eq("nombre_curso_materia", n_c).not_.is_("alumno_id", "null").execute()
+                        cant_alumnos = res_count.count if res_count.count else 0
+                    except: cant_alumnos = 0
+                    cant_clases, ultima_clase = get_stats_curso(i_c)
+                    ultima_html = f"Última: <b>{ultima_clase}</b>" if ultima_clase else "Sin clases aún"
+                    st.markdown(f'''<div class="contador-card">
+                        <div class="cc-nombre">📖 {n_c}</div>
+                        <div class="cc-info">🕐 {format_horario(hi_c, hf_c)} &nbsp;·&nbsp; Alumnos: {cant_alumnos} &nbsp;·&nbsp; Aprobación: {nota_ap_c if nota_ap_c else "Sin definir"}</div>
+                        <div class="cc-clases">📅 Clases dictadas: <b style="font-size:1.1rem;color:#4facfe">{cant_clases}</b> &nbsp;·&nbsp; {ultima_html}</div>
+                    </div>''', unsafe_allow_html=True)
+
+    # =========================================================
+    # TAB 5 — CURSOS (v287: sin contador, solo datos del curso)
+    # =========================================================
+    with tabs[5]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
         if sub_cu == "Crear Nuevo Curso":
             with st.form("new_c"):
@@ -1629,16 +1673,17 @@ else:
                                 res_count = supabase.table("inscripciones").select("id", count="exact").eq("nombre_curso_materia", n_c).not_.is_("alumno_id", "null").execute()
                                 cant = res_count.count if res_count.count else 0
                             except: cant = 0
-                            cant_clases, ultima_clase = get_stats_curso(i_c)
                             nota_display = nota_ap_cur if nota_ap_cur is not None else "Sin definir"
                             biblio_html = f'<div class="biblio-box">📚 {biblio_cur}</div>' if biblio_cur else ""
-                            ultima_html = f'Última clase: <b>{ultima_clase}</b>' if ultima_clase else 'Sin clases aún'
-                            st.markdown(f'''<div class="planilla-row">
-                                📖 {n_c}<br>
-                                <small style="color:#4facfe;">🕐 {format_horario(hi_cur, hf_cur)} &nbsp;·&nbsp; Alumnos: {cant} &nbsp;·&nbsp; Aprobación: {nota_display}</small><br>
-                                <small style="color:#a0c4ff;">📅 Clases dictadas: <b>{cant_clases}</b> &nbsp;·&nbsp; {ultima_html}</small>
-                                {biblio_html}
-                            </div>''', unsafe_allow_html=True)
+                            # v287: sin contador de clases en esta pestaña — bug </div> corregido
+                            st.markdown(
+                                f'<div class="planilla-row">'
+                                f'📖 {n_c}<br>'
+                                f'<small style="color:#4facfe;">🕐 {format_horario(hi_cur, hf_cur)} &nbsp;·&nbsp; Alumnos: {cant} &nbsp;·&nbsp; Aprobación: {nota_display}</small>'
+                                f'{biblio_html}'
+                                f'</div>',
+                                unsafe_allow_html=True
+                            )
                             cb1, cb2 = st.columns(2)
                             if cb1.button("✏️ Editar", key=f"ec_{i_c}"):
                                 st.session_state.editando_curso = i_c; st.rerun()
@@ -1650,16 +1695,16 @@ else:
                                     st.error(f"Error: {e}")
 
     # =========================================================
-    # TAB 5 — CALENDARIO
+    # TAB 6 — CALENDARIO
     # =========================================================
-    with tabs[5]:
+    with tabs[6]:
         st.subheader("📆 Calendario del Año Lectivo")
         render_seccion_calendario(u_data['sede'])
 
     # =========================================================
-    # TAB 6 — IMPRESIÓN
+    # TAB 7 — IMPRESIÓN
     # =========================================================
-    with tabs[6]:
+    with tabs[7]:
         st.subheader("🖨️ Impresión y Exportación")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -1696,5 +1741,5 @@ else:
             st.caption("💡 El PDF es ideal para enviar por mail. La opción Imprimir abre el diálogo del navegador directamente.")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v286 completa ✅
+# FIN PARTE 2 DE 2 — v287 completa ✅
 # ============================================================
