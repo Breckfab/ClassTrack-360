@@ -1898,7 +1898,7 @@ else:
                 suplente_nombre = ""
                 if st.session_state.es_suplente:
                     suplente_nombre = st.text_input("Apellido y Nombre del profesor suplente:", placeholder="Ej: García, María")
-                with st.form("f_agenda"):
+                with st.form("f_agenda", clear_on_submit=True):
                     temas = st.text_area("Contenido dictado hoy")
                     st.markdown("---")
                     st.markdown("**📌 Tareas** (podés completar hasta 3, ninguna es obligatoria)")
@@ -2189,7 +2189,7 @@ else:
                 if st.session_state.get('ok_alumno_registrado'):
                     st.success(f"✅ Alumno {st.session_state.ok_alumno_registrado} registrado satisfactoriamente.")
                     st.session_state.ok_alumno_registrado = None
-                with st.form("new_al"):
+                with st.form("new_al", clear_on_submit=True):
                     n = st.text_input("Nombre *")
                     a = st.text_input("Apellido *")
                     e = st.text_input("Email (opcional)", placeholder="alumno@mail.com")
@@ -2377,7 +2377,7 @@ else:
                                                     st.success("Nota eliminada."); st.rerun()
                                                 if c2.button("❌ No", key=f"canc_nota_c_{nt['id']}"):
                                                     st.session_state[f'confirm_nota_c_{nt["id"]}'] = False; st.rerun()
-                                    with st.form(f"nt_{r['id']}"):
+                                    with st.form(f"nt_{r['id']}", clear_on_submit=True):
                                         nueva_nota = st.number_input("Nueva calificación:", 0.0, 10.0, value=0.0, step=0.1, key=f"ni_{r['id']}")
                                         if st.form_submit_button("💾 Agregar Nota"):
                                             try:
@@ -2451,7 +2451,7 @@ else:
             if st.session_state.get('ok_curso_creado'):
                 st.success(f"✅ Curso '{st.session_state.ok_curso_creado}' creado satisfactoriamente.")
                 st.session_state.ok_curso_creado = None
-            with st.form("new_c"):
+            with st.form("new_c", clear_on_submit=True):
                 mat = st.text_input("Nombre del Curso *")
                 dias = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
                 col_h1, col_h2 = st.columns(2)
