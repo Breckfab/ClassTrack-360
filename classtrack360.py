@@ -2047,10 +2047,10 @@ else:
                                 dias_html = ""
                                 for fecha in fechas_mes:
                                     estado_d = datos_al.get(fecha, '')
-                                    dia_num = datetime.date.fromisoformat(fecha).day
-                                    if estado_d == 'presente': dias_html += f'<span class="asist-presente">{dia_num}</span> '
-                                    elif estado_d == 'tarde': dias_html += f'<span class="asist-tarde">{dia_num}T</span> '
-                                    elif estado_d == 'ausente': dias_html += f'<span class="asist-ausente">{dia_num}A</span> '
+                                    fecha_fmt = datetime.date.fromisoformat(fecha).strftime('%d/%m')
+                                    if estado_d == 'presente': dias_html += f'<span class="asist-presente">{fecha_fmt}</span> '
+                                    elif estado_d == 'tarde': dias_html += f'<span class="asist-tarde">{fecha_fmt} T</span> '
+                                    elif estado_d == 'ausente': dias_html += f'<span class="asist-ausente">{fecha_fmt} A</span> '
                                 st.markdown(f'''<div class="resumen-asist">
                                     <div class="resumen-asist-titulo">👤 {al["apellido"].upper()}, {al["nombre"]}</div>
                                     <div style="margin-bottom:8px;font-size:0.82rem">{dias_html}</div>
