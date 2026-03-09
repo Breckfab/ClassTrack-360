@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v292
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v293
 # ============================================================
 
 import streamlit as st
@@ -29,7 +29,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v292", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v293", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -67,6 +67,16 @@ def init_state():
         'backup_log_id': None,
         'backup_generado': False,
         'mostrar_salir_backup': False,
+        # Flags de éxito para formularios (se muestran fuera del form)
+        'ok_clase_guardada': False,
+        'ok_curso_creado': None,
+        'ok_curso_editado': False,
+        'ok_alumno_registrado': None,
+        'ok_alumno_editado': False,
+        'ok_nota_agregada': None,
+        'ok_bitacora_editada': False,
+        'ok_calendario_guardado': False,
+        'ok_registro_cuenta': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1307,6 +1317,9 @@ if st.session_state.user is None:
                 <div class="login-logo">Class<span>Track</span> 360</div>
                 <div class="login-eyebrow">// Crear cuenta nueva</div>
                 <div class="login-title">Registro</div></div>""", unsafe_allow_html=True)
+            if st.session_state.get('ok_registro_cuenta'):
+                st.success(f"✅ Cuenta creada satisfactoriamente. Ya podés iniciar sesión con la sede '{st.session_state.ok_registro_cuenta}'.")
+                st.session_state.ok_registro_cuenta = None
             with st.form("registro", clear_on_submit=False):
                 codigo_input = st.text_input("Código de invitación *", placeholder="Ej: AB12CD34")
                 sede_input_r = st.text_input("Nombre de sede *", placeholder="Ej: quilmes")
@@ -1345,7 +1358,7 @@ if st.session_state.user is None:
                                     supabase.table("codigos_invitacion").update({
                                         "usado": True, "usado_por": sede_norm
                                     }).eq("id", cod['id']).execute()
-                                    st.success(f"✅ Cuenta creada. Ya podés iniciar sesión con la sede '{sede_norm}'.")
+                                    st.session_state.ok_registro_cuenta = sede_norm
                                     st.session_state.pantalla_login = 'login'
                                     st.rerun()
                         except Exception as e:
@@ -1353,7 +1366,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v292</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v293</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -1383,7 +1396,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v292</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v293</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -1857,6 +1870,10 @@ else:
                 st.error(f"Error al cargar tarea legacy: {e}")
             st.markdown("---")
             st.subheader("📝 Registrar Clase de Hoy")
+            # Mensaje de éxito fuera del form
+            if st.session_state.get('ok_clase_guardada'):
+                st.success("✅ Clase guardada satisfactoriamente.")
+                st.session_state.ok_clase_guardada = False
             try:
                 res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(f_hoy)).execute()
                 ya_guardado_hoy = len(res_hoy.data) > 0
@@ -1918,7 +1935,8 @@ else:
                                     "tarea_proxima_completada": False,
                                 }).execute()
                                 st.session_state.es_suplente = False
-                                st.success("Clase guardada satisfactoriamente."); st.rerun()
+                                st.session_state.ok_clase_guardada = True
+                                st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
 
@@ -2080,6 +2098,9 @@ else:
                     no_encontrado("No se encontraron clases con los filtros seleccionados.")
                 else:
                     st.caption(f"📊 {len(filtrados)} clase/s encontrada/s")
+                    if st.session_state.get('ok_bitacora_editada'):
+                        st.success("✅ Registro actualizado satisfactoriamente.")
+                        st.session_state.ok_bitacora_editada = False
                     for reg in filtrados:
                         suplente_h = reg.get('profesor_suplente')
                         prof_label = f"👥 Suplente: {suplente_h}" if suplente_h else "👤 Titular"
@@ -2121,7 +2142,8 @@ else:
                                                 "tarea3": t3_e or None, "tarea3_fecha": str(f3_e) if t3_e else None,
                                             }).eq("id", reg['id']).execute()
                                             st.session_state.editando_bitacora = None
-                                            st.success("Registro actualizado."); st.rerun()
+                                            st.session_state.ok_bitacora_editada = True
+                                            st.rerun()
                                         except Exception as e:
                                             st.error(f"Error: {e}")
                                     if col_e2.form_submit_button("❌ Cancelar"):
@@ -2164,6 +2186,9 @@ else:
             if not mapa_cursos:
                 no_encontrado("Primero creá un curso en la pestaña 🏗️ Cursos.")
             else:
+                if st.session_state.get('ok_alumno_registrado'):
+                    st.success(f"✅ Alumno {st.session_state.ok_alumno_registrado} registrado satisfactoriamente.")
+                    st.session_state.ok_alumno_registrado = None
                 with st.form("new_al"):
                     n = st.text_input("Nombre *")
                     a = st.text_input("Apellido *")
@@ -2179,7 +2204,8 @@ else:
                                 ra = supabase.table("alumnos").insert(datos_alumno).execute()
                                 if ra.data:
                                     supabase.table("inscripciones").insert({"alumno_id": ra.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": c_sel, "anio_lectivo": 2026}).execute()
-                                    st.success(f"Alumno {a.upper()}, {n} registrado en {c_sel}."); st.rerun()
+                                    st.session_state.ok_alumno_registrado = f"{a.upper()}, {n}"
+                                    st.rerun()
                             except Exception as e_err:
                                 st.error(f"Error: {e_err}")
         else:
@@ -2202,6 +2228,9 @@ else:
                         elif not alumnos_filtrados: no_encontrado(f"No se encontró ningún alumno con '{busqueda}'.")
                         else:
                             st.info(f"Cantidad de alumnos: {len(alumnos_filtrados)}")
+                            if st.session_state.get('ok_alumno_editado'):
+                                st.success("✅ Alumno actualizado satisfactoriamente.")
+                                st.session_state.ok_alumno_editado = False
                             for r, al in alumnos_filtrados:
                                 if st.session_state.editando_alumno == r['id']:
                                     with st.form(f"edit_al_{r['id']}"):
@@ -2213,7 +2242,8 @@ else:
                                             try:
                                                 supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip(), "email": e_edit.strip() if e_edit.strip() else None}).eq("id", al['id']).execute()
                                                 st.session_state.editando_alumno = None
-                                                st.success("Alumno actualizado."); st.rerun()
+                                                st.session_state.ok_alumno_editado = True
+                                                st.rerun()
                                             except Exception as e_err:
                                                 st.error(f"Error: {e_err}")
                                         if col_a2.form_submit_button("❌ Cancelar"):
@@ -2309,6 +2339,9 @@ else:
             else:
                 c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga_sel")
                 busq_carga = st.text_input("🔍 Buscar alumno:", key="busq_carga_input")
+                if st.session_state.get('ok_nota_agregada') is not None:
+                    st.success(f"✅ Nota {st.session_state.ok_nota_agregada} agregada satisfactoriamente.")
+                    st.session_state.ok_nota_agregada = None
                 if c_nt != "---":
                     try:
                         res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
@@ -2349,7 +2382,8 @@ else:
                                         if st.form_submit_button("💾 Agregar Nota"):
                                             try:
                                                 supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
-                                                st.success(f"Nota {nueva_nota} agregada."); st.rerun()
+                                                st.session_state.ok_nota_agregada = nueva_nota
+                                                st.rerun()
                                             except Exception as e_err:
                                                 st.error(f"Error: {e_err}")
                             if mostrados_carga == 0:
@@ -2414,6 +2448,9 @@ else:
     with tabs[7]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
         if sub_cu == "Crear Nuevo Curso":
+            if st.session_state.get('ok_curso_creado'):
+                st.success(f"✅ Curso '{st.session_state.ok_curso_creado}' creado satisfactoriamente.")
+                st.session_state.ok_curso_creado = None
             with st.form("new_c"):
                 mat = st.text_input("Nombre del Curso *")
                 dias = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
@@ -2448,13 +2485,26 @@ else:
                             if es_universitario and horas_catedra_new:
                                 datos_curso["horas_catedra"] = horas_catedra_new
                             supabase.table("inscripciones").insert(datos_curso).execute()
-                            st.success(f"Curso '{info}' creado correctamente."); st.rerun()
+                            st.session_state.ok_curso_creado = info
+                            st.rerun()
                         except Exception as e:
                             st.error(f"Error: {e}")
         else:
             if not mapa_cursos:
                 no_encontrado("No tenés cursos creados todavía.")
             else:
+                # Contador de cursos por año lectivo
+                anio_lectivo_disp = 2026
+                total_cursos_anio = len([c for c in mapa_cursos_data.values() if c.get('anio_lectivo') == anio_lectivo_disp])
+                st.markdown(f'''<div class="contador-card" style="margin-bottom:16px;">
+                    <div class="cc-nombre" style="font-family:\'Syne\',sans-serif;font-size:1rem;font-weight:800;letter-spacing:0.05em;">
+                        Cantidad de Cursos de {anio_lectivo_disp}:
+                        <span style="color:#4facfe;font-size:1.3rem;margin-left:8px;">{total_cursos_anio}</span>
+                    </div>
+                </div>''', unsafe_allow_html=True)
+                if st.session_state.get('ok_curso_editado'):
+                    st.success("✅ Curso actualizado satisfactoriamente.")
+                    st.session_state.ok_curso_editado = False
                 busq_curso = st.text_input("🔍 Buscar curso:", key="busq_curso")
                 cursos_filtrados = {n: i for n, i in mapa_cursos.items() if not busq_curso.strip() or busq_curso.lower() in n.lower()}
                 if busq_curso.strip() and not cursos_filtrados:
@@ -2503,7 +2553,8 @@ else:
                                                 upd["horas_catedra"] = horas_cat_e
                                             supabase.table("inscripciones").update(upd).eq("id", i_c).execute()
                                             st.session_state.editando_curso = None
-                                            st.success("Curso actualizado."); st.rerun()
+                                            st.session_state.ok_curso_editado = True
+                                            st.rerun()
                                         except Exception as e:
                                             st.error(f"Error: {e}")
                                 if col_c2.form_submit_button("❌ Cancelar"):
@@ -2735,5 +2786,5 @@ else:
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v292 completa ✅
+# FIN PARTE 2 DE 2 — v293 completa ✅
 # ============================================================
