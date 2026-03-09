@@ -2047,7 +2047,7 @@ else:
                                 dias_html = ""
                                 for fecha in fechas_mes:
                                     estado_d = datos_al.get(fecha, '')
-                                    fecha_fmt = datetime.date.fromisoformat(fecha).strftime('%d/%m')
+                                    fecha_fmt = datetime.date.fromisoformat(fecha).strftime('%d/%m/%Y')
                                     if estado_d == 'presente': dias_html += f'<span class="asist-presente">{fecha_fmt}</span> '
                                     elif estado_d == 'tarde': dias_html += f'<span class="asist-tarde">{fecha_fmt} T</span> '
                                     elif estado_d == 'ausente': dias_html += f'<span class="asist-ausente">{fecha_fmt} A</span> '
