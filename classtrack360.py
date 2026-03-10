@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v294
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v295
 # ============================================================
 
 import streamlit as st
@@ -29,7 +29,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v294", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v295", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1389,7 +1389,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v294</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v295</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -1419,7 +1419,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v294</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v295</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -2028,8 +2028,12 @@ else:
             else:
                 # --- BUSCADOR POR ALUMNO ---
                 busq_al_asist = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_al_asist", placeholder="Escribí para buscar...")
+
+                def normalizar(texto):
+                    reemplazos = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ü':'u','ñ':'n','Á':'a','É':'e','Í':'i','Ó':'o','Ú':'u','Ü':'u','Ñ':'n'}
+                    return ''.join(reemplazos.get(c, c) for c in texto).lower()
+
                 if busq_al_asist.strip():
-                    # Buscar en todos los alumnos del profesor
                     try:
                         res_todos = supabase.table("inscripciones").select("alumno_id, alumnos(id, nombre, apellido)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
                         alumnos_encontrados = {}
@@ -2037,8 +2041,8 @@ else:
                             al_raw = r.get('alumnos')
                             al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                             if al and al['id'] not in alumnos_encontrados:
-                                nombre_completo = f"{al.get('apellido','')} {al.get('nombre','')}".lower()
-                                if busq_al_asist.lower() in nombre_completo:
+                                nombre_completo = normalizar(f"{al.get('apellido','')} {al.get('nombre','')}")
+                                if normalizar(busq_al_asist) in nombre_completo:
                                     alumnos_encontrados[al['id']] = al
                         if not alumnos_encontrados:
                             no_encontrado(f"No se encontró ningún alumno con '{busq_al_asist}'.")
@@ -2858,5 +2862,5 @@ else:
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v294 completa ✅
+# FIN PARTE 2 DE 2 — v295 completa ✅
 # ============================================================
