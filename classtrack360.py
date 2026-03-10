@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v297
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v298
 # ============================================================
 
 import streamlit as st
@@ -29,7 +29,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v297", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v298", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1389,7 +1389,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v297</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v298</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -1419,7 +1419,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v297</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v298</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -2649,10 +2649,12 @@ else:
                             nota_display = nota_ap_cur if nota_ap_cur is not None else "Sin definir"
                             hs_display = f" &nbsp;·&nbsp; {horas_catedra_cur} hs/sem" if es_universitario and horas_catedra_cur else ""
                             biblio_html = f'<div class="biblio-box">📚 {biblio_cur}</div>' if biblio_cur else ""
+                            url_html = f'<div class="biblio-box">🌐 <a href="{url_campus_cur}" target="_blank" style="color:#4facfe;">{url_campus_cur}</a></div>' if url_campus_cur else ""
+                            nro_html = f'<div class="biblio-box">🔢 Automatriculación: <b style="color:#ffc107;">{nro_autom_cur}</b></div>' if nro_autom_cur else ""
                             st.markdown(
                                 f'<div class="planilla-row">📖 {n_c}<br>'
                                 f'<small style="color:#4facfe;">🕐 {format_horario(hi_cur, hf_cur)} &nbsp;·&nbsp; Alumnos: {cant} &nbsp;·&nbsp; Aprobación: {nota_display}{hs_display}</small>'
-                                f'{biblio_html}</div>', unsafe_allow_html=True
+                                f'{biblio_html}{url_html}{nro_html}</div>', unsafe_allow_html=True
                             )
                             cb1, cb2 = st.columns(2)
                             if cb1.button("✏️ Editar", key=f"ec_{i_c}"):
@@ -2868,5 +2870,5 @@ else:
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v297 completa ✅
+# FIN PARTE 2 DE 2 — v298 completa ✅
 # ============================================================
