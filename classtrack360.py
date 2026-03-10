@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v296
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v297
 # ============================================================
 
 import streamlit as st
@@ -29,7 +29,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v296", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v297", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1389,7 +1389,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v296</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v297</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -1419,7 +1419,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v296</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v297</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -2027,13 +2027,9 @@ else:
                         st.caption("ℹ️ Ya hay asistencia registrada para esta fecha. Guardar reemplazará los datos existentes.")
             else:
                 # --- BUSCADOR POR ALUMNO ---
-                def normalizar(texto):
-                    reemplazos = {'á':'a','é':'e','í':'i','ó':'o','ú':'u','ü':'u','ñ':'n','Á':'a','É':'e','Í':'i','Ó':'o','Ú':'u','Ü':'u','Ñ':'n'}
-                    return ''.join(reemplazos.get(c, c) for c in texto).lower()
-
                 busq_al_asist = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_al_asist", placeholder="Escribí para buscar...")
-
                 if busq_al_asist.strip():
+                    # Buscar en todos los alumnos del profesor
                     try:
                         res_todos = supabase.table("inscripciones").select("alumno_id, alumnos(id, nombre, apellido)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
                         alumnos_encontrados = {}
@@ -2041,44 +2037,40 @@ else:
                             al_raw = r.get('alumnos')
                             al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                             if al and al['id'] not in alumnos_encontrados:
-                                nombre_completo = normalizar(f"{al.get('apellido','')} {al.get('nombre','')}")
-                                if normalizar(busq_al_asist) in nombre_completo:
+                                nombre_completo = f"{al.get('apellido','')} {al.get('nombre','')}".lower()
+                                if busq_al_asist.lower() in nombre_completo:
                                     alumnos_encontrados[al['id']] = al
-
                         if not alumnos_encontrados:
                             no_encontrado(f"No se encontró ningún alumno con '{busq_al_asist}'.")
                         else:
-                            opciones = {f"{al.get('apellido','').upper()}, {al.get('nombre','')}": al_id for al_id, al in alumnos_encontrados.items()}
-                            alumno_sel_label = st.selectbox("Seleccioná el alumno:", list(opciones.keys()), key="asist_alumno_sel")
-                            al_id_sel = opciones[alumno_sel_label]
-                            al_sel = alumnos_encontrados[al_id_sel]
                             anio_busq = st.selectbox("Año lectivo:", [ANIO_ACTUAL, ANIO_ACTUAL - 1], key="asist_busq_anio")
-                            registros = get_asistencia_anual_alumno(al_id_sel, u_data['id'], anio_busq)
-                            total_p = sum(1 for r in registros if r['estado'] == 'presente')
-                            total_t = sum(1 for r in registros if r['estado'] == 'tarde')
-                            total_a = sum(1 for r in registros if r['estado'] == 'ausente')
-                            dias_html = ""
-                            for r in registros:
-                                fecha_fmt = datetime.date.fromisoformat(r['fecha']).strftime('%d/%m/%Y')
-                                curso_corto = r['curso'][:30] + '...' if len(r['curso']) > 30 else r['curso']
-                                hora_label = f" · Hs {r['hora_catedra']}" if r.get('hora_catedra') else ""
-                                if r['estado'] == 'presente':
-                                    dias_html += f'<div class="resumen-fila"><span>✅ {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-presente">PRESENTE</span></div>'
-                                elif r['estado'] == 'tarde':
-                                    dias_html += f'<div class="resumen-fila"><span>🕐 {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-tarde">TARDE</span></div>'
-                                elif r['estado'] == 'ausente':
-                                    dias_html += f'<div class="resumen-fila"><span>❌ {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-ausente">AUSENTE</span></div>'
-                            if not dias_html:
-                                dias_html = '<div class="resumen-fila"><span style="color:#556">Sin registros para este año.</span></div>'
-                            st.markdown(f'''<div class="resumen-asist">
-                                <div class="resumen-asist-titulo">👤 {al_sel.get("apellido","").upper()}, {al_sel.get("nombre","")} · Año {anio_busq}</div>
-                                {dias_html}
-                                <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(79,172,254,0.2);">
-                                    <div class="resumen-fila"><span>✅ Total Presentes</span><span style="color:#4facfe;font-weight:700">{total_p} {"hs" if es_universitario else ""}</span></div>
-                                    <div class="resumen-fila"><span>🕐 Total Tardes</span><span style="color:#ffc107;font-weight:700">{total_t} {"hs" if es_universitario else ""}</span></div>
-                                    <div class="resumen-fila"><span>❌ Total Ausentes</span><span style="color:#ff4d6d;font-weight:700">{total_a} {"hs" if es_universitario else ""}</span></div>
-                                </div>
-                            </div>''', unsafe_allow_html=True)
+                            for al_id, al in alumnos_encontrados.items():
+                                registros = get_asistencia_anual_alumno(al_id, u_data['id'], anio_busq)
+                                total_p = sum(1 for r in registros if r['estado'] == 'presente')
+                                total_t = sum(1 for r in registros if r['estado'] == 'tarde')
+                                total_a = sum(1 for r in registros if r['estado'] == 'ausente')
+                                dias_html = ""
+                                for r in registros:
+                                    fecha_fmt = datetime.date.fromisoformat(r['fecha']).strftime('%d/%m/%Y')
+                                    curso_corto = r['curso'][:30] + '...' if len(r['curso']) > 30 else r['curso']
+                                    hora_label = f" · Hs {r['hora_catedra']}" if r.get('hora_catedra') else ""
+                                    if r['estado'] == 'presente':
+                                        dias_html += f'<div class="resumen-fila"><span>✅ {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-presente">PRESENTE</span></div>'
+                                    elif r['estado'] == 'tarde':
+                                        dias_html += f'<div class="resumen-fila"><span>🕐 {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-tarde">TARDE</span></div>'
+                                    elif r['estado'] == 'ausente':
+                                        dias_html += f'<div class="resumen-fila"><span>❌ {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-ausente">AUSENTE</span></div>'
+                                if not dias_html:
+                                    dias_html = '<div class="resumen-fila"><span style="color:#556">Sin registros para este año.</span></div>'
+                                st.markdown(f'''<div class="resumen-asist">
+                                    <div class="resumen-asist-titulo">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} · Año {anio_busq}</div>
+                                    {dias_html}
+                                    <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(79,172,254,0.2);">
+                                        <div class="resumen-fila"><span>✅ Total Presentes</span><span style="color:#4facfe;font-weight:700">{total_p} {"hs" if es_universitario else ""}</span></div>
+                                        <div class="resumen-fila"><span>🕐 Total Tardes</span><span style="color:#ffc107;font-weight:700">{total_t} {"hs" if es_universitario else ""}</span></div>
+                                        <div class="resumen-fila"><span>❌ Total Ausentes</span><span style="color:#ff4d6d;font-weight:700">{total_a} {"hs" if es_universitario else ""}</span></div>
+                                    </div>
+                                </div>''', unsafe_allow_html=True)
                     except Exception as e:
                         st.error(f"Error: {e}")
                     st.markdown("---")
@@ -2542,6 +2534,8 @@ else:
                 if es_universitario:
                     horas_catedra_new = st.number_input("Carga horaria semanal (hs cátedra) *", min_value=1, max_value=20, value=3, step=1)
                 biblio = st.text_area("Bibliografía / Fotocopias (opcional)")
+                url_campus = st.text_input("🌐 URL del Campus (opcional)", placeholder="https://...")
+                nro_autom = st.text_input("🔢 Número de Automatriculación (opcional)")
                 if st.form_submit_button("💾 CREAR CURSO"):
                     errores = []
                     if not mat.strip(): errores.append("El nombre del curso es obligatorio.")
@@ -2560,7 +2554,9 @@ else:
                                 "profesor_id": u_data['id'], "nombre_curso_materia": info,
                                 "anio_lectivo": 2026, "nota_aprobacion": nota_ap,
                                 "bibliografia": biblio.strip() if biblio.strip() else None,
-                                "hora_inicio": hora_ini.strip(), "hora_fin": hora_fin.strip()
+                                "hora_inicio": hora_ini.strip(), "hora_fin": hora_fin.strip(),
+                                "url_campus": url_campus.strip() if url_campus.strip() else None,
+                                "nro_automatriculacion": nro_autom.strip() if nro_autom.strip() else None,
                             }
                             if es_universitario and horas_catedra_new:
                                 datos_curso["horas_catedra"] = horas_catedra_new
@@ -2597,6 +2593,8 @@ else:
                         hi_cur = str(curso_data.get('hora_inicio', '') or '')[:5]
                         hf_cur = str(curso_data.get('hora_fin', '') or '')[:5]
                         horas_catedra_cur = curso_data.get('horas_catedra')
+                        url_campus_cur = curso_data.get('url_campus', '') or ''
+                        nro_autom_cur = curso_data.get('nro_automatriculacion', '') or ''
                         if st.session_state.editando_curso == i_c:
                             partes = n_c.split(" (")
                             mat_actual = partes[0] if partes else n_c
@@ -2613,6 +2611,8 @@ else:
                                 if es_universitario:
                                     horas_cat_e = st.number_input("Carga horaria semanal (hs cátedra):", min_value=1, max_value=20, value=int(horas_catedra_cur or 3), step=1)
                                 biblio_e = st.text_area("Bibliografía:", value=biblio_cur or "")
+                                url_campus_e = st.text_input("🌐 URL del Campus (opcional)", value=url_campus_cur, placeholder="https://...")
+                                nro_autom_e = st.text_input("🔢 Número de Automatriculación (opcional)", value=nro_autom_cur)
                                 col_c1, col_c2 = st.columns(2)
                                 if col_c1.form_submit_button("💾 Guardar"):
                                     errores = []
@@ -2628,6 +2628,8 @@ else:
                                                 "bibliografia": biblio_e.strip() if biblio_e.strip() else None,
                                                 "hora_inicio": hora_ini_e.strip() if hora_ini_e.strip() else None,
                                                 "hora_fin": hora_fin_e.strip() if hora_fin_e.strip() else None,
+                                                "url_campus": url_campus_e.strip() if url_campus_e.strip() else None,
+                                                "nro_automatriculacion": nro_autom_e.strip() if nro_autom_e.strip() else None,
                                             }
                                             if es_universitario and horas_cat_e:
                                                 upd["horas_catedra"] = horas_cat_e
@@ -2866,5 +2868,5 @@ else:
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v296 completa ✅
+# FIN PARTE 2 DE 2 — v297 completa ✅
 # ============================================================
