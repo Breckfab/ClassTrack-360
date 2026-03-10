@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v293
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v294
 # ============================================================
 
 import streamlit as st
@@ -29,7 +29,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v293", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v294", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -503,6 +503,29 @@ def get_resumen_asistencia_instituto(inscripcion_id, mes, anio):
             resultado[aid][r['fecha']] = r['estado']
         return resultado
     except: return {}
+
+def get_asistencia_anual_alumno(alumno_id, profesor_id, anio):
+    """Trae toda la asistencia de un alumno en el año lectivo, en todos sus cursos."""
+    try:
+        desde = datetime.date(anio, 1, 1)
+        hasta = datetime.date(anio, 12, 31)
+        # Buscar todas las inscripciones del alumno con este profesor
+        res_insc = supabase.table("inscripciones").select("id, nombre_curso_materia").eq("profesor_id", profesor_id).eq("alumno_id", alumno_id).execute()
+        if not res_insc.data:
+            return []
+        resultado = []
+        for insc in res_insc.data:
+            res = supabase.table("asistencia").select("fecha, estado, hora_catedra").eq("inscripcion_id", insc['id']).eq("alumno_id", alumno_id).gte("fecha", str(desde)).lte("fecha", str(hasta)).order("fecha").execute()
+            for r in (res.data or []):
+                resultado.append({
+                    'fecha': r['fecha'],
+                    'estado': r['estado'],
+                    'curso': insc['nombre_curso_materia'],
+                    'hora_catedra': r.get('hora_catedra'),
+                })
+        resultado.sort(key=lambda x: x['fecha'])
+        return resultado
+    except: return []
 
 def get_resumen_asistencia_universitario(inscripcion_id, cuatrimestre):
     try:
@@ -1366,7 +1389,7 @@ if st.session_state.user is None:
             if st.button("← Volver al inicio de sesión", use_container_width=True):
                 st.session_state.pantalla_login = 'login'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v293</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v294</div>', unsafe_allow_html=True)
         else:
             st.markdown("""<div class="login-box">
                 <div class="login-logo">Class<span>Track</span> 360</div>
@@ -1396,7 +1419,7 @@ if st.session_state.user is None:
             if st.button("➕ Crear cuenta nueva", use_container_width=True):
                 st.session_state.pantalla_login = 'registro'
                 st.rerun()
-            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v293</div>', unsafe_allow_html=True)
+            st.markdown('<div class="login-footer">© 2026 ClassTrack 360 · v294</div>', unsafe_allow_html=True)
     footer()
 
 # =========================================================
@@ -2003,6 +2026,55 @@ else:
                     if asist_existente:
                         st.caption("ℹ️ Ya hay asistencia registrada para esta fecha. Guardar reemplazará los datos existentes.")
             else:
+                # --- BUSCADOR POR ALUMNO ---
+                busq_al_asist = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_al_asist", placeholder="Escribí para buscar...")
+                if busq_al_asist.strip():
+                    # Buscar en todos los alumnos del profesor
+                    try:
+                        res_todos = supabase.table("inscripciones").select("alumno_id, alumnos(id, nombre, apellido)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+                        alumnos_encontrados = {}
+                        for r in (res_todos.data or []):
+                            al_raw = r.get('alumnos')
+                            al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
+                            if al and al['id'] not in alumnos_encontrados:
+                                nombre_completo = f"{al.get('apellido','')} {al.get('nombre','')}".lower()
+                                if busq_al_asist.lower() in nombre_completo:
+                                    alumnos_encontrados[al['id']] = al
+                        if not alumnos_encontrados:
+                            no_encontrado(f"No se encontró ningún alumno con '{busq_al_asist}'.")
+                        else:
+                            anio_busq = st.selectbox("Año lectivo:", [ANIO_ACTUAL, ANIO_ACTUAL - 1], key="asist_busq_anio")
+                            for al_id, al in alumnos_encontrados.items():
+                                registros = get_asistencia_anual_alumno(al_id, u_data['id'], anio_busq)
+                                total_p = sum(1 for r in registros if r['estado'] == 'presente')
+                                total_t = sum(1 for r in registros if r['estado'] == 'tarde')
+                                total_a = sum(1 for r in registros if r['estado'] == 'ausente')
+                                dias_html = ""
+                                for r in registros:
+                                    fecha_fmt = datetime.date.fromisoformat(r['fecha']).strftime('%d/%m/%Y')
+                                    curso_corto = r['curso'][:30] + '...' if len(r['curso']) > 30 else r['curso']
+                                    hora_label = f" · Hs {r['hora_catedra']}" if r.get('hora_catedra') else ""
+                                    if r['estado'] == 'presente':
+                                        dias_html += f'<div class="resumen-fila"><span>✅ {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-presente">PRESENTE</span></div>'
+                                    elif r['estado'] == 'tarde':
+                                        dias_html += f'<div class="resumen-fila"><span>🕐 {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-tarde">TARDE</span></div>'
+                                    elif r['estado'] == 'ausente':
+                                        dias_html += f'<div class="resumen-fila"><span>❌ {fecha_fmt} <span style="color:#556;font-size:0.75rem">· {curso_corto}{hora_label}</span></span><span class="asist-ausente">AUSENTE</span></div>'
+                                if not dias_html:
+                                    dias_html = '<div class="resumen-fila"><span style="color:#556">Sin registros para este año.</span></div>'
+                                st.markdown(f'''<div class="resumen-asist">
+                                    <div class="resumen-asist-titulo">👤 {al.get("apellido","").upper()}, {al.get("nombre","")} · Año {anio_busq}</div>
+                                    {dias_html}
+                                    <div style="margin-top:10px;padding-top:8px;border-top:1px solid rgba(79,172,254,0.2);">
+                                        <div class="resumen-fila"><span>✅ Total Presentes</span><span style="color:#4facfe;font-weight:700">{total_p} {"hs" if es_universitario else ""}</span></div>
+                                        <div class="resumen-fila"><span>🕐 Total Tardes</span><span style="color:#ffc107;font-weight:700">{total_t} {"hs" if es_universitario else ""}</span></div>
+                                        <div class="resumen-fila"><span>❌ Total Ausentes</span><span style="color:#ff4d6d;font-weight:700">{total_a} {"hs" if es_universitario else ""}</span></div>
+                                    </div>
+                                </div>''', unsafe_allow_html=True)
+                    except Exception as e:
+                        st.error(f"Error: {e}")
+                    st.markdown("---")
+
                 curso_res = st.selectbox("Seleccione Curso:", list(mapa_cursos.keys()), key="asist_res_curso")
                 inscripcion_id_res = mapa_cursos[curso_res]
                 alumnos_res = get_alumnos_curso(curso_res)
@@ -2786,5 +2858,5 @@ else:
         st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v293 completa ✅
+# FIN PARTE 2 DE 2 — v294 completa ✅
 # ============================================================
