@@ -162,8 +162,8 @@ st.markdown("""
     .login-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(79,172,254,0.2); border-radius: 16px; padding: 40px; margin-top: 60px; }
     .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: #e8eaf0; margin-bottom: 6px; }
     .login-logo span { color: #4facfe; }
-    .login-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 16px; }
-    .login-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.6rem; margin-bottom: 28px; color: #e8eaf0; }
+    .login-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 16px; text-align: center; }
+    .login-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.6rem; margin-bottom: 28px; color: #e8eaf0; text-align: center; }
     .login-footer { font-size: 0.72rem; color: #3a4358; text-align: center; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; }
     .codigo-box { background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.3); border-radius: 8px; padding: 12px 18px; font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #4facfe; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 8px 0; }
     .habilitado-tag { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
