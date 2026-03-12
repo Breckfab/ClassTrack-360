@@ -576,7 +576,7 @@ def render_seccion_calendario(sede, es_admin=False):
         if url_1c: render_cronograma_visor(url_1c, nombre_1c, "Cronograma 1° Cuatrimestre")
         if url_2c: render_cronograma_visor(url_2c, nombre_2c, "Cronograma 2° Cuatrimestre")
     with st.expander("✏️ Editar calendario y cronogramas", expanded=not fecha_inicio):
-        with st.form(f"cal_form_{sede}"):
+        with st.form(f"cal_form_{sede}", clear_on_submit=True):
             col1, col2 = st.columns(2)
             fi = col1.date_input("Fecha de inicio:", value=fecha_inicio if fecha_inicio else datetime.date(ANIO_ACTUAL, 3, 1))
             ff = col2.date_input("Fecha de fin:", value=fecha_fin if fecha_fin else datetime.date(ANIO_ACTUAL, 11, 30))
@@ -1346,7 +1346,7 @@ if st.session_state.user is None:
             if st.session_state.get('ok_registro_cuenta'):
                 st.success(f"✅ Cuenta creada satisfactoriamente. Ya podés iniciar sesión con la sede '{st.session_state.ok_registro_cuenta}'.")
                 st.session_state.ok_registro_cuenta = None
-            with st.form("registro", clear_on_submit=False):
+            with st.form("registro", clear_on_submit=True):
                 codigo_input = st.text_input("Código de invitación *", placeholder="Ej: AB12CD34")
                 sede_input_r = st.text_input("Nombre de sede *", placeholder="Ej: quilmes")
                 nombre_input = st.text_input("Tu nombre completo *", placeholder="Ej: García, María")
