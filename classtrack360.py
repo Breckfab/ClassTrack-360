@@ -2185,6 +2185,7 @@ else:
                                 st.markdown('<span class="titular-badge">👤 Clase dictada por titular</span>', unsafe_allow_html=True)
                             if st.session_state.editando_bitacora == reg['id']:
                                 with st.form(f"edit_bit_h_{reg['id']}", clear_on_submit=True):
+                                    fecha_edit = st.date_input("📆 Fecha de la clase:", value=datetime.date.fromisoformat(reg['fecha']), max_value=f_hoy, key=f"fecha_bit_h_{reg['id']}")
                                     t_edit = st.text_area("Contenido dictado:", value=reg.get('contenido_clase', ''))
                                     es_sup_edit = st.checkbox("¿Clase dictada por suplente?", value=bool(suplente_h), key=f"sup_chk_h_{reg['id']}")
                                     sup_nombre_edit = ""
@@ -2208,6 +2209,7 @@ else:
                                     if col_e1.form_submit_button("💾 Guardar Cambios"):
                                         try:
                                             supabase.table("bitacora").update({
+                                                "fecha": str(fecha_edit),
                                                 "contenido_clase": t_edit,
                                                 "profesor_suplente": sup_nombre_edit.strip() if es_sup_edit and sup_nombre_edit.strip() else None,
                                                 "tarea1": t1_e or None, "tarea1_fecha": str(f1_e) if t1_e else None,
