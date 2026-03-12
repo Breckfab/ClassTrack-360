@@ -1749,6 +1749,7 @@ else:
 
     tabs = st.tabs([
         "📅 Agenda",
+        "📌 Tareas Pendientes",
         "📋 Asistencia",
         "📊 Historial de Clases",
         "👥 Alumnos",
@@ -1759,7 +1760,6 @@ else:
         f"📆 Calendario Académico {ANIO_ACTUAL}",
         "🖨️ Impresión",
         "🗄️ Backup",
-        "📌 Tareas Pendientes",
     ])
 
     # =========================================================
@@ -1971,7 +1971,7 @@ else:
     # =========================================================
     # TAB 1 — ASISTENCIA
     # =========================================================
-    with tabs[1]:
+    with tabs[2]:
         st.subheader("📋 Asistencia")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -2139,7 +2139,7 @@ else:
     # =========================================================
     # TAB 2 — HISTORIAL DE CLASES
     # =========================================================
-    with tabs[2]:
+    with tabs[3]:
         st.subheader("📋 Historial de Clases")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -2267,7 +2267,7 @@ else:
     # =========================================================
     # TAB 3 — ALUMNOS
     # =========================================================
-    with tabs[3]:
+    with tabs[4]:
         sub_al = st.radio("Acción:", ["Ver Lista", "Registrar Alumno Nuevo"], horizontal=True)
         if sub_al == "Registrar Alumno Nuevo":
             if not mapa_cursos:
@@ -2361,7 +2361,7 @@ else:
     # =========================================================
     # TAB 4 — NOTAS
     # =========================================================
-    with tabs[4]:
+    with tabs[5]:
         st.subheader("📝 Notas y Calificaciones")
         if not mapa_cursos:
             no_encontrado("No hay cursos creados.")
@@ -2489,13 +2489,13 @@ else:
     # =========================================================
     # TAB 5 — ESTADÍSTICAS
     # =========================================================
-    with tabs[5]:
+    with tabs[6]:
         render_tab_estadisticas(u_data['id'], mapa_cursos, mapa_cursos_data)
 
     # =========================================================
     # TAB 6 — CONTADOR DE CLASES
     # =========================================================
-    with tabs[6]:
+    with tabs[7]:
         st.subheader("🔢 Contador de Clases")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -2540,7 +2540,7 @@ else:
     # =========================================================
     # TAB 7 — CURSOS
     # =========================================================
-    with tabs[7]:
+    with tabs[8]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
         if sub_cu == "Crear Nuevo Curso":
             if st.session_state.get('ok_curso_creado'):
@@ -2700,14 +2700,14 @@ else:
     # =========================================================
     # TAB 8 — CALENDARIO ACADÉMICO
     # =========================================================
-    with tabs[8]:
+    with tabs[9]:
         st.subheader(f"📆 Calendario Académico {ANIO_ACTUAL}")
         render_seccion_calendario(u_data['sede'])
 
     # =========================================================
     # TAB 9 — IMPRESIÓN
     # =========================================================
-    with tabs[9]:
+    with tabs[10]:
         st.subheader("🖨️ Impresión y Exportación")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -2761,7 +2761,7 @@ else:
     # =========================================================
     # TAB 10 — BACKUP
     # =========================================================
-    with tabs[10]:
+    with tabs[11]:
         st.subheader("🗄️ Backup y Restauración")
 
         st.markdown('''<div class="backup-aviso">
@@ -2904,7 +2904,7 @@ else:
     # =========================================================
     # TAB 11 — TAREAS PENDIENTES
     # =========================================================
-    with tabs[11]:
+    with tabs[1]:
         st.subheader("📌 Tareas Pendientes")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
