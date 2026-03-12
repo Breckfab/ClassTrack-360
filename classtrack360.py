@@ -1892,18 +1892,19 @@ else:
             except Exception as e:
                 st.error(f"Error al cargar tarea legacy: {e}")
             st.markdown("---")
-            st.subheader("📝 Registrar Clase de Hoy")
+            st.subheader("📝 Registrar Clase")
             # Mensaje de éxito fuera del form
             if st.session_state.get('ok_clase_guardada'):
                 st.success("✅ Clase guardada satisfactoriamente.")
                 st.session_state.ok_clase_guardada = False
+            fecha_clase = st.date_input("📆 Fecha de la clase:", value=f_hoy, max_value=f_hoy, key="f_agenda_fecha")
             try:
-                res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(f_hoy)).execute()
+                res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(fecha_clase)).execute()
                 ya_guardado_hoy = len(res_hoy.data) > 0
             except:
                 ya_guardado_hoy = False
             if ya_guardado_hoy:
-                st.warning("⚠️ Ya existe un registro para HOY en este curso.")
+                st.warning(f"⚠️ Ya existe un registro para el {fecha_clase.strftime('%d/%m/%Y')} en este curso.")
             else:
                 col_tit, col_sup = st.columns([3, 1])
                 with col_tit:
@@ -1922,7 +1923,6 @@ else:
                 if st.session_state.es_suplente:
                     suplente_nombre = st.text_input("Apellido y Nombre del profesor suplente:", placeholder="Ej: García, María")
                 with st.form("f_agenda", clear_on_submit=True):
-                    fecha_clase = st.date_input("📆 Fecha de la clase:", value=f_hoy, max_value=f_hoy, key="f_agenda_fecha")
                     temas = st.text_area("Contenido dictado hoy")
                     st.markdown("---")
                     st.markdown("**📌 Tareas** (podés completar hasta 3, ninguna es obligatoria)")
