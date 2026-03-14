@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v305
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v306
 # ============================================================
 
 import streamlit as st
@@ -29,7 +29,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v305", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v306", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1871,6 +1871,16 @@ else:
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados. Andá a la pestaña 🏗️ Cursos para crear uno.")
         else:
+            _hoy_agenda = datetime.date.today()
+            _dia_nombre = DIAS_SEMANA_ES[_hoy_agenda.weekday()]
+            _mes_nombre = MESES_ES_LARGO[_hoy_agenda.month - 1]
+            st.markdown(
+                f'<div style="color:#4facfe;font-family:\'Syne\',sans-serif;font-weight:700;font-size:1rem;'
+                f'margin-bottom:14px;letter-spacing:0.03em;">'
+                f'Hoy es {_dia_nombre} {_hoy_agenda.day} de {_mes_nombre} de {_hoy_agenda.year}'
+                f'</div>',
+                unsafe_allow_html=True
+            )
             c_ag = st.selectbox("Seleccione Curso:", list(mapa_cursos.keys()), key="ag_sel")
             inscripcion_id = mapa_cursos[c_ag]
             curso_sel_data = mapa_cursos_data.get(c_ag, {})
@@ -3128,5 +3138,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v305 completa
+# FIN PARTE 2 DE 2 — v306 completa
 # ============================================================
