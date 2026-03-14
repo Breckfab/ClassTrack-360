@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v306
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v307
 # ============================================================
 
 import streamlit as st
@@ -29,7 +29,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v306", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v307", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -55,6 +55,7 @@ def init_state():
         'pantalla_login': 'login',
         'editando_tarea': None,
         'editando_tarea_legacy': None,
+        'editando_tarea_tp': None,
         'hist_curso': 'Todos',
         'hist_contenido': '',
         'hist_tipo_prof': 'Todos',
@@ -3063,7 +3064,7 @@ else:
         else:
             try:
                 res_bk = supabase.table("bitacora").select(
-                    "tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada, inscripcion_id"
+                    "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada, inscripcion_id"
                 ).in_("inscripcion_id", list(mapa_cursos.values())).execute()
 
                 id_a_curso = {v: k for k, v in mapa_cursos.items()}
@@ -3076,7 +3077,14 @@ else:
                         fecha_t = reg.get(f'tarea{i}_fecha')
                         completada = reg.get(f'tarea{i}_completada', False)
                         if txt and not completada:
-                            tareas.append({'curso': curso_nombre, 'tarea': txt, 'fecha': fecha_t})
+                            tareas.append({
+                                'bit_id': reg['id'],
+                                'num': i,
+                                'curso': curso_nombre,
+                                'tarea': txt,
+                                'fecha': fecha_t,
+                                'clase_fecha': reg.get('fecha'),
+                            })
 
                 if not tareas:
                     no_encontrado("No hay tareas pendientes en ningún curso.")
@@ -3103,41 +3111,70 @@ else:
                     total = len(proximas_f) + len(vencidas_f) + len(sin_fecha_f)
                     st.caption(f"Total: {total} tarea/s pendiente/s")
 
+                    def render_tarea_pendientes(t, seccion):
+                        key_edit = f"tp_{seccion}_{t['bit_id']}_{t['num']}"
+                        fecha_fmt = datetime.date.fromisoformat(t['fecha']).strftime('%d/%m/%Y') if t['fecha'] else "-"
+                        clase_fmt = datetime.date.fromisoformat(t['clase_fecha']).strftime('%d/%m/%Y') if t['clase_fecha'] else "-"
+
+                        if st.session_state.get('editando_tarea_tp') == key_edit:
+                            with st.form(f"form_tp_{key_edit}", clear_on_submit=True):
+                                st.markdown(f"**✏️ Editando Tarea {t['num']} · {t['curso']} · Clase del {clase_fmt}**")
+                                nuevo_texto = st.text_area("Descripción:", value=t['tarea'], key=f"tp_txt_{key_edit}")
+                                val_fecha = datetime.date.fromisoformat(t['fecha']) if t['fecha'] else f_hoy
+                                nueva_fecha = st.date_input("Fecha de entrega:", value=val_fecha, key=f"tp_fch_{key_edit}")
+                                col_g, col_c = st.columns(2)
+                                if col_g.form_submit_button("💾 Guardar"):
+                                    guardar_edicion_tarea(t['bit_id'], t['num'], nuevo_texto, nueva_fecha)
+                                    st.session_state.editando_tarea_tp = None
+                                if col_c.form_submit_button("❌ Cancelar"):
+                                    st.session_state.editando_tarea_tp = None; st.rerun()
+                        else:
+                            col_t, col_e = st.columns([6, 1])
+                            with col_t:
+                                if seccion == "proximas":
+                                    dias = (datetime.date.fromisoformat(t['fecha']) - f_hoy).days
+                                    color = "#ffc107" if dias <= 3 else "#4facfe"
+                                    dias_label = "Mañana" if dias == 1 else f"En {dias} días"
+                                    st.markdown(f'''<div class="resumen-asist">
+                                        <div class="resumen-asist-titulo">{t["curso"]}</div>
+                                        <div class="resumen-fila"><span>{t["tarea"]}</span></div>
+                                        <div class="resumen-fila"><span>Vence: {fecha_fmt}</span><span style="color:{color};font-weight:700">{dias_label}</span></div>
+                                    </div>''', unsafe_allow_html=True)
+                                elif seccion == "vencidas":
+                                    dias_v = (f_hoy - datetime.date.fromisoformat(t['fecha'])).days
+                                    st.markdown(f'''<div class="resumen-asist" style="border-color:rgba(255,77,109,0.4);">
+                                        <div class="resumen-asist-titulo">{t["curso"]}</div>
+                                        <div class="resumen-fila"><span>{t["tarea"]}</span></div>
+                                        <div class="resumen-fila"><span>Venció: {fecha_fmt}</span><span style="color:#ff4d6d;font-weight:700">Hace {dias_v} día/s</span></div>
+                                    </div>''', unsafe_allow_html=True)
+                                else:
+                                    st.markdown(f'''<div class="resumen-asist" style="border-color:rgba(255,255,255,0.1);">
+                                        <div class="resumen-asist-titulo">{t["curso"]}</div>
+                                        <div class="resumen-fila"><span>{t["tarea"]}</span><span style="color:#556">Sin fecha</span></div>
+                                    </div>''', unsafe_allow_html=True)
+                            with col_e:
+                                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                                if st.button("✏️", key=f"btn_edit_tp_{key_edit}", help="Editar tarea"):
+                                    st.session_state.editando_tarea_tp = key_edit; st.rerun()
+
                     if proximas_f:
-                        st.markdown("### Proximas a vencer")
+                        st.markdown("### Próximas a vencer")
                         for t in proximas_f:
-                            fecha_fmt = datetime.date.fromisoformat(t['fecha']).strftime('%d/%m/%Y')
-                            dias = (datetime.date.fromisoformat(t['fecha']) - f_hoy).days
-                            color = "#ffc107" if dias <= 3 else "#4facfe"
-                            dias_label = "Manana" if dias == 1 else f"En {dias} dias"
-                            st.markdown(f'''<div class="resumen-asist">
-                                <div class="resumen-asist-titulo">{t["curso"]}</div>
-                                <div class="resumen-fila"><span>{t["tarea"]}</span></div>
-                                <div class="resumen-fila"><span>Vence: {fecha_fmt}</span><span style="color:{color};font-weight:700">{dias_label}</span></div>
-                            </div>''', unsafe_allow_html=True)
+                            render_tarea_pendientes(t, "proximas")
 
                     if vencidas_f:
                         st.markdown("### Vencidas sin completar")
                         for t in vencidas_f:
-                            fecha_fmt = datetime.date.fromisoformat(t['fecha']).strftime('%d/%m/%Y')
-                            dias_v = (f_hoy - datetime.date.fromisoformat(t['fecha'])).days
-                            st.markdown(f'''<div class="resumen-asist" style="border-color:rgba(255,77,109,0.4);">
-                                <div class="resumen-asist-titulo">{t["curso"]}</div>
-                                <div class="resumen-fila"><span>{t["tarea"]}</span></div>
-                                <div class="resumen-fila"><span>Vencio: {fecha_fmt}</span><span style="color:#ff4d6d;font-weight:700">Hace {dias_v} dia/s</span></div>
-                            </div>''', unsafe_allow_html=True)
+                            render_tarea_pendientes(t, "vencidas")
 
                     if sin_fecha_f:
                         st.markdown("### Sin fecha asignada")
                         for t in sin_fecha_f:
-                            st.markdown(f'''<div class="resumen-asist" style="border-color:rgba(255,255,255,0.1);">
-                                <div class="resumen-asist-titulo">{t["curso"]}</div>
-                                <div class="resumen-fila"><span>{t["tarea"]}</span><span style="color:#556">Sin fecha</span></div>
-                            </div>''', unsafe_allow_html=True)
+                            render_tarea_pendientes(t, "sin_fecha")
 
             except Exception as e:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v306 completa
+# FIN PARTE 2 DE 2 — v307 completa
 # ============================================================
