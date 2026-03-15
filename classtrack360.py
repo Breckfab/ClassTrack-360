@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v310
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v311
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v310", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v311", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1879,7 +1879,7 @@ else:
 
     tabs = st.tabs([
         "📅 Agenda",
-        "📌 Tareas Pendientes",
+        f"📌 Tareas Pendientes{f'  🔴 {total_vencidas_sidebar}' if total_vencidas_sidebar > 0 else ''}",
         "📋 Asistencia",
         "📊 Historial de Clases",
         "👥 Alumnos",
@@ -2070,6 +2070,7 @@ else:
                         suplente_nombre = st.text_input("Apellido y Nombre del profesor suplente:", placeholder="Ej: García, María")
                     with st.form("f_agenda", clear_on_submit=True):
                         temas = st.text_area("Contenido dictado hoy")
+                        observaciones = st.text_area("📝 Observaciones (opcional)", placeholder="Notas internas, incidencias, comentarios sobre la clase...", height=80)
                         st.markdown("---")
                         st.markdown("**📌 Tareas** (podés completar hasta 3, ninguna es obligatoria)")
                         col_t1, col_t2, col_t3 = st.columns(3)
@@ -2095,6 +2096,7 @@ else:
                                     supabase.table("bitacora").insert({
                                         "inscripcion_id": inscripcion_id, "fecha": str(fecha_clase),
                                         "contenido_clase": temas,
+                                        "observaciones": observaciones.strip() or None,
                                         "profesor_suplente": suplente_nombre.strip() if st.session_state.es_suplente else None,
                                         "tarea_proxima": tarea1 or tarea2 or tarea3 or None,
                                         "fecha_tarea": str(fecha1) if tarea1 else (str(fecha2) if tarea2 else (str(fecha3) if tarea3 else None)),
@@ -2353,6 +2355,7 @@ else:
                                 with st.form(f"edit_bit_h_{reg['id']}", clear_on_submit=True):
                                     fecha_edit = st.date_input("📆 Fecha de la clase:", value=datetime.date.fromisoformat(reg['fecha']), max_value=f_hoy, key=f"fecha_bit_h_{reg['id']}")
                                     t_edit = st.text_area("Contenido dictado:", value=reg.get('contenido_clase', ''))
+                                    obs_edit = st.text_area("📝 Observaciones (opcional):", value=reg.get('observaciones', '') or '', height=80, key=f"obs_h_{reg['id']}")
                                     es_sup_edit = st.checkbox("¿Clase dictada por suplente?", value=bool(suplente_h), key=f"sup_chk_h_{reg['id']}")
                                     sup_nombre_edit = ""
                                     if es_sup_edit:
@@ -2377,6 +2380,7 @@ else:
                                             supabase.table("bitacora").update({
                                                 "fecha": str(fecha_edit),
                                                 "contenido_clase": t_edit,
+                                                "observaciones": obs_edit.strip() or None,
                                                 "profesor_suplente": sup_nombre_edit.strip() if es_sup_edit and sup_nombre_edit.strip() else None,
                                                 "tarea1": t1_e or None, "tarea1_fecha": str(f1_e) if t1_e else None,
                                                 "tarea2": t2_e or None, "tarea2_fecha": str(f2_e) if t2_e else None,
@@ -2391,6 +2395,8 @@ else:
                                         st.session_state.editando_bitacora = None; st.rerun()
                             else:
                                 st.write(f"**Contenido:** {reg.get('contenido_clase', '-')}")
+                                if reg.get('observaciones'):
+                                    st.markdown(f'<div class="biblio-box">📝 <b>Observaciones:</b> {reg["observaciones"]}</div>', unsafe_allow_html=True)
                                 for i in range(1, 4):
                                     txt = reg.get(f'tarea{i}'); ft = reg.get(f'tarea{i}_fecha')
                                     completada = reg.get(f'tarea{i}_completada', False)
@@ -2481,6 +2487,8 @@ else:
                     elif not alumnos_filtrados:
                         no_encontrado(f"No se encontró ningún alumno con '{busqueda}'.")
                     else:
+                        if c_v != "Todos":
+                            alumnos_filtrados.sort(key=lambda x: normalizar(x[1].get('apellido', '')))
                         st.caption(f"Mostrando {len(alumnos_filtrados)} alumno/s")
                         if st.session_state.get('ok_alumno_editado'):
                             st.success("✅ Alumno actualizado satisfactoriamente.")
@@ -3257,5 +3265,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v310 completa
+# FIN PARTE 2 DE 2 — v311 completa
 # ============================================================
