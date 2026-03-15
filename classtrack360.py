@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v314
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v315
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v314", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v315", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -2696,7 +2696,7 @@ else:
                     nota_aprobacion = curso_data.get('nota_aprobacion')
                     if nota_aprobacion: st.caption(f"Nota de aprobación del curso: {nota_aprobacion}")
                     try:
-                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_ver).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
                         if not res_al_v.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -2777,7 +2777,7 @@ else:
                     st.session_state.ok_nota_agregada = None
                 if c_nt != "---":
                     try:
-                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
+                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_nt).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
                         if not res_al_n.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -3412,5 +3412,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v314 completa
+# FIN PARTE 2 DE 2 — v315 completa
 # ============================================================
