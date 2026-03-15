@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v322
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v323
 # ============================================================
 
 import streamlit as st
@@ -2716,7 +2716,6 @@ else:
             if not mapa_cursos:
                 no_encontrado("No hay cursos creados.")
             else:
-                busqueda = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_alumno_input", placeholder="Escribí para filtrar en tiempo real...")
                 c_v = st.selectbox("Filtrar por curso:", ["Todos"] + list(mapa_cursos.keys()), key="curso_alumnos_sel")
                 if st.session_state.get('ok_alumno_movido'):
                     st.success(f"✅ Alumno movido: {st.session_state.ok_alumno_movido}")
@@ -2727,20 +2726,40 @@ else:
                         res_al = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
                     else:
                         res_al = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
-                    alumnos_filtrados = []
+
+                    # Armar lista completa de alumnos para el pulldown de búsqueda
+                    todos_alumnos = []
                     for r in (res_al.data or []):
                         al_raw = r.get('alumnos')
                         al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                         if al:
-                            if busqueda.strip() == "" or normalizar(busqueda) in normalizar(al.get('nombre','')) or normalizar(busqueda) in normalizar(al.get('apellido','')):
-                                alumnos_filtrados.append((r, al))
+                            todos_alumnos.append((r, al))
+
+                    # Pulldown de búsqueda por alumno
+                    opciones_nombres = sorted(
+                        [f"{al.get('apellido','').upper()}, {al.get('nombre','')}" for _, al in todos_alumnos],
+                        key=lambda x: normalizar(x)
+                    )
+                    opciones_nombres = list(dict.fromkeys(opciones_nombres))  # eliminar duplicados
+                    opcion_sel = st.selectbox(
+                        "🔍 Buscar alumno:",
+                        ["Todos"] + opciones_nombres,
+                        key="busq_alumno_select"
+                    )
+
+                    # Filtrar según selección del pulldown
+                    alumnos_filtrados = []
+                    for r, al in todos_alumnos:
+                        nombre_opcion = f"{al.get('apellido','').upper()}, {al.get('nombre','')}"
+                        if opcion_sel == "Todos" or opcion_sel == nombre_opcion:
+                            alumnos_filtrados.append((r, al))
+
                     if not res_al.data:
                         no_encontrado("No hay alumnos inscriptos.")
                     elif not alumnos_filtrados:
-                        no_encontrado(f"No se encontró ningún alumno con '{busqueda}'.")
+                        no_encontrado(f"No se encontró ningún alumno.")
                     else:
-                        if c_v != "Todos":
-                            alumnos_filtrados.sort(key=lambda x: normalizar(x[1].get('apellido', '')))
+                        alumnos_filtrados.sort(key=lambda x: normalizar(x[1].get('apellido', '')))
                         st.caption(f"Mostrando {len(alumnos_filtrados)} alumno/s")
                         if st.session_state.get('ok_alumno_editado'):
                             st.success("✅ Alumno actualizado satisfactoriamente.")
@@ -2780,6 +2799,7 @@ else:
                                     if col_a2.form_submit_button("❌ Cancelar"):
                                         st.session_state.editando_alumno = None; st.rerun()
                             else:
+                                curso_badge = f' &nbsp;<span style="color:#4facfe;font-size:0.78rem">📖 {r.get("nombre_curso_materia","")}</span>' if c_v == "Todos" else ''
                                 email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
                                 st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{curso_badge}{email_display}</div>', unsafe_allow_html=True)
                                 ab1, ab2, ab3 = st.columns(3)
@@ -3622,5 +3642,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v322 completa
+# FIN PARTE 2 DE 2 — v323 completa
 # ============================================================
