@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v311
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v312
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v311", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v312", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -83,6 +83,7 @@ def init_state():
         'ok_calendario_guardado': False,
         'ok_cal_oficial_guardado': False,
         'ok_registro_cuenta': None,
+        'modo_claro': False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -90,112 +91,181 @@ def init_state():
 
 init_state()
 
+def get_modo_claro(profesor_id):
+    try:
+        res = supabase.table("preferencias_usuario").select("modo_claro").eq("profesor_id", profesor_id).execute()
+        if res.data:
+            return res.data[0].get("modo_claro", False)
+        return False
+    except: return False
+
+def set_modo_claro(profesor_id, valor):
+    try:
+        res = supabase.table("preferencias_usuario").select("id").eq("profesor_id", profesor_id).execute()
+        if res.data:
+            supabase.table("preferencias_usuario").update({"modo_claro": valor}).eq("profesor_id", profesor_id).execute()
+        else:
+            supabase.table("preferencias_usuario").insert({"profesor_id": profesor_id, "modo_claro": valor}).execute()
+    except: pass
+
+def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
+    """Devuelve lista de cursos con clase hoy, indicando si ya fue registrada."""
+    hoy = datetime.date.today()
+    dia_hoy = hoy.weekday()  # 0=lunes ... 6=domingo
+    clases = []
+    for nombre_curso, inscripcion_id in mapa_cursos.items():
+        dias = extraer_dias_curso(nombre_curso)
+        if dia_hoy in dias:
+            curso_data = mapa_cursos_data.get(nombre_curso, {})
+            hi = str(curso_data.get('hora_inicio', '') or '')[:5]
+            hf = str(curso_data.get('hora_fin', '') or '')[:5]
+            horario = format_horario(hi, hf) if hi else "-"
+            try:
+                res = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(hoy)).execute()
+                ya_registrada = len(res.data) > 0
+            except:
+                ya_registrada = False
+            clases.append({
+                'nombre': nombre_curso,
+                'horario': horario,
+                'ya_registrada': ya_registrada,
+            })
+    return clases
+
 def footer():
     st.markdown('<div class="footer-cr">&#174; Sistema diseñado y realizado por Fabián Belledi &nbsp;·&nbsp; 2026</div>', unsafe_allow_html=True)
 
-st.markdown("""
+def aplicar_tema(modo_claro=False):
+    if modo_claro:
+        bg = "#f4f6fb"; bg2 = "#ffffff"; color_texto = "#1a1f2e"
+        color_sub = "#4a5568"; border_color = "rgba(0,0,0,0.1)"
+        grid_color = "rgba(79,172,254,0.06)"
+        footer_bg = "#f4f6fb"; footer_color = "#4a5568"
+        card_bg = "rgba(79,172,254,0.06)"; stat_border = "#4facfe"
+        fila_color = "#556"; fila_border = "rgba(0,0,0,0.06)"
+        no_enc_bg = "rgba(255,77,109,0.05)"; login_bg = "rgba(79,172,254,0.06)"
+        cal_box_bg = "rgba(255,255,255,0.8)"; cal_td = "#444"
+        backup_bg = "rgba(79,172,254,0.04)"; biblio_bg = "rgba(0,0,0,0.03)"
+        biblio_color = "#556"; alumno_bg = "rgba(0,0,0,0.02)"
+        planilla_bg = "rgba(79,172,254,0.04)"; filtros_bg = "rgba(0,0,0,0.02)"
+    else:
+        bg = "#080b10"; bg2 = "#080b10"; color_texto = "#e8eaf0"
+        color_sub = "#99a"; border_color = "rgba(255,255,255,0.1)"
+        grid_color = "rgba(79,172,254,0.04)"
+        footer_bg = "#080b10"; footer_color = "#c8d8f0"
+        card_bg = "rgba(79,172,254,0.1)"; stat_border = "#4facfe"
+        fila_color = "#99a"; fila_border = "rgba(255,255,255,0.04)"
+        no_enc_bg = "rgba(255,77,109,0.07)"; login_bg = "rgba(255,255,255,0.03)"
+        cal_box_bg = "rgba(255,255,255,0.02)"; cal_td = "#99a"
+        backup_bg = "rgba(79,172,254,0.05)"; biblio_bg = "rgba(255,255,255,0.02)"
+        biblio_color = "#778"; alumno_bg = "rgba(255,255,255,0.03)"
+        planilla_bg = "rgba(255,255,255,0.03)"; filtros_bg = "rgba(255,255,255,0.02)"
+
+    st.markdown(f"""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;700;800&family=DM+Mono:wght@300;400&display=swap');
-    .stApp { background: #080b10; color: #e8eaf0; font-family: 'DM Mono', monospace; }
-    .stApp::before {
+    .stApp {{ background: {bg}; color: {color_texto}; font-family: 'DM Mono', monospace; }}
+    .stApp::before {{
         content: ''; position: fixed; inset: 0; z-index: 0; pointer-events: none;
-        background-image: linear-gradient(rgba(79,172,254,0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(79,172,254,0.04) 1px, transparent 1px);
+        background-image: linear-gradient({grid_color} 1px, transparent 1px), linear-gradient(90deg, {grid_color} 1px, transparent 1px);
         background-size: 48px 48px;
-    }
-    .planilla-row { background: rgba(255,255,255,0.03); padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #4facfe; border: 1px solid rgba(255,255,255,0.1); }
-    .tarea-alerta { background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 10px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
-    .tarea-card { background: rgba(255,193,7,0.08); border: 1px solid rgba(255,193,7,0.25); border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; }
-    .tarea-card .tarea-titulo { color: #ffc107; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
-    .tarea-card .tarea-texto { color: #e8eaf0; font-size: 0.9rem; margin-bottom: 4px; }
-    .tarea-card .tarea-fecha { color: #778; font-size: 0.75rem; }
-    .tarea-card-done { background: rgba(79,172,254,0.05); border: 1px solid rgba(79,172,254,0.15); border-radius: 10px; padding: 10px 18px; margin-bottom: 8px; opacity: 0.5; }
-    .tarea-card-done .tarea-titulo { color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
-    .tarea-card-done .tarea-texto { color: #778; font-size: 0.9rem; text-decoration: line-through; margin-bottom: 4px; }
-    .tarea-card-done .tarea-fecha { color: #556; font-size: 0.75rem; }
-    .tarea-card-vencida { background: rgba(255,77,109,0.10); border: 2px solid rgba(255,77,109,0.5); border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; }
-    .tarea-card-vencida .tarea-titulo { color: #ff4d6d; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
-    .tarea-card-vencida .tarea-texto { color: #e8eaf0; font-size: 0.9rem; margin-bottom: 4px; }
-    .tarea-card-vencida .tarea-fecha { color: #ff4d6d; font-size: 0.75rem; font-weight: 700; }
-    .vencidas-header { color: #ff4d6d; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; background: rgba(255,77,109,0.07); border: 1px solid rgba(255,77,109,0.25); border-radius: 8px; padding: 8px 14px; }
-    .badge-vencidas { background: #ff4d6d; color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.8rem; border-radius: 20px; padding: 4px 14px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.05em; }
-    .badge-clases { background: rgba(79,172,254,0.15); border: 1px solid rgba(79,172,254,0.4); color: #4facfe; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.8rem; border-radius: 20px; padding: 4px 14px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.05em; }
-    .proxima-clase-card { background: rgba(79,172,254,0.07); border: 1px solid rgba(79,172,254,0.25); border-radius: 10px; padding: 12px 18px; margin-bottom: 12px; }
-    .proxima-clase-card .pc-titulo { color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }
-    .proxima-clase-card .pc-fecha { color: #e8eaf0; font-size: 1rem; font-weight: 700; margin-bottom: 2px; }
-    .proxima-clase-card .pc-detalle { color: #778; font-size: 0.78rem; }
-    .contador-card { background: rgba(79,172,254,0.05); border: 1px solid rgba(79,172,254,0.2); border-radius: 12px; padding: 18px 22px; margin-bottom: 12px; }
-    .contador-card .cc-nombre { color: #e8eaf0; font-size: 0.95rem; font-weight: 700; margin-bottom: 8px; }
-    .contador-card .cc-info { color: #4facfe; font-size: 0.78rem; margin-bottom: 4px; }
-    .contador-card .cc-clases { color: #a0c4ff; font-size: 0.82rem; margin-top: 6px; }
-    .asist-card { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 18px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }
-    .asist-nombre { color: #e8eaf0; font-size: 0.9rem; font-weight: 600; }
-    .asist-presente { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
-    .asist-tarde { color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
-    .asist-ausente { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }
-    .resumen-asist { background: rgba(79,172,254,0.05); border: 1px solid rgba(79,172,254,0.15); border-radius: 10px; padding: 12px 18px; margin-bottom: 10px; }
-    .resumen-asist-titulo { color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }
-    .resumen-fila { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid rgba(255,255,255,0.04); font-size: 0.82rem; color: #99a; }
-    .resumen-fila:last-child { border-bottom: none; }
-    .stat-card { background: rgba(79,172,254,0.1); border: 1px solid #4facfe; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }
-    .nota-existente { color: #4facfe; font-size: 0.85rem; margin-top: 4px; }
-    .alumno-block { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }
-    .alumno-block .nombre { font-weight: 600; color: #e8eaf0; font-size: 0.95rem; margin-bottom: 10px; }
-    .nota-linea { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem; color: #99a; }
-    .nota-linea:last-of-type { border-bottom: none; }
-    .nota-badge { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; padding: 2px 8px; border-radius: 5px; }
-    .nota-badge.baja { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); }
-    .nota-badge.media { color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); }
-    .nota-badge.alta { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); }
-    .promedio-linea { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(79,172,254,0.2); font-size: 0.85rem; color: #4facfe; font-weight: 600; }
-    .aprobado { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; }
-    .desaprobado { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; }
-    .biblio-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 14px; margin-top: 6px; font-size: 0.8rem; color: #778; }
-    .suplente-badge { background: rgba(255,193,7,0.12); border: 1px solid rgba(255,193,7,0.35); border-radius: 6px; padding: 3px 10px; color: #ffc107; font-size: 0.78rem; font-weight: 700; display: inline-block; margin-top: 4px; }
-    .titular-badge { background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); border-radius: 6px; padding: 3px 10px; color: #4facfe; font-size: 0.78rem; font-weight: 700; display: inline-block; margin-top: 4px; }
-    .filtros-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }
-    .no-encontrado { background: rgba(255,77,109,0.07); border: 1px solid rgba(255,77,109,0.2); border-radius: 8px; padding: 12px 18px; color: #ff4d6d; font-size: 0.88rem; margin-top: 8px; }
-    .cal-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 10px; margin-top: 8px; }
-    .cal-titulo { text-align: center; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; color: #4facfe; margin-bottom: 8px; }
-    .cal-tabla { width: 100%; border-collapse: collapse; font-size: 0.72rem; }
-    .cal-tabla th { color: #4facfe; text-align: center; padding: 2px; font-weight: 600; }
-    .cal-tabla td { text-align: center; padding: 3px 2px; color: #99a; }
-    .cal-tabla td.hoy { background: #4facfe; color: #080b10; border-radius: 50%; font-weight: 800; }
-    .cal-tabla td.vacio { color: transparent; }
-    .admin-badge { background: rgba(255,77,109,0.15); border: 1px solid rgba(255,77,109,0.4); border-radius: 8px; padding: 8px 14px; color: #ff4d6d; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; display: inline-block; margin-bottom: 16px; }
-    .reset-box { background: rgba(255,77,109,0.05); border: 2px solid rgba(255,77,109,0.3); border-radius: 12px; padding: 20px; margin-top: 20px; }
-    .reset-titulo { color: #ff4d6d; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 8px; }
-    .advertencia-box { background: rgba(255,193,7,0.1); border: 2px solid #ffc107; border-radius: 10px; padding: 16px; margin: 16px 0; color: #ffc107; font-size: 0.9rem; }
-    .login-box { background: rgba(255,255,255,0.03); border: 1px solid rgba(79,172,254,0.2); border-radius: 16px; padding: 40px; margin-top: 60px; }
-    .login-logo { font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: #e8eaf0; margin-bottom: 6px; }
-    .login-logo span { color: #4facfe; }
-    .login-eyebrow { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 16px; text-align: center; }
-    .login-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.6rem; margin-bottom: 28px; color: #e8eaf0; text-align: center; }
-    .login-footer { font-size: 0.72rem; color: #3a4358; text-align: center; margin-top: 24px; border-top: 1px solid rgba(255,255,255,0.05); padding-top: 16px; }
-    .codigo-box { background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.3); border-radius: 8px; padding: 12px 18px; font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #4facfe; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 8px 0; }
-    .habilitado-tag { color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
-    .deshabilitado-tag { color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }
-    .footer-cr { position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 6px; font-size: 0.72rem; color: #c8d8f0; font-family: 'DM Mono', monospace; background: #080b10; border-top: 1px solid rgba(255,255,255,0.08); z-index: 999; letter-spacing: 0.05em; }
-    .tareas-pendientes-header { color: #ffc107; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; }
-    .registro-link { text-align: center; margin-top: 16px; font-size: 0.78rem; color: #4a5568; }
-    .email-tag { color: #4facfe; font-size: 0.78rem; margin-top: 2px; }
-    .calendario-box { background: rgba(79,172,254,0.06); border: 1px solid rgba(79,172,254,0.2); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
-    .calendario-box .cal-header { color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }
-    .calendario-box .cal-fechas { color: #e8eaf0; font-size: 0.9rem; }
-    .calendario-box .cal-dias { color: #778; font-size: 0.78rem; margin-top: 4px; }
-    .cronograma-box { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07); border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }
-    .cronograma-titulo { color: #4facfe; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }
-    .backup-box { background: rgba(79,172,254,0.05); border: 1px solid rgba(79,172,254,0.2); border-radius: 14px; padding: 20px 24px; margin-bottom: 16px; }
-    .backup-titulo { color: #4facfe; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 8px; }
-    .backup-aviso { background: rgba(255,193,7,0.08); border: 1px solid rgba(255,193,7,0.3); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; color: #ffc107; font-size: 0.88rem; }
-    .backup-hist-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.82rem; color: #99a; }
-    .backup-hist-row:last-child { border-bottom: none; }
-    .backup-ok { color: #4facfe; font-weight: 700; }
-    .backup-no { color: #556; }
-    .restore-box { background: rgba(255,77,109,0.04); border: 2px solid rgba(255,77,109,0.3); border-radius: 14px; padding: 20px 24px; margin-top: 24px; }
-    .restore-titulo { color: #ff4d6d; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 8px; }
-    .salir-backup-overlay { background: rgba(8,11,16,0.97); border: 2px solid rgba(79,172,254,0.4); border-radius: 16px; padding: 28px 32px; margin: 20px 0; text-align: center; }
-    .salir-backup-titulo { color: #4facfe; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; margin-bottom: 12px; }
-    .salir-backup-info { color: #e8eaf0; font-size: 0.9rem; margin-bottom: 20px; }
+    }}
+    .planilla-row {{ background: {planilla_bg}; padding: 15px; border-radius: 10px; margin-bottom: 10px; border-left: 5px solid #4facfe; border: 1px solid {border_color}; }}
+    .tarea-alerta {{ background: rgba(255,193,7,0.25); border: 2px solid #ffc107; padding: 20px; border-radius: 12px; color: #ffc107; text-align: center; font-weight: 800; margin-bottom: 10px; font-size: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }}
+    .tarea-card {{ background: rgba(255,193,7,0.08); border: 1px solid rgba(255,193,7,0.25); border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; }}
+    .tarea-card .tarea-titulo {{ color: #ffc107; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }}
+    .tarea-card .tarea-texto {{ color: {color_texto}; font-size: 0.9rem; margin-bottom: 4px; }}
+    .tarea-card .tarea-fecha {{ color: {fila_color}; font-size: 0.75rem; }}
+    .tarea-card-done {{ background: rgba(79,172,254,0.05); border: 1px solid rgba(79,172,254,0.15); border-radius: 10px; padding: 10px 18px; margin-bottom: 8px; opacity: 0.5; }}
+    .tarea-card-done .tarea-titulo {{ color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }}
+    .tarea-card-done .tarea-texto {{ color: {fila_color}; font-size: 0.9rem; text-decoration: line-through; margin-bottom: 4px; }}
+    .tarea-card-done .tarea-fecha {{ color: {fila_color}; font-size: 0.75rem; }}
+    .tarea-card-vencida {{ background: rgba(255,77,109,0.10); border: 2px solid rgba(255,77,109,0.5); border-radius: 10px; padding: 14px 18px; margin-bottom: 8px; }}
+    .tarea-card-vencida .tarea-titulo {{ color: #ff4d6d; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }}
+    .tarea-card-vencida .tarea-texto {{ color: {color_texto}; font-size: 0.9rem; margin-bottom: 4px; }}
+    .tarea-card-vencida .tarea-fecha {{ color: #ff4d6d; font-size: 0.75rem; font-weight: 700; }}
+    .vencidas-header {{ color: #ff4d6d; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; background: rgba(255,77,109,0.07); border: 1px solid rgba(255,77,109,0.25); border-radius: 8px; padding: 8px 14px; }}
+    .badge-vencidas {{ background: #ff4d6d; color: #fff; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.8rem; border-radius: 20px; padding: 4px 14px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.05em; }}
+    .badge-clases {{ background: rgba(79,172,254,0.15); border: 1px solid rgba(79,172,254,0.4); color: #4facfe; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 0.8rem; border-radius: 20px; padding: 4px 14px; display: inline-block; margin-bottom: 8px; letter-spacing: 0.05em; }}
+    .proxima-clase-card {{ background: rgba(79,172,254,0.07); border: 1px solid rgba(79,172,254,0.25); border-radius: 10px; padding: 12px 18px; margin-bottom: 12px; }}
+    .proxima-clase-card .pc-titulo {{ color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 4px; }}
+    .proxima-clase-card .pc-fecha {{ color: {color_texto}; font-size: 1rem; font-weight: 700; margin-bottom: 2px; }}
+    .proxima-clase-card .pc-detalle {{ color: {fila_color}; font-size: 0.78rem; }}
+    .contador-card {{ background: rgba(79,172,254,0.05); border: 1px solid rgba(79,172,254,0.2); border-radius: 12px; padding: 18px 22px; margin-bottom: 12px; }}
+    .contador-card .cc-nombre {{ color: {color_texto}; font-size: 0.95rem; font-weight: 700; margin-bottom: 8px; }}
+    .contador-card .cc-info {{ color: #4facfe; font-size: 0.78rem; margin-bottom: 4px; }}
+    .contador-card .cc-clases {{ color: #a0c4ff; font-size: 0.82rem; margin-top: 6px; }}
+    .asist-card {{ background: {alumno_bg}; border: 1px solid {border_color}; border-radius: 12px; padding: 14px 18px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }}
+    .asist-nombre {{ color: {color_texto}; font-size: 0.9rem; font-weight: 600; }}
+    .asist-presente {{ color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }}
+    .asist-tarde {{ color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }}
+    .asist-ausente {{ color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }}
+    .resumen-asist {{ background: rgba(79,172,254,0.05); border: 1px solid rgba(79,172,254,0.15); border-radius: 10px; padding: 12px 18px; margin-bottom: 10px; }}
+    .resumen-asist-titulo {{ color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 8px; }}
+    .resumen-fila {{ display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid {fila_border}; font-size: 0.82rem; color: {fila_color}; }}
+    .resumen-fila:last-child {{ border-bottom: none; }}
+    .stat-card {{ background: {card_bg}; border: 1px solid {stat_border}; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }}
+    .nota-existente {{ color: #4facfe; font-size: 0.85rem; margin-top: 4px; }}
+    .alumno-block {{ background: {alumno_bg}; border: 1px solid {border_color}; border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }}
+    .alumno-block .nombre {{ font-weight: 600; color: {color_texto}; font-size: 0.95rem; margin-bottom: 10px; }}
+    .nota-linea {{ display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid {fila_border}; font-size: 0.85rem; color: {fila_color}; }}
+    .nota-linea:last-of-type {{ border-bottom: none; }}
+    .nota-badge {{ font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; padding: 2px 8px; border-radius: 5px; }}
+    .nota-badge.baja {{ color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); }}
+    .nota-badge.media {{ color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); }}
+    .nota-badge.alta {{ color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); }}
+    .promedio-linea {{ display: flex; justify-content: space-between; align-items: center; margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(79,172,254,0.2); font-size: 0.85rem; color: #4facfe; font-weight: 600; }}
+    .aprobado {{ color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; }}
+    .desaprobado {{ color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.8rem; font-weight: 700; }}
+    .biblio-box {{ background: {biblio_bg}; border: 1px solid {border_color}; border-radius: 8px; padding: 10px 14px; margin-top: 6px; font-size: 0.8rem; color: {biblio_color}; }}
+    .suplente-badge {{ background: rgba(255,193,7,0.12); border: 1px solid rgba(255,193,7,0.35); border-radius: 6px; padding: 3px 10px; color: #ffc107; font-size: 0.78rem; font-weight: 700; display: inline-block; margin-top: 4px; }}
+    .titular-badge {{ background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); border-radius: 6px; padding: 3px 10px; color: #4facfe; font-size: 0.78rem; font-weight: 700; display: inline-block; margin-top: 4px; }}
+    .filtros-box {{ background: {filtros_bg}; border: 1px solid {border_color}; border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; }}
+    .no-encontrado {{ background: {no_enc_bg}; border: 1px solid rgba(255,77,109,0.2); border-radius: 8px; padding: 12px 18px; color: #ff4d6d; font-size: 0.88rem; margin-top: 8px; }}
+    .cal-box {{ background: {cal_box_bg}; border: 1px solid {border_color}; border-radius: 10px; padding: 10px; margin-top: 8px; }}
+    .cal-titulo {{ text-align: center; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; color: #4facfe; margin-bottom: 8px; }}
+    .cal-tabla {{ width: 100%; border-collapse: collapse; font-size: 0.72rem; }}
+    .cal-tabla th {{ color: #4facfe; text-align: center; padding: 2px; font-weight: 600; }}
+    .cal-tabla td {{ text-align: center; padding: 3px 2px; color: {cal_td}; }}
+    .cal-tabla td.hoy {{ background: #4facfe; color: #080b10; border-radius: 50%; font-weight: 800; }}
+    .cal-tabla td.vacio {{ color: transparent; }}
+    .admin-badge {{ background: rgba(255,77,109,0.15); border: 1px solid rgba(255,77,109,0.4); border-radius: 8px; padding: 8px 14px; color: #ff4d6d; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; display: inline-block; margin-bottom: 16px; }}
+    .reset-box {{ background: rgba(255,77,109,0.05); border: 2px solid rgba(255,77,109,0.3); border-radius: 12px; padding: 20px; margin-top: 20px; }}
+    .reset-titulo {{ color: #ff4d6d; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 8px; }}
+    .advertencia-box {{ background: rgba(255,193,7,0.1); border: 2px solid #ffc107; border-radius: 10px; padding: 16px; margin: 16px 0; color: #ffc107; font-size: 0.9rem; }}
+    .login-box {{ background: {login_bg}; border: 1px solid rgba(79,172,254,0.2); border-radius: 16px; padding: 40px; margin-top: 60px; }}
+    .login-logo {{ font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: {color_texto}; margin-bottom: 6px; }}
+    .login-logo span {{ color: #4facfe; }}
+    .login-eyebrow {{ font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 16px; text-align: center; }}
+    .login-title {{ font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.6rem; margin-bottom: 28px; color: {color_texto}; text-align: center; }}
+    .login-footer {{ font-size: 0.72rem; color: #3a4358; text-align: center; margin-top: 24px; border-top: 1px solid {border_color}; padding-top: 16px; }}
+    .codigo-box {{ background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.3); border-radius: 8px; padding: 12px 18px; font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #4facfe; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 8px 0; }}
+    .habilitado-tag {{ color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }}
+    .deshabilitado-tag {{ color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }}
+    .footer-cr {{ position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 6px; font-size: 0.72rem; color: {footer_color}; font-family: 'DM Mono', monospace; background: {footer_bg}; border-top: 1px solid {border_color}; z-index: 999; letter-spacing: 0.05em; }}
+    .tareas-pendientes-header {{ color: #ffc107; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; }}
+    .registro-link {{ text-align: center; margin-top: 16px; font-size: 0.78rem; color: #4a5568; }}
+    .email-tag {{ color: #4facfe; font-size: 0.78rem; margin-top: 2px; }}
+    .calendario-box {{ background: rgba(79,172,254,0.06); border: 1px solid rgba(79,172,254,0.2); border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }}
+    .calendario-box .cal-header {{ color: #4facfe; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 10px; }}
+    .calendario-box .cal-fechas {{ color: {color_texto}; font-size: 0.9rem; }}
+    .calendario-box .cal-dias {{ color: {fila_color}; font-size: 0.78rem; margin-top: 4px; }}
+    .cronograma-box {{ background: {filtros_bg}; border: 1px solid {border_color}; border-radius: 10px; padding: 14px 18px; margin-bottom: 12px; }}
+    .cronograma-titulo {{ color: #4facfe; font-size: 0.8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 8px; }}
+    .backup-box {{ background: {backup_bg}; border: 1px solid rgba(79,172,254,0.2); border-radius: 14px; padding: 20px 24px; margin-bottom: 16px; }}
+    .backup-titulo {{ color: #4facfe; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 8px; }}
+    .backup-aviso {{ background: rgba(255,193,7,0.08); border: 1px solid rgba(255,193,7,0.3); border-radius: 10px; padding: 14px 18px; margin-bottom: 16px; color: #ffc107; font-size: 0.88rem; }}
+    .backup-hist-row {{ display: flex; justify-content: space-between; align-items: center; padding: 10px 0; border-bottom: 1px solid {fila_border}; font-size: 0.82rem; color: {fila_color}; }}
+    .backup-hist-row:last-child {{ border-bottom: none; }}
+    .backup-ok {{ color: #4facfe; font-weight: 700; }}
+    .backup-no {{ color: #556; }}
+    .restore-box {{ background: rgba(255,77,109,0.04); border: 2px solid rgba(255,77,109,0.3); border-radius: 14px; padding: 20px 24px; margin-top: 24px; }}
+    .restore-titulo {{ color: #ff4d6d; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 8px; }}
+    .salir-backup-overlay {{ background: rgba(8,11,16,0.97); border: 2px solid rgba(79,172,254,0.4); border-radius: 16px; padding: 28px 32px; margin: 20px 0; text-align: center; }}
+    .salir-backup-titulo {{ color: #4facfe; font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.1rem; margin-bottom: 12px; }}
+    .salir-backup-info {{ color: {color_texto}; font-size: 0.9rem; margin-bottom: 20px; }}
+    .recordatorio-clase {{ background: rgba(79,172,254,0.08); border: 2px solid rgba(79,172,254,0.4); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; }}
+    .recordatorio-clase-ok {{ background: rgba(79,172,254,0.04); border: 1px solid rgba(79,172,254,0.2); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; opacity: 0.7; }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -1780,6 +1850,13 @@ else:
     total_vencidas_sidebar = get_tareas_vencidas_count(u_data['id'])
     total_clases_sidebar = get_total_clases_sidebar(u_data['id'])
 
+    # Cargar preferencia de tema si no está en sesión
+    if 'modo_claro_cargado' not in st.session_state:
+        st.session_state.modo_claro = get_modo_claro(u_data['id'])
+        st.session_state.modo_claro_cargado = True
+
+    aplicar_tema(st.session_state.modo_claro)
+
     # =========================================================
     # RECORDATORIO BACKUP AL SALIR
     # =========================================================
@@ -1820,6 +1897,13 @@ else:
         st.caption(tipo_sistema)
         st.write(f"📅 {f_hoy.strftime('%d/%m/%Y')}")
         components.html("""<div style="color:#4facfe;font-family:monospace;font-size:24px;text-align:center;"><div id="c">00:00:00</div></div><script>setInterval(()=>{document.getElementById('c').innerText=new Date().toLocaleTimeString('es-AR',{hour12:false})},1000);</script>""", height=50)
+        # Toggle modo claro/oscuro
+        label_tema = "☀️ Modo claro" if not st.session_state.modo_claro else "🌙 Modo oscuro"
+        if st.button(label_tema, key="btn_tema", use_container_width=True):
+            nuevo_modo = not st.session_state.modo_claro
+            st.session_state.modo_claro = nuevo_modo
+            set_modo_claro(u_data['id'], nuevo_modo)
+            st.rerun()
         try:
             res_total = supabase.table("inscripciones").select("id").eq("profesor_id", u_data['id']).eq("anio_lectivo", 2026).not_.is_("alumno_id", "null").execute()
             st.markdown(f'<div class="stat-card">Total Alumnos 2026: <b>{len(res_total.data)}</b></div>', unsafe_allow_html=True)
@@ -1892,6 +1976,21 @@ else:
         "🖨️ Impresión",
         "🗄️ Backup",
     ])
+
+    # =========================================================
+    # RECORDATORIO DE CLASES DE HOY
+    # =========================================================
+    clases_hoy = get_clases_hoy(u_data['id'], mapa_cursos, mapa_cursos_data)
+    if clases_hoy:
+        for c in clases_hoy:
+            if c['ya_registrada']:
+                st.markdown(f'''<div class="recordatorio-clase-ok">
+                    ✅ <b>{c["nombre"]}</b> · {c["horario"]} — <span style="color:#4facfe">Clase ya registrada</span>
+                </div>''', unsafe_allow_html=True)
+            else:
+                st.markdown(f'''<div class="recordatorio-clase">
+                    🔔 <b>Hoy tenés clase de {c["nombre"]}</b> · {c["horario"]}
+                </div>''', unsafe_allow_html=True)
 
     # =========================================================
     # TAB 0 — AGENDA
@@ -3265,5 +3364,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v311 completa
+# FIN PARTE 2 DE 2 — v312 completa
 # ============================================================
