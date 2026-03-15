@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v324
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v326
 # ============================================================
 
 import streamlit as st
@@ -51,7 +51,7 @@ def init_state():
         'es_suplente': False,
         'prev_curso_alumnos': None, 'prev_curso_notas_ver': None,
         'prev_curso_notas_carga': None, 'prev_curso_busq_hist': None,
-        'busq_alumno_val': '', 'busq_nota_val': '', 'filtro_estado_val': 'Todos',
+        'busq_alumno_val': '', 'busq_alumno_texto': '', 'busq_nota_val': '', 'filtro_estado_val': 'Todos',
         'busq_carga_val': '', 'busq_contenido_hist_val': '', 'tipo_prof_val': 'Todos',
         'pantalla_login': 'login',
         'editando_tarea': None,
@@ -2738,54 +2738,61 @@ else:
                     if not todos_alumnos:
                         no_encontrado("No hay alumnos inscriptos.")
                     else:
-                        # --- Autocomplete por aproximación ---
-                        # Paso 1: text_input — filtra mientras escribís
-                        texto_busq = st.text_input(
-                            "🔍 Buscar alumno:",
-                            key="busq_alumno_texto",
-                            placeholder="Escribí una letra para filtrar..."
+                        # Opciones para datalist HTML
+                        opciones_nombres = sorted(
+                            list(dict.fromkeys([
+                                f"{al.get('apellido','').upper()}, {al.get('nombre','')}"
+                                for _, al in todos_alumnos
+                            ])),
+                            key=lambda x: normalizar(x)
                         )
+                        opciones_html = ''.join([f'<option value="{op}">' for op in opciones_nombres])
 
-                        # Paso 2: filtrar coincidencias por lo escrito
+                        # Fila: buscador + botón limpiar
+                        col_busq, col_limpiar = st.columns([5, 1])
+                        with col_busq:
+                            texto_busq = st.text_input(
+                                "🔍 Buscar alumno:",
+                                key="busq_alumno_texto",
+                                placeholder="Escribí una letra para filtrar...",
+                            )
+                        with col_limpiar:
+                            st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                            if st.button("🧹 Limpiar", key="btn_limpiar_busq", use_container_width=True):
+                                st.session_state.busq_alumno_texto = ""
+                                st.rerun()
+
+                        # Datalist HTML: sugerencias en tiempo real del navegador
+                        components.html(f"""
+                        <style>
+                            #busq-hint {{
+                                width:100%; padding:8px 12px;
+                                background:rgba(79,172,254,0.07); color:#4facfe;
+                                border:1px solid rgba(79,172,254,0.3); border-radius:8px;
+                                font-size:13px; outline:none; box-sizing:border-box;
+                            }}
+                        </style>
+                        <input id="busq-hint" list="alumnos-list"
+                            placeholder="💡 Sugerencias: escribí arriba y elegí acá..."
+                            autocomplete="off" />
+                        <datalist id="alumnos-list">{opciones_html}</datalist>
+                        """, height=44)
+
+                        # Filtrar lista según lo escrito
                         if texto_busq.strip():
-                            coincidencias = [
+                            alumnos_filtrados = [
                                 (r, al) for r, al in todos_alumnos
                                 if normalizar(texto_busq) in normalizar(al.get('apellido', ''))
                                 or normalizar(texto_busq) in normalizar(al.get('nombre', ''))
                             ]
                         else:
-                            coincidencias = todos_alumnos
+                            alumnos_filtrados = todos_alumnos
 
-                        # Paso 3: armar opciones ordenadas para el selectbox
-                        opciones_coincidencias = sorted(
-                            list(dict.fromkeys([
-                                f"{al.get('apellido','').upper()}, {al.get('nombre','')}"
-                                for _, al in coincidencias
-                            ])),
-                            key=lambda x: normalizar(x)
-                        )
+                        alumnos_filtrados.sort(key=lambda x: normalizar(x[1].get('apellido', '')))
 
-                        if texto_busq.strip() and not opciones_coincidencias:
+                        if texto_busq.strip() and not alumnos_filtrados:
                             no_encontrado(f"No se encontró ningún alumno con '{texto_busq}'.")
-                            alumnos_filtrados = []
                         else:
-                            # Paso 4: dropdown con los que coinciden
-                            opcion_sel = st.selectbox(
-                                f"{'Coincidencias:' if texto_busq.strip() else 'Seleccioná un alumno:'}",
-                                ["— Mostrar todos —"] + opciones_coincidencias,
-                                key="busq_alumno_select"
-                            )
-                            # Paso 5: filtrar lista final según selección
-                            alumnos_filtrados = [
-                                (r, al) for r, al in coincidencias
-                                if opcion_sel == "— Mostrar todos —"
-                                or opcion_sel == f"{al.get('apellido','').upper()}, {al.get('nombre','')}"
-                            ]
-
-                        if not alumnos_filtrados:
-                            pass  # mensaje ya mostrado arriba
-                        else:
-                            alumnos_filtrados.sort(key=lambda x: normalizar(x[1].get('apellido', '')))
                             st.caption(f"Mostrando {len(alumnos_filtrados)} alumno/s")
                             if st.session_state.get('ok_alumno_editado'):
                                 st.success("✅ Alumno actualizado satisfactoriamente.")
@@ -3668,5 +3675,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v324 completa
+# FIN PARTE 2 DE 2 — v326 completa
 # ============================================================
