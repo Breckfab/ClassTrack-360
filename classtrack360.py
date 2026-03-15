@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v308
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v309
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v308", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v309", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -2916,12 +2916,19 @@ else:
         if url_actual:
             st.markdown(
                 f'<a href="{url_actual}" target="_blank">'
-                f'<button style="background:#4facfe;color:#080b10;border:none;border-radius:8px;padding:10px 22px;'
-                f'font-family:\'Syne\',sans-serif;font-weight:700;font-size:0.9rem;cursor:pointer;margin-bottom:16px;">'
-                f'🔗 Abrir en nueva pestaña</button></a>',
+                f'<button style="background:#4facfe;color:#080b10;border:none;border-radius:8px;padding:12px 28px;'
+                f'font-family:\'Syne\',sans-serif;font-weight:700;font-size:1rem;cursor:pointer;margin-bottom:16px;">'
+                f'🔗 Abrir Calendario Oficial</button></a>',
                 unsafe_allow_html=True
             )
-            components.iframe(url_actual, height=700, scrolling=True)
+            st.markdown(
+                f'<div class="resumen-asist" style="margin-top:12px;">'
+                f'<div class="resumen-asist-titulo">📎 URL configurada</div>'
+                f'<div class="resumen-fila"><span style="word-break:break-all;color:#778;">{url_actual}</span></div>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+            st.info("💡 La mayoría de los sitios oficiales no permiten mostrarse incrustados. Usá el botón para abrirlo en una nueva pestaña.")
         else:
             st.info("Aún no hay una URL configurada para esta sede. Usá el panel de configuración de arriba para agregar una.")
 
@@ -3244,5 +3251,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v308 completa
+# FIN PARTE 2 DE 2 — v309 completa
 # ============================================================
