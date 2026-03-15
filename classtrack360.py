@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v312
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v313
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v312", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v313", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -266,6 +266,23 @@ def aplicar_tema(modo_claro=False):
     .salir-backup-info {{ color: {color_texto}; font-size: 0.9rem; margin-bottom: 20px; }}
     .recordatorio-clase {{ background: rgba(79,172,254,0.08); border: 2px solid rgba(79,172,254,0.4); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; }}
     .recordatorio-clase-ok {{ background: rgba(79,172,254,0.04); border: 1px solid rgba(79,172,254,0.2); border-radius: 12px; padding: 12px 18px; margin-bottom: 14px; opacity: 0.7; }}
+    {'''
+    /* MODO CLARO — overrides de elementos Streamlit */
+    section[data-testid="stSidebar"] { background: #e8edf5 !important; }
+    section[data-testid="stSidebar"] * { color: #1a1f2e !important; }
+    section[data-testid="stSidebar"] .stat-card { background: rgba(79,172,254,0.12) !important; color: #1a1f2e !important; }
+    div[data-testid="stMarkdownContainer"] p { color: #1a1f2e; }
+    .stTextInput input, .stTextArea textarea, .stSelectbox select,
+    div[data-baseweb="select"] { background: #ffffff !important; color: #1a1f2e !important; border-color: rgba(0,0,0,0.2) !important; }
+    div[data-baseweb="select"] * { color: #1a1f2e !important; background: #ffffff !important; }
+    .stRadio label, .stCheckbox label { color: #1a1f2e !important; }
+    .stButton button { border-color: rgba(0,0,0,0.15) !important; color: #1a1f2e !important; }
+    .stTabs [data-baseweb="tab"] { color: #1a1f2e !important; }
+    .stTabs [data-baseweb="tab"][aria-selected="true"] { color: #4facfe !important; border-bottom-color: #4facfe !important; }
+    .stExpander { border-color: rgba(0,0,0,0.1) !important; }
+    .stExpander summary { color: #1a1f2e !important; }
+    div[data-testid="stNumberInput"] input { background: #ffffff !important; color: #1a1f2e !important; }
+    ''' if modo_claro else ''}
     </style>
 """, unsafe_allow_html=True)
 
@@ -297,10 +314,15 @@ def estado_texto(promedio, nota_aprobacion):
     return "APROBADO" if promedio >= float(nota_aprobacion) else "DESAPROBADO"
 
 def validar_hora(h):
+    h = h.strip()
+    # Normalizar: si tiene formato H:MM (sin cero inicial), agregar cero
+    if len(h) == 4 and h[1] == ':':
+        h = '0' + h
     try:
-        datetime.datetime.strptime(h.strip(), "%H:%M")
-        return True
-    except: return False
+        datetime.datetime.strptime(h, "%H:%M")
+        return True, h
+    except:
+        return False, h
 
 def format_horario(inicio, fin):
     if inicio and fin: return f"{str(inicio)[:5]} → {str(fin)[:5]}"
@@ -2010,7 +2032,11 @@ else:
                 unsafe_allow_html=True
             )
             c_ag = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="ag_sel")
-            if c_ag != "---":
+            if c_ag == "---":
+                st.markdown('''<div class="recordatorio-clase-ok" style="text-align:center;opacity:1;">
+                    👆 Seleccioná un curso para comenzar
+                </div>''', unsafe_allow_html=True)
+            else:
                 inscripcion_id = mapa_cursos[c_ag]
                 curso_sel_data = mapa_cursos_data.get(c_ag, {})
                 hi = str(curso_sel_data.get('hora_inicio', '') or '')[:5]
@@ -2445,7 +2471,26 @@ else:
                         suplente_h = reg.get('profesor_suplente')
                         prof_label = f"👥 Suplente: {suplente_h}" if suplente_h else "👤 Titular"
                         fecha_fmt = datetime.date.fromisoformat(reg['fecha']).strftime('%d/%m/%Y')
-                        with st.expander(f"📅 {fecha_fmt} · {reg['_curso']} · {prof_label}"):
+                        # Contar asistencia de esa clase
+                        try:
+                            res_asist_h = supabase.table("asistencia").select("estado").eq("inscripcion_id", reg['inscripcion_id']).eq("fecha", reg['fecha']).execute()
+                            estados_h = [r['estado'] for r in (res_asist_h.data or [])]
+                            # Para universitario pueden haber duplicados por hora cátedra — usar set de alumno_id
+                            res_asist_u = supabase.table("asistencia").select("alumno_id, estado").eq("inscripcion_id", reg['inscripcion_id']).eq("fecha", reg['fecha']).execute()
+                            vistos = {}
+                            for r in (res_asist_u.data or []):
+                                if r['alumno_id'] not in vistos:
+                                    vistos[r['alumno_id']] = r['estado']
+                            n_pres = sum(1 for s in vistos.values() if s == 'presente')
+                            n_tard = sum(1 for s in vistos.values() if s == 'tarde')
+                            n_ause = sum(1 for s in vistos.values() if s == 'ausente')
+                            total_h = len(vistos)
+                            asist_label = f" · ✅{n_pres} 🕐{n_tard} ❌{n_ause}" if total_h > 0 else ""
+                        except:
+                            asist_label = ""
+                        with st.expander(f"📅 {fecha_fmt} · {reg['_curso']} · {prof_label}{asist_label}"):
+                            if total_h > 0:
+                                st.markdown(f'<div style="font-size:0.78rem;color:#4facfe;margin-bottom:8px;">👥 Asistencia: <b>{n_pres}</b> presentes · <b>{n_tard}</b> tardes · <b>{n_ause}</b> ausentes · <b>{total_h}</b> total</div>', unsafe_allow_html=True)
                             if suplente_h:
                                 st.markdown(f'<span class="suplente-badge">👤 Clase dictada por suplente: {suplente_h}</span>', unsafe_allow_html=True)
                             else:
@@ -2855,23 +2900,25 @@ else:
                 nro_autom = st.text_input("🔢 Número de Automatriculación (opcional)")
                 if st.form_submit_button("💾 CREAR CURSO"):
                     errores = []
+                    ok_hi, hora_ini_n = validar_hora(hora_ini) if hora_ini.strip() else (False, hora_ini)
+                    ok_hf, hora_fin_n = validar_hora(hora_fin) if hora_fin.strip() else (False, hora_fin)
                     if not mat.strip(): errores.append("El nombre del curso es obligatorio.")
                     if not dias: errores.append("Seleccioná al menos un día.")
                     if not hora_ini.strip(): errores.append("La hora de inicio es obligatoria.")
-                    elif not validar_hora(hora_ini): errores.append("Hora de inicio inválida.")
+                    elif not ok_hi: errores.append("Hora de inicio inválida. Usá formato HH:MM (ej: 08:00).")
                     if not hora_fin.strip(): errores.append("La hora de finalización es obligatoria.")
-                    elif not validar_hora(hora_fin): errores.append("Hora de finalización inválida.")
+                    elif not ok_hf: errores.append("Hora de finalización inválida. Usá formato HH:MM (ej: 19:00).")
                     if nota_ap is None: errores.append("La nota de aprobación es obligatoria.")
                     if errores:
                         for e in errores: st.error(e)
                     else:
-                        info = f"{mat.strip()} ({', '.join(dias)}) | {hora_ini.strip()} → {hora_fin.strip()}"
+                        info = f"{mat.strip()} ({', '.join(dias)}) | {hora_ini_n} → {hora_fin_n}"
                         try:
                             datos_curso = {
                                 "profesor_id": u_data['id'], "nombre_curso_materia": info,
                                 "anio_lectivo": 2026, "nota_aprobacion": nota_ap,
                                 "bibliografia": biblio.strip() if biblio.strip() else None,
-                                "hora_inicio": hora_ini.strip(), "hora_fin": hora_fin.strip(),
+                                "hora_inicio": hora_ini_n, "hora_fin": hora_fin_n,
                                 "url_campus": url_campus.strip() if url_campus.strip() else None,
                                 "nro_automatriculacion": nro_autom.strip() if nro_autom.strip() else None,
                             }
@@ -2933,18 +2980,20 @@ else:
                                 col_c1, col_c2 = st.columns(2)
                                 if col_c1.form_submit_button("💾 Guardar"):
                                     errores = []
-                                    if hora_ini_e.strip() and not validar_hora(hora_ini_e): errores.append("Hora de inicio inválida.")
-                                    if hora_fin_e.strip() and not validar_hora(hora_fin_e): errores.append("Hora de finalización inválida.")
+                                    ok_hi_e, hora_ini_en = validar_hora(hora_ini_e) if hora_ini_e.strip() else (True, hora_ini_e.strip())
+                                    ok_hf_e, hora_fin_en = validar_hora(hora_fin_e) if hora_fin_e.strip() else (True, hora_fin_e.strip())
+                                    if hora_ini_e.strip() and not ok_hi_e: errores.append("Hora de inicio inválida. Usá formato HH:MM (ej: 08:00).")
+                                    if hora_fin_e.strip() and not ok_hf_e: errores.append("Hora de finalización inválida. Usá formato HH:MM (ej: 19:00).")
                                     if errores:
                                         for e in errores: st.error(e)
                                     else:
-                                        nuevo_nombre = f"{mat_e.strip()} ({', '.join(dias_e)}) | {hora_ini_e.strip()} → {hora_fin_e.strip()}" if dias_e else mat_e.strip()
+                                        nuevo_nombre = f"{mat_e.strip()} ({', '.join(dias_e)}) | {hora_ini_en} → {hora_fin_en}" if dias_e else mat_e.strip()
                                         try:
                                             upd = {
                                                 "nombre_curso_materia": nuevo_nombre, "nota_aprobacion": nota_ap_e,
                                                 "bibliografia": biblio_e.strip() if biblio_e.strip() else None,
-                                                "hora_inicio": hora_ini_e.strip() if hora_ini_e.strip() else None,
-                                                "hora_fin": hora_fin_e.strip() if hora_fin_e.strip() else None,
+                                                "hora_inicio": hora_ini_en if hora_ini_en else None,
+                                                "hora_fin": hora_fin_en if hora_fin_en else None,
                                                 "url_campus": url_campus_e.strip() if url_campus_e.strip() else None,
                                                 "nro_automatriculacion": nro_autom_e.strip() if nro_autom_e.strip() else None,
                                             }
@@ -3364,5 +3413,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v312 completa
+# FIN PARTE 2 DE 2 — v313 completa
 # ============================================================
