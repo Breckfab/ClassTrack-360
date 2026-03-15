@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v316
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v317
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v316", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v317", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -2696,11 +2696,7 @@ else:
                     nota_aprobacion = curso_data.get('nota_aprobacion')
                     if nota_aprobacion: st.caption(f"Nota de aprobación del curso: {nota_aprobacion}")
                     try:
-                        insc_id_ver = mapa_cursos[c_ver]
                         res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
-                        if not res_al_v.data:
-                            res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
-                            res_al_v = type('obj', (object,), {'data': [r for r in (res_al_v.data or []) if str(r.get('nombre_curso_materia','')) == str(c_ver)]})()
                         if not res_al_v.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -2757,7 +2753,7 @@ else:
                                     if st.button("📥 Exportar Notas a Excel", key="btn_export_notas", use_container_width=True):
                                         try:
                                             alumnos_export = []
-                                            res_exp = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("nombre_curso_materia", c_ver).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+                                            res_exp = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
                                             for rx in (res_exp.data or []):
                                                 al_raw = rx.get('alumnos')
                                                 al_ex = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
@@ -2782,9 +2778,6 @@ else:
                 if c_nt != "---":
                     try:
                         res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
-                        if not res_al_n.data:
-                            res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
-                            res_al_n = type('obj', (object,), {'data': [r for r in (res_al_n.data or []) if str(r.get('nombre_curso_materia','')) == str(c_nt)]})()
                         if not res_al_n.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -3005,7 +2998,10 @@ else:
                                             }
                                             if es_universitario and horas_cat_e:
                                                 upd["horas_catedra"] = horas_cat_e
+                                            nombre_viejo = n_c
                                             supabase.table("inscripciones").update(upd).eq("id", i_c).execute()
+                                            # Propagar nuevo nombre a todas las filas de alumnos inscriptos en este curso
+                                            supabase.table("inscripciones").update({"nombre_curso_materia": nuevo_nombre}).eq("profesor_id", u_data['id']).eq("nombre_curso_materia", nombre_viejo).not_.is_("alumno_id", "null").execute()
                                             st.session_state.editando_curso = None
                                             st.session_state.ok_curso_editado = True
                                             st.rerun()
@@ -3419,5 +3415,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v316 completa
+# FIN PARTE 2 DE 2 — v317 completa
 # ============================================================
