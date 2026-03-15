@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v315
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v316
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v315", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v316", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -2696,7 +2696,11 @@ else:
                     nota_aprobacion = curso_data.get('nota_aprobacion')
                     if nota_aprobacion: st.caption(f"Nota de aprobación del curso: {nota_aprobacion}")
                     try:
-                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_ver).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+                        insc_id_ver = mapa_cursos[c_ver]
+                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                        if not res_al_v.data:
+                            res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+                            res_al_v = type('obj', (object,), {'data': [r for r in (res_al_v.data or []) if str(r.get('nombre_curso_materia','')) == str(c_ver)]})()
                         if not res_al_v.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -2753,7 +2757,7 @@ else:
                                     if st.button("📥 Exportar Notas a Excel", key="btn_export_notas", use_container_width=True):
                                         try:
                                             alumnos_export = []
-                                            res_exp = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                                            res_exp = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("nombre_curso_materia", c_ver).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
                                             for rx in (res_exp.data or []):
                                                 al_raw = rx.get('alumnos')
                                                 al_ex = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
@@ -2777,7 +2781,10 @@ else:
                     st.session_state.ok_nota_agregada = None
                 if c_nt != "---":
                     try:
-                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_nt).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
+                        if not res_al_n.data:
+                            res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+                            res_al_n = type('obj', (object,), {'data': [r for r in (res_al_n.data or []) if str(r.get('nombre_curso_materia','')) == str(c_nt)]})()
                         if not res_al_n.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -3412,5 +3419,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v315 completa
+# FIN PARTE 2 DE 2 — v316 completa
 # ============================================================
