@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v320
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v321
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v320", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v321", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -88,6 +88,8 @@ def init_state():
         'ok_alumno_movido': None,
         'busq_global_val': '',
         'historial_renombres': [],
+        'confirmar_salir': False,
+        'duplicando_curso': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -1942,6 +1944,18 @@ else:
             st.markdown(f'<div class="badge-clases">🔢 {total_clases_sidebar} clase{"s" if total_clases_sidebar != 1 else ""} dictada{"s" if total_clases_sidebar != 1 else ""}</div>', unsafe_allow_html=True)
         if total_vencidas_sidebar > 0:
             st.markdown(f'<div class="badge-vencidas">⚠️ {total_vencidas_sidebar} tarea{"s" if total_vencidas_sidebar > 1 else ""} vencida{"s" if total_vencidas_sidebar > 1 else ""}</div>', unsafe_allow_html=True)
+        # Indicador de último backup
+        try:
+            dias_bk = dias_desde_ultimo_backup(u_data['id'])
+            if dias_bk is None:
+                st.markdown('<div class="badge-vencidas">💾 Sin backups aún</div>', unsafe_allow_html=True)
+            elif dias_bk >= 30:
+                st.markdown(f'<div class="badge-vencidas">💾 Backup hace {dias_bk} días</div>', unsafe_allow_html=True)
+            elif dias_bk >= 7:
+                st.markdown(f'<div class="stat-card" style="font-size:0.72rem;border-color:rgba(255,193,7,0.4);">💾 Último backup: hace {dias_bk} días</div>', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div class="stat-card" style="font-size:0.72rem;">💾 Backup al día ✅</div>', unsafe_allow_html=True)
+        except: pass
         cal_sede = get_calendario_sede(u_data['sede'])
         if cal_sede and cal_sede.get('fecha_inicio') and cal_sede.get('fecha_fin'):
             fi_s = datetime.date.fromisoformat(cal_sede['fecha_inicio'])
@@ -1960,15 +1974,26 @@ else:
             st.rerun()
         st.markdown(render_calendario(st.session_state.cal_mes, st.session_state.cal_anio), unsafe_allow_html=True)
         st.markdown("---")
-        # BOTÓN SALIR con chequeo de backup
-        if st.button("🚪 SALIR"):
-            dias_sin_backup = dias_desde_ultimo_backup(u_data['id'])
-            necesita_aviso = dias_sin_backup is None or dias_sin_backup >= 7
-            if necesita_aviso:
-                st.session_state.mostrar_salir_backup = True
+        # BOTÓN SALIR con chequeo de backup y confirmación
+        if not st.session_state.get('confirmar_salir'):
+            if st.button("🚪 SALIR"):
+                st.session_state.confirmar_salir = True
                 st.rerun()
-            else:
-                st.session_state.user = None
+        else:
+            st.warning("¿Seguro que querés salir?")
+            col_si, col_no = st.columns(2)
+            if col_si.button("✅ Sí, salir", key="btn_si_salir", use_container_width=True):
+                st.session_state.confirmar_salir = False
+                dias_sin_backup = dias_desde_ultimo_backup(u_data['id'])
+                necesita_aviso = dias_sin_backup is None or dias_sin_backup >= 7
+                if necesita_aviso:
+                    st.session_state.mostrar_salir_backup = True
+                    st.rerun()
+                else:
+                    st.session_state.user = None
+                    st.rerun()
+            if col_no.button("❌ Cancelar", key="btn_no_salir", use_container_width=True):
+                st.session_state.confirmar_salir = False
                 st.rerun()
 
     footer()
@@ -2025,8 +2050,7 @@ else:
     try:
         alertas_desap = []
         for nombre_curso, inscripcion_id in mapa_cursos.items():
-            curso_data_al = mapa_cursos_data.get(nombre_curso, {})
-            nota_ap_al = curso_data_al.get('nota_aprobacion')
+            nota_ap_al = mapa_cursos_data.get(nombre_curso, {}).get('nota_aprobacion')
             if nota_ap_al is None:
                 continue
             res_insc_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null").execute()
@@ -2721,8 +2745,24 @@ else:
                         if st.session_state.get('ok_alumno_editado'):
                             st.success("✅ Alumno actualizado satisfactoriamente.")
                             st.session_state.ok_alumno_editado = False
+                        # Exportar lista con emails
+                        if EXCEL_OK and c_v != "Todos":
+                            if st.button("📧 Exportar lista con emails", key="btn_export_emails", use_container_width=False):
+                                try:
+                                    wb_em = openpyxl.Workbook()
+                                    ws_em = wb_em.active
+                                    ws_em.title = "Alumnos"
+                                    ws_em.append(["Apellido", "Nombre", "Email", "Curso"])
+                                    for r_em, al_em in sorted(alumnos_filtrados, key=lambda x: normalizar(x[1].get('apellido',''))):
+                                        ws_em.append([al_em.get('apellido',''), al_em.get('nombre',''), al_em.get('email','') or '', r_em.get('nombre_curso_materia','')])
+                                    buf_em = io.BytesIO()
+                                    wb_em.save(buf_em)
+                                    buf_em.seek(0)
+                                    nombre_em = f"Alumnos_{c_v[:25].replace(' ','_')}.xlsx"
+                                    st.download_button("⬇️ Descargar Excel", data=buf_em.getvalue(), file_name=nombre_em, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
+                                except Exception as e_em:
+                                    st.error(f"Error al exportar: {e_em}")
                         for r, al in alumnos_filtrados:
-                            curso_badge = f' <span style="color:#4facfe;font-size:0.75rem;font-weight:600">[{r.get("nombre_curso_materia","")}]</span>' if c_v == "Todos" else ''
                             if st.session_state.editando_alumno == r['id']:
                                 with st.form(f"edit_al_{r['id']}", clear_on_submit=True):
                                     n_edit = st.text_input("Nombre:", value=al.get('nombre', ''))
@@ -2747,7 +2787,6 @@ else:
                                     st.session_state.editando_alumno = r['id']; st.rerun()
                                 if ab2.button("↔️ Mover", key=f"mal_{r['id']}", help="Cambiar de curso"):
                                     st.session_state.moviendo_alumno = r['id']; st.rerun()
-                                # Formulario para mover alumno de curso
                                 if st.session_state.get('moviendo_alumno') == r['id']:
                                     with st.form(f"mover_al_{r['id']}", clear_on_submit=True):
                                         st.markdown(f"**↔️ Mover a {al.get('apellido','').upper()}, {al.get('nombre','')} a otro curso:**")
@@ -2807,7 +2846,7 @@ else:
                     nota_aprobacion = curso_data.get('nota_aprobacion')
                     if nota_aprobacion: st.caption(f"Nota de aprobación del curso: {nota_aprobacion}")
                     try:
-                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
                         if not res_al_v.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -2866,7 +2905,7 @@ else:
                                     if st.button("📥 Exportar Notas a Excel", key="btn_export_notas", use_container_width=True):
                                         try:
                                             alumnos_export = []
-                                            res_exp = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                                            res_exp = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
                                             for rx in (res_exp.data or []):
                                                 al_raw = rx.get('alumnos')
                                                 al_ex = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
@@ -2890,7 +2929,7 @@ else:
                     st.session_state.ok_nota_agregada = None
                 if c_nt != "---":
                     try:
-                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
+                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
                         if not res_al_n.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -3057,20 +3096,14 @@ else:
                 if st.session_state.get('ok_curso_editado'):
                     st.success("✅ Curso actualizado satisfactoriamente.")
                     st.session_state.ok_curso_editado = False
-                # Historial de renombres de la sesión actual
+                # Historial de renombres de la sesión
                 if st.session_state.get('historial_renombres'):
                     with st.expander(f"📋 Renombres de esta sesión ({len(st.session_state.historial_renombres)})", expanded=False):
                         for reg_r in reversed(st.session_state.historial_renombres):
                             st.markdown(f'''<div class="resumen-asist" style="padding:6px 12px;margin-bottom:4px;">
-                                <div class="resumen-fila">
-                                    <span style="color:#556;font-size:0.8rem">📅 {reg_r["fecha"]}</span>
-                                </div>
-                                <div class="resumen-fila">
-                                    <span style="color:#ff4d6d;font-size:0.85rem">❌ {reg_r["nombre_viejo"]}</span>
-                                </div>
-                                <div class="resumen-fila">
-                                    <span style="color:#4facfe;font-size:0.85rem">✅ {reg_r["nombre_nuevo"]}</span>
-                                </div>
+                                <div class="resumen-fila"><span style="color:#556;font-size:0.8rem">📅 {reg_r["fecha"]}</span></div>
+                                <div class="resumen-fila"><span style="color:#ff4d6d;font-size:0.85rem">❌ {reg_r["nombre_viejo"]}</span></div>
+                                <div class="resumen-fila"><span style="color:#4facfe;font-size:0.85rem">✅ {reg_r["nombre_nuevo"]}</span></div>
                             </div>''', unsafe_allow_html=True)
                 busq_curso = st.text_input("🔍 Buscar curso:", key="busq_curso")
                 cursos_filtrados = {n: i for n, i in mapa_cursos.items() if not busq_curso.strip() or busq_curso.lower() in n.lower()}
@@ -3159,9 +3192,48 @@ else:
                                 f'<small style="color:#4facfe;">🕐 {format_horario(hi_cur, hf_cur)} &nbsp;·&nbsp; Alumnos: {cant} &nbsp;·&nbsp; Aprobación: {nota_display}{hs_display}</small>'
                                 f'{biblio_html}{url_html}{nro_html}</div>', unsafe_allow_html=True
                             )
-                            cb1, cb2 = st.columns(2)
+                            cb1, cb2, cb3 = st.columns(3)
                             if cb1.button("✏️ Editar", key=f"ec_{i_c}"):
                                 st.session_state.editando_curso = i_c; st.rerun()
+                            if cb2.button("📋 Duplicar", key=f"dup_{i_c}", help="Crear copia de este curso"):
+                                st.session_state.duplicando_curso = i_c; st.rerun()
+                            # Formulario duplicar curso
+                            if st.session_state.get('duplicando_curso') == i_c:
+                                with st.form(f"dup_c_{i_c}", clear_on_submit=True):
+                                    st.markdown(f"**📋 Duplicar curso: {n_c[:50]}**")
+                                    partes_dup = n_c.split(" (")
+                                    mat_dup = st.text_input("Nombre del nuevo curso:", value=f"{partes_dup[0]} (copia)" if partes_dup else f"{n_c} (copia)")
+                                    dias_dup = st.multiselect("Días:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"])
+                                    col_hd1, col_hd2 = st.columns(2)
+                                    hora_ini_dup = col_hd1.text_input("Hora inicio:", value=hi_cur, placeholder="hh:mm")
+                                    hora_fin_dup = col_hd2.text_input("Hora fin:", value=hf_cur, placeholder="hh:mm")
+                                    col_dd1, col_dd2 = st.columns(2)
+                                    if col_dd1.form_submit_button("📋 Crear copia", type="primary"):
+                                        try:
+                                            ok_hi_d, hora_ini_dn = validar_hora(hora_ini_dup) if hora_ini_dup.strip() else (True, hora_ini_dup)
+                                            ok_hf_d, hora_fin_dn = validar_hora(hora_fin_dup) if hora_fin_dup.strip() else (True, hora_fin_dup)
+                                            nombre_nuevo_dup = f"{mat_dup.strip()} ({', '.join(dias_dup)}) | {hora_ini_dn} → {hora_fin_dn}" if dias_dup else mat_dup.strip()
+                                            datos_dup = {
+                                                "profesor_id": u_data['id'],
+                                                "nombre_curso_materia": nombre_nuevo_dup,
+                                                "anio_lectivo": 2026,
+                                                "nota_aprobacion": curso_data.get('nota_aprobacion'),
+                                                "bibliografia": curso_data.get('bibliografia'),
+                                                "hora_inicio": hora_ini_dn if hora_ini_dn else None,
+                                                "hora_fin": hora_fin_dn if hora_fin_dn else None,
+                                                "url_campus": curso_data.get('url_campus'),
+                                                "nro_automatriculacion": curso_data.get('nro_automatriculacion'),
+                                            }
+                                            if es_universitario and curso_data.get('horas_catedra'):
+                                                datos_dup["horas_catedra"] = curso_data.get('horas_catedra')
+                                            supabase.table("inscripciones").insert(datos_dup).execute()
+                                            st.session_state.duplicando_curso = None
+                                            st.session_state.ok_curso_creado = nombre_nuevo_dup
+                                            st.rerun()
+                                        except Exception as e_dup:
+                                            st.error(f"Error al duplicar: {e_dup}")
+                                    if col_dd2.form_submit_button("❌ Cancelar"):
+                                        st.session_state.duplicando_curso = None; st.rerun()
                             if st.session_state.confirmar_borrar_curso == i_c:
                                 st.warning(f"⚠️ ¿Confirmás que querés borrar el curso **{n_c}**? Esta acción no se puede deshacer.")
                                 col_cc1, col_cc2 = st.columns(2)
@@ -3174,7 +3246,7 @@ else:
                                         st.error(f"Error: {e}")
                                 if col_cc2.button("❌ Cancelar", key=f"canc_dc_{i_c}"):
                                     st.session_state.confirmar_borrar_curso = None; st.rerun()
-                            elif cb2.button("🗑️ Borrar", key=f"dc_{i_c}"):
+                            elif cb3.button("🗑️ Borrar", key=f"dc_{i_c}"):
                                 st.session_state.confirmar_borrar_curso = i_c; st.rerun()
 
     # =========================================================
@@ -3550,5 +3622,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v320 completa
+# FIN PARTE 2 DE 2 — v321 completa
 # ============================================================
