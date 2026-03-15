@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v313
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v314
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v313", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v314", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -242,7 +242,7 @@ def aplicar_tema(modo_claro=False):
     .codigo-box {{ background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.3); border-radius: 8px; padding: 12px 18px; font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #4facfe; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 8px 0; }}
     .habilitado-tag {{ color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }}
     .deshabilitado-tag {{ color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 2px 10px; border-radius: 5px; font-size: 0.75rem; font-weight: 700; }}
-    .footer-cr {{ position: fixed; bottom: 0; left: 0; right: 0; text-align: center; padding: 6px; font-size: 0.72rem; color: {footer_color}; font-family: 'DM Mono', monospace; background: {footer_bg}; border-top: 1px solid {border_color}; z-index: 999; letter-spacing: 0.05em; }}
+    .footer-cr {{ position: fixed; bottom: 0; left: 0; right: 0; width: 100vw; text-align: center !important; padding: 6px; font-size: 0.72rem; color: {footer_color}; font-family: 'DM Mono', monospace; background: {footer_bg}; border-top: 1px solid {border_color}; z-index: 999; letter-spacing: 0.05em; box-sizing: border-box; }}
     .tareas-pendientes-header {{ color: #ffc107; font-weight: 700; font-size: 0.9rem; margin-bottom: 10px; margin-top: 4px; }}
     .registro-link {{ text-align: center; margin-top: 16px; font-size: 0.78rem; color: #4a5568; }}
     .email-tag {{ color: #4facfe; font-size: 0.78rem; margin-top: 2px; }}
@@ -3413,5 +3413,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v313 completa
+# FIN PARTE 2 DE 2 — v314 completa
 # ============================================================
