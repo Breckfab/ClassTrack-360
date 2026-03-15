@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v318
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v319
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v318", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v319", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1529,10 +1529,14 @@ def generar_html_impresion(sede, curso_nombre, curso_data, incluir_alumnos, incl
     html += "<script>window.onload=function(){window.print();}</script></body></html>"
     return html
 
-def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id):
+def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id, profesor_id=None):
     alumnos = []; notas_dict = {}; historial = []
     try:
-        res_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null").execute()
+        q = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)")
+        if profesor_id:
+            q = q.eq("profesor_id", profesor_id)
+        q = q.eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null")
+        res_al = q.execute()
         for r in (res_al.data or []):
             al_raw = r.get('alumnos')
             al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
@@ -2617,7 +2621,7 @@ else:
                     if c_v == "Todos":
                         res_al = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
                     else:
-                        res_al = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
+                        res_al = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
                     alumnos_filtrados = []
                     for r in (res_al.data or []):
                         al_raw = r.get('alumnos')
@@ -2696,7 +2700,7 @@ else:
                     nota_aprobacion = curso_data.get('nota_aprobacion')
                     if nota_aprobacion: st.caption(f"Nota de aprobación del curso: {nota_aprobacion}")
                     try:
-                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                        res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
                         if not res_al_v.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -2753,7 +2757,7 @@ else:
                                     if st.button("📥 Exportar Notas a Excel", key="btn_export_notas", use_container_width=True):
                                         try:
                                             alumnos_export = []
-                                            res_exp = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                                            res_exp = supabase.table("inscripciones").select("id, alumnos(nombre, apellido, email)").eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
                                             for rx in (res_exp.data or []):
                                                 al_raw = rx.get('alumnos')
                                                 al_ex = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
@@ -2777,7 +2781,7 @@ else:
                     st.session_state.ok_nota_agregada = None
                 if c_nt != "---":
                     try:
-                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
+                        res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
                         if not res_al_n.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
@@ -2846,7 +2850,7 @@ else:
                 hf_c = str(cd.get('hora_fin', '') or '')[:5]
                 nota_ap_c = cd.get('nota_aprobacion')
                 try:
-                    res_count = supabase.table("inscripciones").select("id", count="exact").eq("nombre_curso_materia", curso_cont).not_.is_("alumno_id", "null").execute()
+                    res_count = supabase.table("inscripciones").select("id", count="exact").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", curso_cont).not_.is_("alumno_id", "null").execute()
                     cant_alumnos = res_count.count if res_count.count else 0
                 except: cant_alumnos = 0
                 cant_clases, ultima_clase = get_stats_curso(i_c)
@@ -2864,7 +2868,7 @@ else:
                     hf_c = str(cd.get('hora_fin', '') or '')[:5]
                     nota_ap_c = cd.get('nota_aprobacion')
                     try:
-                        res_count = supabase.table("inscripciones").select("id", count="exact").eq("nombre_curso_materia", n_c).not_.is_("alumno_id", "null").execute()
+                        res_count = supabase.table("inscripciones").select("id", count="exact").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", n_c).not_.is_("alumno_id", "null").execute()
                         cant_alumnos = res_count.count if res_count.count else 0
                     except: cant_alumnos = 0
                     cant_clases, ultima_clase = get_stats_curso(i_c)
@@ -2998,10 +3002,7 @@ else:
                                             }
                                             if es_universitario and horas_cat_e:
                                                 upd["horas_catedra"] = horas_cat_e
-                                            nombre_viejo = n_c
                                             supabase.table("inscripciones").update(upd).eq("id", i_c).execute()
-                                            # Propagar nuevo nombre a todos los alumnos inscriptos en este curso
-                                            supabase.table("inscripciones").update({"nombre_curso_materia": nuevo_nombre}).eq("profesor_id", u_data['id']).eq("nombre_curso_materia", nombre_viejo).not_.is_("alumno_id", "null").execute()
                                             st.session_state.editando_curso = None
                                             st.session_state.ok_curso_editado = True
                                             st.rerun()
@@ -3116,7 +3117,7 @@ else:
                         with st.spinner("Generando Excel..."):
                             inscripcion_id_imp = mapa_cursos[curso_imp]
                             curso_data_imp = mapa_cursos_data.get(curso_imp, {})
-                            datos_imp = cargar_datos_por_nombre_curso(curso_imp, inscripcion_id_imp)
+                            datos_imp = cargar_datos_por_nombre_curso(curso_imp, inscripcion_id_imp, profesor_id=u_data['id'])
                             xlsx_bytes = generar_excel(u_data['sede'], curso_imp, curso_data_imp, datos_imp)
                             nombre_xlsx = f"ClassTrack_{u_data['sede']}_{curso_imp[:20].replace(' ','_')}_{datetime.date.today().strftime('%Y%m%d')}.xlsx"
                             st.download_button(label="⬇️ Descargar Excel", data=xlsx_bytes, file_name=nombre_xlsx, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
@@ -3135,7 +3136,7 @@ else:
                         with st.spinner("Generando..."):
                             inscripcion_id_imp = mapa_cursos[curso_imp]
                             curso_data_imp = mapa_cursos_data.get(curso_imp, {})
-                            datos_imp = cargar_datos_por_nombre_curso(curso_imp, inscripcion_id_imp)
+                            datos_imp = cargar_datos_por_nombre_curso(curso_imp, inscripcion_id_imp, profesor_id=u_data['id'])
                             if accion_imp == "📄 Exportar PDF":
                                 pdf_bytes = generar_pdf(u_data['sede'], curso_imp, curso_data_imp, inc_alumnos, inc_notas, inc_historial, inc_resumen, datos_imp)
                                 nombre_archivo = f"ClassTrack_{u_data['sede']}_{curso_imp[:20].replace(' ','_')}_{datetime.date.today().strftime('%Y%m%d')}.pdf"
@@ -3292,140 +3293,6 @@ else:
 
         st.markdown('</div>', unsafe_allow_html=True)
 
-        # -------------------------------------------------------
-        # HERRAMIENTA DE REPARACIÓN DE BASE DE DATOS
-        # -------------------------------------------------------
-        st.markdown("---")
-        with st.expander("🔧 Herramienta de Reparación de Base de Datos", expanded=False):
-            st.markdown('''<div class="advertencia-box">
-                🔧 <b>¿Para qué sirve esto?</b><br>
-                Si renombraste un curso <b>después</b> de haber inscripto alumnos, los alumnos quedaron
-                registrados con el nombre viejo y el sistema no los encuentra en el tab Notas.<br><br>
-                Esta herramienta detecta esas inconsistencias y las corrige automáticamente en Supabase.
-            </div>''', unsafe_allow_html=True)
-
-            st.markdown("#### 1️⃣ Diagnóstico — detectar inconsistencias")
-            if st.button("🔍 Escanear mi base de datos", use_container_width=True, key="btn_scan_bd"):
-                with st.spinner("Escaneando inscripciones..."):
-                    try:
-                        # Traer todos los cursos (alumno_id IS NULL) del profesor
-                        res_cursos_rep = supabase.table("inscripciones").select("id, nombre_curso_materia").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
-                        nombres_cursos_actuales = {r['nombre_curso_materia'] for r in (res_cursos_rep.data or [])}
-
-                        # Traer todas las inscripciones de alumnos del profesor
-                        res_alumnos_rep = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(nombre, apellido)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
-
-                        huerfanos = []
-                        for r in (res_alumnos_rep.data or []):
-                            ncm = r.get('nombre_curso_materia', '')
-                            if ncm not in nombres_cursos_actuales:
-                                al_raw = r.get('alumnos')
-                                al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
-                                nombre_al = f"{al.get('apellido','').upper()}, {al.get('nombre','')}" if al else f"ID:{r['id']}"
-                                huerfanos.append({'insc_id': r['id'], 'nombre_alumno': nombre_al, 'nombre_curso_viejo': ncm})
-
-                        st.session_state['rep_huerfanos'] = huerfanos
-                        st.session_state['rep_nombres_cursos'] = sorted(list(nombres_cursos_actuales))
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al escanear: {e}")
-
-            huerfanos = st.session_state.get('rep_huerfanos')
-            nombres_cursos_actuales_list = st.session_state.get('rep_nombres_cursos', [])
-
-            if huerfanos is not None:
-                if not huerfanos:
-                    st.success("✅ Todo está en orden. No se encontraron inconsistencias.")
-                else:
-                    st.warning(f"⚠️ Se encontraron **{len(huerfanos)}** alumno/s con nombre de curso desactualizado:")
-
-                    # Agrupar por nombre de curso viejo
-                    grupos = {}
-                    for h in huerfanos:
-                        key = h['nombre_curso_viejo']
-                        if key not in grupos:
-                            grupos[key] = []
-                        grupos[key].append(h)
-
-                    for nombre_viejo_rep, alumnos_grupo in grupos.items():
-                        filas_alumnos_rep = "".join(
-                            f'<div class="resumen-fila"><span>👤 {a["nombre_alumno"]}</span></div>'
-                            for a in alumnos_grupo
-                        )
-                        st.markdown(f'''<div class="resumen-asist" style="border-color:rgba(255,77,109,0.4);margin-bottom:8px;">
-                            <div class="resumen-asist-titulo" style="color:#ff4d6d;">📛 Nombre desactualizado: <code style="font-size:0.85rem;">{nombre_viejo_rep}</code></div>
-                            <div class="resumen-fila"><span style="color:#aaa;">Alumnos afectados: {len(alumnos_grupo)}</span></div>
-                            {filas_alumnos_rep}
-                        </div>''', unsafe_allow_html=True)
-
-                    st.markdown("#### 2️⃣ Reparación — elegir el curso correcto y aplicar")
-                    st.caption("Para cada nombre desactualizado, seleccioná a qué curso actual corresponde y presioná Reparar.")
-
-                    for nombre_viejo_rep, alumnos_grupo in grupos.items():
-                        ids_a_reparar = [a['insc_id'] for a in alumnos_grupo]
-                        key_sel = f"rep_sel_{nombre_viejo_rep[:40]}"
-                        key_btn = f"rep_btn_{nombre_viejo_rep[:40]}"
-                        key_ok  = f"rep_ok_{nombre_viejo_rep[:40]}"
-
-                        col_r1, col_r2 = st.columns([3, 1])
-                        curso_destino = col_r1.selectbox(
-                            f"Curso correcto para: **{nombre_viejo_rep[:50]}{'...' if len(nombre_viejo_rep) > 50 else ''}**",
-                            options=nombres_cursos_actuales_list,
-                            key=key_sel
-                        )
-                        if st.session_state.get(key_ok):
-                            col_r2.success("✅ Reparado")
-                            st.session_state[key_ok] = False
-                        else:
-                            if col_r2.button("🔧 Reparar", key=key_btn, use_container_width=True):
-                                try:
-                                    for insc_id_rep in ids_a_reparar:
-                                        supabase.table("inscripciones").update({"nombre_curso_materia": curso_destino}).eq("id", insc_id_rep).execute()
-                                    st.session_state[key_ok] = True
-                                    # Limpiar el diagnóstico para forzar nuevo escaneo
-                                    st.session_state['rep_huerfanos'] = None
-                                    st.rerun()
-                                except Exception as e_rep:
-                                    st.error(f"Error al reparar: {e_rep}")
-
-                    st.markdown("---")
-                    if st.button("✅ Reparar TODO automáticamente", type="primary", use_container_width=True, key="btn_rep_todo"):
-                        st.session_state['confirmar_rep_todo'] = True; st.rerun()
-
-                    if st.session_state.get('confirmar_rep_todo'):
-                        st.warning("⚠️ Esto intentará asignar cada alumno al primer curso disponible que coincida parcialmente por nombre. Si los nombres son muy distintos, es mejor hacerlo de a uno.")
-                        col_rt1, col_rt2 = st.columns(2)
-                        if col_rt1.button("✅ Sí, reparar todo", key="conf_rep_todo", type="primary"):
-                            reparados = 0
-                            errores_rep = []
-                            for nombre_viejo_rep, alumnos_grupo in grupos.items():
-                                # Buscar el curso actual cuyo nombre contenga más palabras en común
-                                mejor = None
-                                mejor_score = -1
-                                palabras_viejo = set(nombre_viejo_rep.lower().split())
-                                for nc_actual in nombres_cursos_actuales_list:
-                                    palabras_actual = set(nc_actual.lower().split())
-                                    score = len(palabras_viejo & palabras_actual)
-                                    if score > mejor_score:
-                                        mejor_score = score
-                                        mejor = nc_actual
-                                if mejor:
-                                    for a in alumnos_grupo:
-                                        try:
-                                            supabase.table("inscripciones").update({"nombre_curso_materia": mejor}).eq("id", a['insc_id']).execute()
-                                            reparados += 1
-                                        except Exception as e_rt:
-                                            errores_rep.append(str(e_rt))
-                            st.session_state['confirmar_rep_todo'] = False
-                            st.session_state['rep_huerfanos'] = None
-                            if errores_rep:
-                                st.error(f"Se repararon {reparados} pero hubo errores: {'; '.join(errores_rep[:3])}")
-                            else:
-                                st.success(f"✅ Se repararon {reparados} inscripción/es correctamente.")
-                            st.rerun()
-                        if col_rt2.button("❌ Cancelar", key="canc_rep_todo"):
-                            st.session_state['confirmar_rep_todo'] = False; st.rerun()
-
 
     # =========================================================
     # TAB 11 — TAREAS PENDIENTES
@@ -3549,5 +3416,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v318 completa
+# FIN PARTE 2 DE 2 — v319 completa
 # ============================================================
