@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v321
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v322
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v321", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v322", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -239,10 +239,10 @@ def aplicar_tema(modo_claro=False):
     .reset-box {{ background: rgba(255,77,109,0.05); border: 2px solid rgba(255,77,109,0.3); border-radius: 12px; padding: 20px; margin-top: 20px; }}
     .reset-titulo {{ color: #ff4d6d; font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-bottom: 8px; }}
     .advertencia-box {{ background: rgba(255,193,7,0.1); border: 2px solid #ffc107; border-radius: 10px; padding: 16px; margin: 16px 0; color: #ffc107; font-size: 0.9rem; }}
-    .login-box {{ background: {login_bg}; border: 1px solid rgba(79,172,254,0.2); border-radius: 16px; padding: 40px; margin-top: 60px; }}
-    .login-logo {{ font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: {color_texto}; margin-bottom: 6px; }}
+    .login-box {{ background: {login_bg}; border: 1px solid rgba(79,172,254,0.2); border-radius: 16px; padding: 40px; margin-top: 60px; text-align: center; }}
+    .login-logo {{ font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.4rem; letter-spacing: 0.05em; color: {color_texto}; margin-bottom: 6px; text-align: center; }}
     .login-logo span {{ color: #4facfe; }}
-    .login-eyebrow {{ font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 16px; text-align: center; }}
+    .login-eyebrow {{ font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.15em; color: #4facfe; margin-bottom: 4px; text-align: center; }}
     .login-title {{ font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.6rem; margin-bottom: 28px; color: {color_texto}; text-align: center; }}
     .login-footer {{ font-size: 0.72rem; color: #3a4358; text-align: center; margin-top: 24px; border-top: 1px solid {border_color}; padding-top: 16px; }}
     .codigo-box {{ background: rgba(79,172,254,0.08); border: 1px solid rgba(79,172,254,0.3); border-radius: 8px; padding: 12px 18px; font-family: 'DM Mono', monospace; font-size: 1.1rem; color: #4facfe; font-weight: 700; letter-spacing: 0.15em; text-align: center; margin: 8px 0; }}
@@ -3622,5 +3622,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v321 completa
+# FIN PARTE 2 DE 2 — v322 completa
 # ============================================================
