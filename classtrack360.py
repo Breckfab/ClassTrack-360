@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v307
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v308
 # ============================================================
 
 import streamlit as st
@@ -11,6 +11,7 @@ import io
 import random
 import string
 import json
+import unicodedata
 from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -29,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v307", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v308", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -80,6 +81,7 @@ def init_state():
         'confirmar_borrar_alumno': None,
         'confirmar_borrar_curso': None,
         'ok_calendario_guardado': False,
+        'ok_cal_oficial_guardado': False,
         'ok_registro_cuenta': None,
     }
     for k, v in defaults.items():
@@ -202,6 +204,13 @@ st.markdown("""
 # =========================================================
 def no_encontrado(msg):
     st.markdown(f'<div class="no-encontrado">🔍 {msg}</div>', unsafe_allow_html=True)
+
+def normalizar(texto):
+    """Normaliza texto: minúsculas, sin tildes, para búsquedas por aproximación."""
+    return ''.join(
+        c for c in unicodedata.normalize('NFD', texto.lower())
+        if unicodedata.category(c) != 'Mn'
+    )
 
 def color_nota(n):
     if n <= 3: return "baja"
@@ -381,7 +390,25 @@ def upsert_calendario_sede(sede, fecha_inicio, fecha_fin):
         st.error(f"Error guardando calendario: {e}")
         return False
 
-def subir_cronograma(sede, cuatrimestre, archivo):
+def get_url_calendario_oficial(sede):
+    try:
+        res = supabase.table("calendario_sede").select("url_calendario_oficial").eq("sede", sede).execute()
+        if res.data:
+            return res.data[0].get("url_calendario_oficial") or ""
+        return ""
+    except: return ""
+
+def set_url_calendario_oficial(sede, url):
+    try:
+        existing = get_calendario_sede(sede)
+        if existing:
+            supabase.table("calendario_sede").update({"url_calendario_oficial": url}).eq("sede", sede).execute()
+        else:
+            supabase.table("calendario_sede").insert({"sede": sede, "url_calendario_oficial": url}).execute()
+        return True
+    except Exception as e:
+        st.error(f"Error guardando URL: {e}")
+        return False
     try:
         ext = archivo.name.split('.')[-1].lower()
         path = f"{sede}/cronograma_{cuatrimestre}c.{ext}"
@@ -1861,6 +1888,7 @@ else:
         "🔢 Contador de Clases",
         "🏗️ Cursos",
         f"📆 Calendario Académico {ANIO_ACTUAL}",
+        "🗓️ Calendario Oficial",
         "🖨️ Impresión",
         "🗄️ Backup",
     ])
@@ -2176,8 +2204,8 @@ else:
                             al_raw = r.get('alumnos')
                             al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                             if al and al['id'] not in alumnos_encontrados:
-                                nombre_completo = f"{al.get('apellido','')} {al.get('nombre','')}".lower()
-                                if busq_al_asist.lower() in nombre_completo:
+                                nombre_completo = normalizar(f"{al.get('apellido','')} {al.get('nombre','')}")
+                                if normalizar(busq_al_asist) in nombre_completo:
                                     alumnos_encontrados[al['id']] = al
                         if not alumnos_encontrados:
                             no_encontrado(f"No se encontró ningún alumno con '{busq_al_asist}'.")
@@ -2443,7 +2471,7 @@ else:
                             al_raw = r.get('alumnos')
                             al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                             if al:
-                                if busqueda.strip() == "" or busqueda.lower() in al.get('nombre','').lower() or busqueda.lower() in al.get('apellido','').lower():
+                                if busqueda.strip() == "" or normalizar(busqueda) in normalizar(al.get('nombre','')) or normalizar(busqueda) in normalizar(al.get('apellido','')):
                                     alumnos_filtrados.append((r, al))
                         if not res_al.data: no_encontrado("No hay alumnos inscriptos en este curso.")
                         elif not alumnos_filtrados: no_encontrado(f"No se encontró ningún alumno con '{busqueda}'.")
@@ -2520,7 +2548,7 @@ else:
                                 al_raw = r.get('alumnos')
                                 al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                 if al:
-                                    if busq_nota.strip() and busq_nota.lower() not in al.get('nombre','').lower() and busq_nota.lower() not in al.get('apellido','').lower(): continue
+                                    if busq_nota.strip() and normalizar(busq_nota) not in normalizar(al.get('nombre','')) and normalizar(busq_nota) not in normalizar(al.get('apellido','')): continue
                                     try:
                                         res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                         notas = res_notas.data if res_notas.data else []
@@ -2601,7 +2629,7 @@ else:
                                 al_raw = r.get('alumnos')
                                 al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                 if al:
-                                    if busq_carga.strip() and busq_carga.lower() not in al.get('nombre','').lower() and busq_carga.lower() not in al.get('apellido','').lower(): continue
+                                    if busq_carga.strip() and normalizar(busq_carga) not in normalizar(al.get('nombre','')) and normalizar(busq_carga) not in normalizar(al.get('apellido','')): continue
                                     mostrados_carga += 1
                                     try:
                                         res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
@@ -2858,9 +2886,49 @@ else:
         render_seccion_calendario(u_data['sede'])
 
     # =========================================================
-    # TAB 9 — IMPRESIÓN
+    # TAB 10 — CALENDARIO OFICIAL
     # =========================================================
     with tabs[10]:
+        st.subheader("🗓️ Calendario Oficial")
+        sede_cal = u_data['sede']
+        url_actual = get_url_calendario_oficial(sede_cal)
+
+        if st.session_state.get('ok_cal_oficial_guardado'):
+            st.success("✅ URL guardada correctamente.")
+            st.session_state.ok_cal_oficial_guardado = False
+
+        with st.expander("⚙️ Configurar URL del calendario", expanded=(not url_actual)):
+            st.caption("La URL se guarda globalmente para todos los profesores de esta sede.")
+            nueva_url = st.text_input(
+                "URL del calendario:",
+                value=url_actual,
+                placeholder="https://www.argentina.gob.ar/jefatura/feriados-nacionales-2026",
+                key="cal_oficial_url_input"
+            )
+            if st.button("💾 Guardar URL", key="btn_guardar_cal_url"):
+                if nueva_url.strip():
+                    if set_url_calendario_oficial(sede_cal, nueva_url.strip()):
+                        st.session_state.ok_cal_oficial_guardado = True
+                        st.rerun()
+                else:
+                    st.error("La URL no puede estar vacía.")
+
+        if url_actual:
+            st.markdown(
+                f'<a href="{url_actual}" target="_blank">'
+                f'<button style="background:#4facfe;color:#080b10;border:none;border-radius:8px;padding:10px 22px;'
+                f'font-family:\'Syne\',sans-serif;font-weight:700;font-size:0.9rem;cursor:pointer;margin-bottom:16px;">'
+                f'🔗 Abrir en nueva pestaña</button></a>',
+                unsafe_allow_html=True
+            )
+            components.iframe(url_actual, height=700, scrolling=True)
+        else:
+            st.info("Aún no hay una URL configurada para esta sede. Usá el panel de configuración de arriba para agregar una.")
+
+    # =========================================================
+    # TAB 11 — IMPRESIÓN
+    # =========================================================
+    with tabs[11]:
         st.subheader("🖨️ Impresión y Exportación")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -2914,7 +2982,7 @@ else:
     # =========================================================
     # TAB 10 — BACKUP
     # =========================================================
-    with tabs[11]:
+    with tabs[12]:
         st.subheader("🗄️ Backup y Restauración")
 
         st.markdown('''<div class="backup-aviso">
@@ -3176,5 +3244,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v307 completa
+# FIN PARTE 2 DE 2 — v308 completa
 # ============================================================
