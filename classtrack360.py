@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v309
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v310
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v309", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v310", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -2461,64 +2461,70 @@ else:
             if not mapa_cursos:
                 no_encontrado("No hay cursos creados.")
             else:
-                c_v = st.selectbox("Filtrar por curso:", ["---"] + list(mapa_cursos.keys()), key="curso_alumnos_sel")
-                busqueda = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_alumno_input")
-                if c_v != "---":
-                    try:
-                        res_al = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
-                        alumnos_filtrados = []
-                        for r in res_al.data:
-                            al_raw = r.get('alumnos')
-                            al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
-                            if al:
-                                if busqueda.strip() == "" or normalizar(busqueda) in normalizar(al.get('nombre','')) or normalizar(busqueda) in normalizar(al.get('apellido','')):
-                                    alumnos_filtrados.append((r, al))
-                        if not res_al.data: no_encontrado("No hay alumnos inscriptos en este curso.")
-                        elif not alumnos_filtrados: no_encontrado(f"No se encontró ningún alumno con '{busqueda}'.")
-                        else:
-                            st.info(f"Cantidad de alumnos: {len(alumnos_filtrados)}")
-                            if st.session_state.get('ok_alumno_editado'):
-                                st.success("✅ Alumno actualizado satisfactoriamente.")
-                                st.session_state.ok_alumno_editado = False
-                            for r, al in alumnos_filtrados:
-                                if st.session_state.editando_alumno == r['id']:
-                                    with st.form(f"edit_al_{r['id']}", clear_on_submit=True):
-                                        n_edit = st.text_input("Nombre:", value=al.get('nombre', ''))
-                                        a_edit = st.text_input("Apellido:", value=al.get('apellido', ''))
-                                        e_edit = st.text_input("Email (opcional):", value=al.get('email', '') or '')
-                                        col_a1, col_a2 = st.columns(2)
-                                        if col_a1.form_submit_button("💾 Guardar"):
-                                            try:
-                                                supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip(), "email": e_edit.strip() if e_edit.strip() else None}).eq("id", al['id']).execute()
-                                                st.session_state.editando_alumno = None
-                                                st.session_state.ok_alumno_editado = True
-                                                st.rerun()
-                                            except Exception as e_err:
-                                                st.error(f"Error: {e_err}")
-                                        if col_a2.form_submit_button("❌ Cancelar"):
-                                            st.session_state.editando_alumno = None; st.rerun()
-                                else:
-                                    email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
-                                    st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</div>', unsafe_allow_html=True)
-                                    ab1, ab2 = st.columns(2)
-                                    if ab1.button("✏️ Editar", key=f"eal_{r['id']}"):
-                                        st.session_state.editando_alumno = r['id']; st.rerun()
-                                    if st.session_state.confirmar_borrar_alumno == r['id']:
-                                        st.warning(f"⚠️ ¿Confirmás que querés borrar a {al.get('apellido','').upper()}, {al.get('nombre','')} del curso? Esta acción no se puede deshacer.")
-                                        col_ca1, col_ca2 = st.columns(2)
-                                        if col_ca1.button("✅ Sí, borrar", key=f"conf_dal_{r['id']}", type="primary"):
-                                            try:
-                                                supabase.table("inscripciones").delete().eq("id", r['id']).execute()
-                                                st.session_state.confirmar_borrar_alumno = None
-                                                st.success("Alumno eliminado del curso."); st.rerun()
-                                            except Exception as e_err:
-                                                st.error(f"Error: {e_err}")
-                                        if col_ca2.button("❌ Cancelar", key=f"canc_dal_{r['id']}"):
-                                            st.session_state.confirmar_borrar_alumno = None; st.rerun()
-                                    elif ab2.button("🗑️ Borrar", key=f"dal_{r['id']}"):
-                                        st.session_state.confirmar_borrar_alumno = r['id']; st.rerun()
-                    except Exception as e:
-                        st.error(f"Error al cargar alumnos: {e}")
+                busqueda = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_alumno_input", placeholder="Escribí para filtrar en tiempo real...")
+                c_v = st.selectbox("Filtrar por curso:", ["Todos"] + list(mapa_cursos.keys()), key="curso_alumnos_sel")
+                try:
+                    # Cargar todos los alumnos del profesor (o del curso si está seleccionado)
+                    if c_v == "Todos":
+                        res_al = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+                    else:
+                        res_al = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, email)").eq("nombre_curso_materia", c_v).not_.is_("alumno_id", "null").execute()
+                    alumnos_filtrados = []
+                    for r in (res_al.data or []):
+                        al_raw = r.get('alumnos')
+                        al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
+                        if al:
+                            if busqueda.strip() == "" or normalizar(busqueda) in normalizar(al.get('nombre','')) or normalizar(busqueda) in normalizar(al.get('apellido','')):
+                                alumnos_filtrados.append((r, al))
+                    if not res_al.data:
+                        no_encontrado("No hay alumnos inscriptos.")
+                    elif not alumnos_filtrados:
+                        no_encontrado(f"No se encontró ningún alumno con '{busqueda}'.")
+                    else:
+                        st.caption(f"Mostrando {len(alumnos_filtrados)} alumno/s")
+                        if st.session_state.get('ok_alumno_editado'):
+                            st.success("✅ Alumno actualizado satisfactoriamente.")
+                            st.session_state.ok_alumno_editado = False
+                        for r, al in alumnos_filtrados:
+                            curso_badge = f' <span style="color:#4facfe;font-size:0.75rem;font-weight:600">[{r.get("nombre_curso_materia","")}]</span>' if c_v == "Todos" else ''
+                            if st.session_state.editando_alumno == r['id']:
+                                with st.form(f"edit_al_{r['id']}", clear_on_submit=True):
+                                    n_edit = st.text_input("Nombre:", value=al.get('nombre', ''))
+                                    a_edit = st.text_input("Apellido:", value=al.get('apellido', ''))
+                                    e_edit = st.text_input("Email (opcional):", value=al.get('email', '') or '')
+                                    col_a1, col_a2 = st.columns(2)
+                                    if col_a1.form_submit_button("💾 Guardar"):
+                                        try:
+                                            supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip(), "email": e_edit.strip() if e_edit.strip() else None}).eq("id", al['id']).execute()
+                                            st.session_state.editando_alumno = None
+                                            st.session_state.ok_alumno_editado = True
+                                            st.rerun()
+                                        except Exception as e_err:
+                                            st.error(f"Error: {e_err}")
+                                    if col_a2.form_submit_button("❌ Cancelar"):
+                                        st.session_state.editando_alumno = None; st.rerun()
+                            else:
+                                email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
+                                st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{curso_badge}{email_display}</div>', unsafe_allow_html=True)
+                                ab1, ab2 = st.columns(2)
+                                if ab1.button("✏️ Editar", key=f"eal_{r['id']}"):
+                                    st.session_state.editando_alumno = r['id']; st.rerun()
+                                if st.session_state.confirmar_borrar_alumno == r['id']:
+                                    st.warning(f"⚠️ ¿Confirmás que querés borrar a {al.get('apellido','').upper()}, {al.get('nombre','')} del curso? Esta acción no se puede deshacer.")
+                                    col_ca1, col_ca2 = st.columns(2)
+                                    if col_ca1.button("✅ Sí, borrar", key=f"conf_dal_{r['id']}", type="primary"):
+                                        try:
+                                            supabase.table("inscripciones").delete().eq("id", r['id']).execute()
+                                            st.session_state.confirmar_borrar_alumno = None
+                                            st.success("Alumno eliminado del curso."); st.rerun()
+                                        except Exception as e_err:
+                                            st.error(f"Error: {e_err}")
+                                    if col_ca2.button("❌ Cancelar", key=f"canc_dal_{r['id']}"):
+                                        st.session_state.confirmar_borrar_alumno = None; st.rerun()
+                                elif ab2.button("🗑️ Borrar", key=f"dal_{r['id']}"):
+                                    st.session_state.confirmar_borrar_alumno = r['id']; st.rerun()
+                except Exception as e:
+                    st.error(f"Error al cargar alumnos: {e}")
 
     # =========================================================
     # TAB 4 — NOTAS
@@ -3251,5 +3257,5 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v309 completa
+# FIN PARTE 2 DE 2 — v310 completa
 # ============================================================
