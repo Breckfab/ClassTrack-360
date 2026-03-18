@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v332
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v333
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v332", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v333", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -131,20 +131,15 @@ def extraer_nombre_limpio(nombre_curso):
     return nombre_curso.strip()
 
 def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
-    """Devuelve lista de cursos para hoy.
-    Si el curso tiene días configurados en el nombre (formato estándar), filtra por día de hoy.
-    Si el curso NO tiene días en el nombre (fue creado sin ese formato), lo muestra siempre
-    para que el profesor decida si tiene clase hoy o no."""
+    """Devuelve lista de cursos con clase hoy según los días configurados en el nombre."""
     hoy = datetime.date.today()
     dia_hoy = hoy.weekday()
     clases = []
     for nombre_curso, inscripcion_id in mapa_cursos.items():
-        curso_data = mapa_cursos_data.get(nombre_curso, {})
         dias = extraer_dias_curso(nombre_curso)
-        # Si tiene días configurados y hoy NO es uno de ellos → omitir
-        if dias and dia_hoy not in dias:
+        if not dias or dia_hoy not in dias:
             continue
-        # Si no tiene días configurados → mostrar siempre (el profesor sabe si tiene clase)
+        curso_data = mapa_cursos_data.get(nombre_curso, {})
         hi = str(curso_data.get('hora_inicio', '') or '')[:5]
         hf = str(curso_data.get('hora_fin', '') or '')[:5]
         horario = format_horario(hi, hf) if hi else "-"
@@ -1986,6 +1981,17 @@ else:
             dias_r = max(0, (ff_s - f_hoy).days)
             st.markdown(f'<div class="stat-card" style="font-size:0.72rem;">📆 Año lectivo<br><b>{fi_s.strftime("%d/%m")}</b> → <b>{ff_s.strftime("%d/%m")}</b><br>{dias_r} días restantes</div>', unsafe_allow_html=True)
         st.markdown("---")
+        # BOTÓN SALIR — sin confirmación, directo
+        if st.button("🚪 SALIR", use_container_width=True):
+            dias_sin_backup = dias_desde_ultimo_backup(u_data['id'])
+            necesita_aviso = dias_sin_backup is None or dias_sin_backup >= 7
+            if necesita_aviso:
+                st.session_state.mostrar_salir_backup = True
+                st.rerun()
+            else:
+                st.session_state.user = None
+                st.rerun()
+        st.markdown("---")
         col_prev, col_next = st.columns(2)
         if col_prev.button("◀", key="cal_prev"):
             if st.session_state.cal_mes == 1: st.session_state.cal_mes = 12; st.session_state.cal_anio -= 1
@@ -1996,28 +2002,6 @@ else:
             else: st.session_state.cal_mes += 1
             st.rerun()
         st.markdown(render_calendario(st.session_state.cal_mes, st.session_state.cal_anio), unsafe_allow_html=True)
-        st.markdown("---")
-        # BOTÓN SALIR con chequeo de backup y confirmación
-        if not st.session_state.get('confirmar_salir'):
-            if st.button("🚪 SALIR"):
-                st.session_state.confirmar_salir = True
-                st.rerun()
-        else:
-            st.warning("¿Seguro que querés salir?")
-            col_si, col_no = st.columns(2)
-            if col_si.button("✅ Sí, salir", key="btn_si_salir", use_container_width=True):
-                st.session_state.confirmar_salir = False
-                dias_sin_backup = dias_desde_ultimo_backup(u_data['id'])
-                necesita_aviso = dias_sin_backup is None or dias_sin_backup >= 7
-                if necesita_aviso:
-                    st.session_state.mostrar_salir_backup = True
-                    st.rerun()
-                else:
-                    st.session_state.user = None
-                    st.rerun()
-            if col_no.button("❌ Cancelar", key="btn_no_salir", use_container_width=True):
-                st.session_state.confirmar_salir = False
-                st.rerun()
 
     footer()
 
@@ -4003,5 +3987,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v332 completa
+# FIN PARTE 2 DE 2 — v333 completa
 # ============================================================
