@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v330
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v331
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v327", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v331", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -120,27 +120,28 @@ def set_modo_claro(profesor_id, valor):
             supabase.table("preferencias_usuario").insert({"profesor_id": profesor_id, "modo_claro": valor}).execute()
     except: pass
 
+def extraer_nombre_limpio(nombre_curso):
+    """Devuelve el nombre del curso sin los días ni el horario entre paréntesis y pipe."""
+    try:
+        if '(' in nombre_curso:
+            return nombre_curso.split('(')[0].strip()
+        if '|' in nombre_curso:
+            return nombre_curso.split('|')[0].strip()
+    except: pass
+    return nombre_curso.strip()
+
 def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
-    """Devuelve lista de cursos con clase hoy, indicando si ya fue registrada.
-    Lee los días desde el nombre_curso_materia completo guardado en mapa_cursos_data,
-    que puede diferir del nombre visible (clave del mapa) si fue renombrado."""
+    """Devuelve lista de cursos con clase hoy, indicando si ya fue registrada."""
     hoy = datetime.date.today()
     dia_hoy = hoy.weekday()  # 0=lunes ... 6=domingo
     clases = []
     for nombre_curso, inscripcion_id in mapa_cursos.items():
-        curso_data = mapa_cursos_data.get(nombre_curso, {})
-        # El nombre completo guardado en BD contiene los días entre paréntesis
-        nombre_bd = curso_data.get('nombre_curso_materia', nombre_curso)
-        dias = extraer_dias_curso(nombre_bd)
-        # Si no se encontraron días en el nombre de BD, intentar con el nombre visible
+        dias = extraer_dias_curso(nombre_curso)
         if not dias:
-            dias = extraer_dias_curso(nombre_curso)
-        # Si aún no hay días configurados: omitir (no sabemos qué días tiene)
-        if not dias:
-            continue
-        # Filtrar por día de hoy
+            continue  # sin días configurados, no se puede determinar
         if dia_hoy not in dias:
             continue
+        curso_data = mapa_cursos_data.get(nombre_curso, {})
         hi = str(curso_data.get('hora_inicio', '') or '')[:5]
         hf = str(curso_data.get('hora_fin', '') or '')[:5]
         horario = format_horario(hi, hf) if hi else "-"
@@ -151,6 +152,7 @@ def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
             ya_registrada = False
         clases.append({
             'nombre': nombre_curso,
+            'nombre_limpio': extraer_nombre_limpio(nombre_curso),
             'horario': horario,
             'ya_registrada': ya_registrada,
         })
@@ -447,7 +449,7 @@ def extraer_dias_curso(nombre_curso):
         if '(' in nombre_curso and ')' in nombre_curso:
             parte = nombre_curso.split('(')[1].split(')')[0]
             for token in parte.split(','):
-                t = token.strip().lower()
+                t = normalizar(token.strip())  # sin tildes, minúsculas
                 if t in DIAS_SEMANA_MAP:
                     dias.append(DIAS_SEMANA_MAP[t])
     except: pass
@@ -2133,7 +2135,7 @@ else:
                         estado_lbl = "Clase ya registrada" if c_h['ya_registrada'] else "Pendiente de registro"
                         st.markdown(f'''<div style="background:rgba(79,172,254,0.07);border:1px solid rgba(79,172,254,0.25);
                             border-radius:12px;padding:12px 16px;margin-bottom:8px;">
-                            <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px;">{icono} {c_h["nombre"]}</div>
+                            <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px;">{icono} {c_h["nombre_limpio"]}</div>
                             <div style="font-size:0.8rem;color:#aaa;">🕐 {c_h["horario"]}</div>
                             <div style="font-size:0.75rem;color:{estado_color};margin-top:4px;font-weight:600;">{estado_lbl}</div>
                         </div>''', unsafe_allow_html=True)
@@ -3998,5 +4000,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v330 completa
+# FIN PARTE 2 DE 2 — v331 completa
 # ============================================================
