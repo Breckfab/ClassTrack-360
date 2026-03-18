@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v329
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v330
 # ============================================================
 
 import streamlit as st
@@ -122,17 +122,25 @@ def set_modo_claro(profesor_id, valor):
 
 def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
     """Devuelve lista de cursos con clase hoy, indicando si ya fue registrada.
-    Si el curso no tiene días configurados en el nombre, se incluye siempre
-    para que el profesor pueda seleccionarlo."""
+    Lee los días desde el nombre_curso_materia completo guardado en mapa_cursos_data,
+    que puede diferir del nombre visible (clave del mapa) si fue renombrado."""
     hoy = datetime.date.today()
     dia_hoy = hoy.weekday()  # 0=lunes ... 6=domingo
     clases = []
     for nombre_curso, inscripcion_id in mapa_cursos.items():
-        dias = extraer_dias_curso(nombre_curso)
-        # Si tiene días configurados, filtrar por hoy. Si no tiene días, mostrar siempre.
-        if dias and dia_hoy not in dias:
-            continue
         curso_data = mapa_cursos_data.get(nombre_curso, {})
+        # El nombre completo guardado en BD contiene los días entre paréntesis
+        nombre_bd = curso_data.get('nombre_curso_materia', nombre_curso)
+        dias = extraer_dias_curso(nombre_bd)
+        # Si no se encontraron días en el nombre de BD, intentar con el nombre visible
+        if not dias:
+            dias = extraer_dias_curso(nombre_curso)
+        # Si aún no hay días configurados: omitir (no sabemos qué días tiene)
+        if not dias:
+            continue
+        # Filtrar por día de hoy
+        if dia_hoy not in dias:
+            continue
         hi = str(curso_data.get('hora_inicio', '') or '')[:5]
         hf = str(curso_data.get('hora_fin', '') or '')[:5]
         horario = format_horario(hi, hf) if hi else "-"
@@ -3990,5 +3998,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v329 completa
+# FIN PARTE 2 DE 2 — v330 completa
 # ============================================================
