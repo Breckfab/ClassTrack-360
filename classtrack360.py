@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v326
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v327
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v322", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v327", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -90,6 +90,12 @@ def init_state():
         'historial_renombres': [],
         'confirmar_salir': False,
         'duplicando_curso': None,
+        # Mantenimiento
+        'mant_confirmar_borrar_periodo': False,
+        'mant_confirmar_borrar_alumno': False,
+        'mant_alumno_a_borrar': None,
+        'mant_paso_borrar_periodo': 0,
+        'mant_paso_borrar_alumno': 0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -2029,6 +2035,7 @@ else:
         "🗓️ Calendario Oficial",
         "🖨️ Impresión",
         "🗄️ Backup",
+        "🔧 Mantenimiento",
     ])
 
     # =========================================================
@@ -3674,6 +3681,268 @@ else:
             except Exception as e:
                 st.error(f"Error al cargar tareas: {e}")
 
+    # =========================================================
+    # TAB 12 — MANTENIMIENTO
+    # =========================================================
+    with tabs[13]:
+        st.subheader("🔧 Mantenimiento de Base de Datos")
+
+        # ── SECCIÓN 1: ESTADO DE LA BASE ──────────────────────
+        st.markdown("### 📊 Estado de la Base de Datos")
+        try:
+            LIMITE_FILAS_FREE = 50000
+            tablas_contar = [
+                ("alumnos", "👥 Alumnos"),
+                ("inscripciones", "📎 Inscripciones"),
+                ("bitacora", "📋 Bitácora"),
+                ("notas", "📝 Notas"),
+                ("cursos", "🏗️ Cursos"),
+            ]
+            conteos = {}
+            total_filas = 0
+            for tabla, _ in tablas_contar:
+                try:
+                    r = supabase.table(tabla).select("id", count="exact").execute()
+                    n = r.count if r.count is not None else len(r.data or [])
+                    conteos[tabla] = n
+                    total_filas += n
+                except:
+                    conteos[tabla] = 0
+
+            pct = min(round((total_filas / LIMITE_FILAS_FREE) * 100, 1), 100)
+
+            if pct < 60:
+                color_barra = "#22c55e"; color_estado = "#22c55e"; semaforo = "🟢"; estado_txt = "NORMAL"
+            elif pct < 85:
+                color_barra = "#f59e0b"; color_estado = "#f59e0b"; semaforo = "🟡"; estado_txt = "ATENCIÓN"
+            else:
+                color_barra = "#ef4444"; color_estado = "#ef4444"; semaforo = "🔴"; estado_txt = "CRÍTICO"
+
+            segmentos_llenos = int(pct / 5)
+            barra_html = ""
+            for i in range(20):
+                if i < segmentos_llenos:
+                    barra_html += f'<div style="flex:1;height:100%;background:{color_barra};border-radius:3px;margin:0 1px;"></div>'
+                else:
+                    barra_html += '<div style="flex:1;height:100%;background:rgba(255,255,255,0.08);border-radius:3px;margin:0 1px;"></div>'
+
+            st.markdown(f'''
+            <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.1);border-radius:12px;padding:20px 24px;margin-bottom:18px;">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;">
+                    <span style="font-size:1rem;font-weight:600;color:#ccc;">Uso de base de datos (Plan Free)</span>
+                    <span style="font-size:1.3rem;font-weight:800;color:{color_estado};">{semaforo} {pct}% — {estado_txt}</span>
+                </div>
+                <div style="display:flex;height:22px;width:100%;border-radius:6px;overflow:hidden;gap:2px;background:rgba(255,255,255,0.05);padding:3px;box-sizing:border-box;">
+                    {barra_html}
+                </div>
+                <div style="display:flex;justify-content:space-between;margin-top:8px;">
+                    <span style="font-size:0.78rem;color:#666;">0 filas</span>
+                    <span style="font-size:0.85rem;color:#aaa;font-weight:600;">{total_filas:,} / {LIMITE_FILAS_FREE:,} filas utilizadas</span>
+                    <span style="font-size:0.78rem;color:#666;">{LIMITE_FILAS_FREE:,} filas</span>
+                </div>
+            </div>
+            ''', unsafe_allow_html=True)
+
+            cols_t = st.columns(len(tablas_contar))
+            for idx, (tabla, label) in enumerate(tablas_contar):
+                n = conteos[tabla]
+                with cols_t[idx]:
+                    st.markdown(f'''<div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:12px;text-align:center;">
+                        <div style="font-size:0.75rem;color:#888;margin-bottom:4px;">{label}</div>
+                        <div style="font-size:1.4rem;font-weight:800;color:#4facfe;">{n:,}</div>
+                        <div style="font-size:0.7rem;color:#556;">filas</div>
+                    </div>''', unsafe_allow_html=True)
+
+        except Exception as e_stat:
+            st.error(f"Error al calcular estadísticas: {e_stat}")
+
+        st.markdown("---")
+
+        # ── SECCIÓN 2: ACTIVAR / INACTIVAR ALUMNOS ───────────
+        st.markdown("### 👤 Activar / Inactivar Alumnos")
+        st.caption("Los alumnos inactivos no se muestran en las listas de asistencia ni notas, pero sus datos se conservan.")
+        try:
+            res_al_mant = supabase.table("inscripciones").select(
+                "id, nombre_curso_materia, alumnos(id, nombre, apellido, activo)"
+            ).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+
+            alumnos_mant = []
+            vistos = set()
+            for r in (res_al_mant.data or []):
+                al_raw = r.get('alumnos')
+                al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
+                if al and al['id'] not in vistos:
+                    vistos.add(al['id'])
+                    activo = al.get('activo', True)
+                    if activo is None: activo = True
+                    alumnos_mant.append({
+                        'id': al['id'],
+                        'nombre': f"{al.get('apellido','').upper()}, {al.get('nombre','')}",
+                        'activo': activo,
+                        'curso': r.get('nombre_curso_materia', '-'),
+                    })
+            alumnos_mant.sort(key=lambda x: x['nombre'])
+
+            if not alumnos_mant:
+                st.info("No hay alumnos registrados.")
+            else:
+                filtro_estado_mant = st.radio("Mostrar:", ["Todos", "Solo Activos", "Solo Inactivos"], horizontal=True, key="mant_filtro_al")
+                lista_filtrada = alumnos_mant
+                if filtro_estado_mant == "Solo Activos":
+                    lista_filtrada = [a for a in alumnos_mant if a['activo']]
+                elif filtro_estado_mant == "Solo Inactivos":
+                    lista_filtrada = [a for a in alumnos_mant if not a['activo']]
+
+                if not lista_filtrada:
+                    st.info("No hay alumnos en esta categoría.")
+                else:
+                    for al_m in lista_filtrada:
+                        col_an, col_at, col_ab = st.columns([5, 2, 1])
+                        with col_an:
+                            estado_badge = '<span style="color:#22c55e;font-size:0.75rem;font-weight:600;">● ACTIVO</span>' if al_m['activo'] else '<span style="color:#ef4444;font-size:0.75rem;font-weight:600;">● INACTIVO</span>'
+                            st.markdown(f'<div style="padding:6px 0;">👤 <b>{al_m["nombre"]}</b> &nbsp; {estado_badge}<br><span style="color:#556;font-size:0.78rem">📖 {al_m["curso"]}</span></div>', unsafe_allow_html=True)
+                        with col_at:
+                            nuevo_estado = not al_m['activo']
+                            lbl_btn = "✅ Activar" if not al_m['activo'] else "⛔ Inactivar"
+                            if st.button(lbl_btn, key=f"mant_toggle_al_{al_m['id']}", use_container_width=True):
+                                try:
+                                    supabase.table("alumnos").update({"activo": nuevo_estado}).eq("id", al_m['id']).execute()
+                                    st.rerun()
+                                except Exception as e_tog:
+                                    st.error(f"Error: {e_tog}")
+                        with col_ab:
+                            if st.button("🗑️", key=f"mant_del_al_{al_m['id']}", help="Borrar alumno y todos sus datos"):
+                                st.session_state.mant_alumno_a_borrar = al_m
+                                st.session_state.mant_paso_borrar_alumno = 1
+                                st.rerun()
+
+            # Confirmación doble para borrar alumno
+            if st.session_state.get('mant_paso_borrar_alumno', 0) == 1 and st.session_state.get('mant_alumno_a_borrar'):
+                al_b = st.session_state.mant_alumno_a_borrar
+                st.markdown(f'<div class="advertencia-box">⚠️ <b>Primera confirmación</b> — ¿Borrar a <b>{al_b["nombre"]}</b>? Se eliminarán sus notas, inscripciones y todos sus datos.</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                if c1.button("⚠️ SÍ, CONTINUAR", key="mant_al_conf1", type="primary", use_container_width=True):
+                    st.session_state.mant_paso_borrar_alumno = 2; st.rerun()
+                if c2.button("❌ CANCELAR", key="mant_al_canc1", use_container_width=True):
+                    st.session_state.mant_alumno_a_borrar = None
+                    st.session_state.mant_paso_borrar_alumno = 0; st.rerun()
+
+            elif st.session_state.get('mant_paso_borrar_alumno', 0) == 2 and st.session_state.get('mant_alumno_a_borrar'):
+                al_b = st.session_state.mant_alumno_a_borrar
+                st.markdown(f'<div class="advertencia-box">🔴 <b>ÚLTIMA CONFIRMACIÓN</b> — Esta acción es <b>irreversible</b>. ¿Confirmar el borrado definitivo de <b>{al_b["nombre"]}</b>?</div>', unsafe_allow_html=True)
+                c1, c2 = st.columns(2)
+                if c1.button("🗑️ BORRAR DEFINITIVAMENTE", key="mant_al_conf2", type="primary", use_container_width=True):
+                    try:
+                        al_id = al_b['id']
+                        res_insc_del = supabase.table("inscripciones").select("id").eq("alumno_id", al_id).eq("profesor_id", u_data['id']).execute()
+                        insc_ids_del = [r['id'] for r in (res_insc_del.data or [])]
+                        if insc_ids_del:
+                            supabase.table("notas").delete().in_("inscripcion_id", insc_ids_del).execute()
+                            supabase.table("bitacora").delete().in_("inscripcion_id", insc_ids_del).execute()
+                            supabase.table("inscripciones").delete().in_("id", insc_ids_del).execute()
+                        supabase.table("alumnos").delete().eq("id", al_id).execute()
+                        st.session_state.mant_alumno_a_borrar = None
+                        st.session_state.mant_paso_borrar_alumno = 0
+                        st.success(f"✅ Alumno {al_b['nombre']} eliminado correctamente.")
+                        st.rerun()
+                    except Exception as e_del:
+                        st.error(f"Error al borrar: {e_del}")
+                if c2.button("❌ CANCELAR", key="mant_al_canc2", use_container_width=True):
+                    st.session_state.mant_alumno_a_borrar = None
+                    st.session_state.mant_paso_borrar_alumno = 0; st.rerun()
+
+        except Exception as e_al_mant:
+            st.error(f"Error al cargar alumnos: {e_al_mant}")
+
+        st.markdown("---")
+
+        # ── SECCIÓN 3: BORRAR BITÁCORA POR PERÍODO ───────────
+        st.markdown("### 🗑️ Eliminar Bitácora por Período")
+        st.caption("Borrá registros de clases (bitácora) de períodos anteriores para liberar espacio en Supabase.")
+
+        try:
+            res_fechas = supabase.table("bitacora").select("fecha, inscripcion_id").in_(
+                "inscripcion_id", list(mapa_cursos.values())
+            ).execute()
+
+            fechas_raw = [r['fecha'] for r in (res_fechas.data or []) if r.get('fecha')]
+            anios_disponibles = sorted(list(set([f[:4] for f in fechas_raw])), reverse=True)
+
+            if not anios_disponibles:
+                st.info("No hay registros de bitácora para gestionar.")
+            else:
+                col_pa, col_pm = st.columns(2)
+                with col_pa:
+                    anio_sel_mant = st.selectbox("Año:", anios_disponibles, key="mant_anio_periodo")
+                with col_pm:
+                    meses_disp = sorted(list(set([
+                        f[5:7] for f in fechas_raw if f[:4] == anio_sel_mant
+                    ])))
+                    opciones_meses = ["Año completo"] + [
+                        f"{m} — {calendar.month_name[int(m)].capitalize()}" for m in meses_disp
+                    ]
+                    mes_sel_mant = st.selectbox("Mes:", opciones_meses, key="mant_mes_periodo")
+
+                if mes_sel_mant == "Año completo":
+                    registros_afectados = [r for r in (res_fechas.data or []) if r.get('fecha', '')[:4] == anio_sel_mant]
+                    periodo_label = f"todo el año {anio_sel_mant}"
+                    fecha_desde_p = f"{anio_sel_mant}-01-01"
+                    fecha_hasta_p = f"{anio_sel_mant}-12-31"
+                else:
+                    mes_num = mes_sel_mant[:2]
+                    registros_afectados = [r for r in (res_fechas.data or []) if r.get('fecha', '')[:7] == f"{anio_sel_mant}-{mes_num}"]
+                    periodo_label = f"{calendar.month_name[int(mes_num)].capitalize()} {anio_sel_mant}"
+                    ultimo_dia = calendar.monthrange(int(anio_sel_mant), int(mes_num))[1]
+                    fecha_desde_p = f"{anio_sel_mant}-{mes_num}-01"
+                    fecha_hasta_p = f"{anio_sel_mant}-{mes_num}-{ultimo_dia:02d}"
+
+                cant_reg = len(registros_afectados)
+
+                st.markdown(f'''<div style="background:rgba(239,68,68,0.07);border:1px solid rgba(239,68,68,0.25);border-radius:10px;padding:14px 18px;margin:12px 0;">
+                    <b>Período seleccionado:</b> {periodo_label}<br>
+                    <b>Registros de bitácora a eliminar:</b> <span style="color:#ef4444;font-weight:700;">{cant_reg}</span>
+                </div>''', unsafe_allow_html=True)
+
+                if cant_reg == 0:
+                    st.info("No hay registros en el período seleccionado.")
+                else:
+                    if st.session_state.get('mant_paso_borrar_periodo', 0) == 0:
+                        if st.button(f"🗑️ ELIMINAR {periodo_label.upper()}", type="primary", use_container_width=True, key="mant_btn_del_periodo"):
+                            st.session_state.mant_paso_borrar_periodo = 1; st.rerun()
+
+                    elif st.session_state.get('mant_paso_borrar_periodo', 0) == 1:
+                        st.markdown(f'<div class="advertencia-box">⚠️ <b>Primera confirmación</b> — ¿Eliminar {cant_reg} registro/s de bitácora de {periodo_label}? Esta acción no se puede deshacer.</div>', unsafe_allow_html=True)
+                        c1p, c2p = st.columns(2)
+                        if c1p.button("⚠️ SÍ, CONTINUAR", key="mant_periodo_conf1", type="primary", use_container_width=True):
+                            st.session_state.mant_paso_borrar_periodo = 2; st.rerun()
+                        if c2p.button("❌ CANCELAR", key="mant_periodo_canc1", use_container_width=True):
+                            st.session_state.mant_paso_borrar_periodo = 0; st.rerun()
+
+                    elif st.session_state.get('mant_paso_borrar_periodo', 0) == 2:
+                        st.markdown(f'<div class="advertencia-box">🔴 <b>ÚLTIMA CONFIRMACIÓN</b> — Se borrarán <b>{cant_reg} registros de bitácora</b> de <b>{periodo_label}</b>. ¿Confirmar?</div>', unsafe_allow_html=True)
+                        c1p, c2p = st.columns(2)
+                        if c1p.button("🗑️ BORRAR DEFINITIVAMENTE", key="mant_periodo_conf2", type="primary", use_container_width=True):
+                            try:
+                                res_bit_del = supabase.table("bitacora").select("id").in_(
+                                    "inscripcion_id", list(mapa_cursos.values())
+                                ).gte("fecha", fecha_desde_p).lte("fecha", fecha_hasta_p).execute()
+                                bit_ids_del = [r['id'] for r in (res_bit_del.data or [])]
+                                if bit_ids_del:
+                                    supabase.table("bitacora").delete().in_("id", bit_ids_del).execute()
+                                st.session_state.mant_paso_borrar_periodo = 0
+                                st.success(f"✅ Se eliminaron {len(bit_ids_del)} registros de bitácora de {periodo_label}.")
+                                st.rerun()
+                            except Exception as e_del_p:
+                                st.error(f"Error al borrar: {e_del_p}")
+                        if c2p.button("❌ CANCELAR", key="mant_periodo_canc2", use_container_width=True):
+                            st.session_state.mant_paso_borrar_periodo = 0; st.rerun()
+
+        except Exception as e_periodo:
+            st.error(f"Error al cargar períodos: {e_periodo}")
+
+        footer()
+
+
 # ============================================================
-# FIN PARTE 2 DE 2 — v326 completa
+# FIN PARTE 2 DE 2 — v327 completa
 # ============================================================
