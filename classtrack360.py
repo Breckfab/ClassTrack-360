@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v331
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v332
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v331", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v332", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -131,17 +131,20 @@ def extraer_nombre_limpio(nombre_curso):
     return nombre_curso.strip()
 
 def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
-    """Devuelve lista de cursos con clase hoy, indicando si ya fue registrada."""
+    """Devuelve lista de cursos para hoy.
+    Si el curso tiene días configurados en el nombre (formato estándar), filtra por día de hoy.
+    Si el curso NO tiene días en el nombre (fue creado sin ese formato), lo muestra siempre
+    para que el profesor decida si tiene clase hoy o no."""
     hoy = datetime.date.today()
-    dia_hoy = hoy.weekday()  # 0=lunes ... 6=domingo
+    dia_hoy = hoy.weekday()
     clases = []
     for nombre_curso, inscripcion_id in mapa_cursos.items():
-        dias = extraer_dias_curso(nombre_curso)
-        if not dias:
-            continue  # sin días configurados, no se puede determinar
-        if dia_hoy not in dias:
-            continue
         curso_data = mapa_cursos_data.get(nombre_curso, {})
+        dias = extraer_dias_curso(nombre_curso)
+        # Si tiene días configurados y hoy NO es uno de ellos → omitir
+        if dias and dia_hoy not in dias:
+            continue
+        # Si no tiene días configurados → mostrar siempre (el profesor sabe si tiene clase)
         hi = str(curso_data.get('hora_inicio', '') or '')[:5]
         hf = str(curso_data.get('hora_fin', '') or '')[:5]
         horario = format_horario(hi, hf) if hi else "-"
@@ -4000,5 +4003,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v331 completa
+# FIN PARTE 2 DE 2 — v332 completa
 # ============================================================
