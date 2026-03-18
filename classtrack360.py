@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v333
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v334
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v333", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v334", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -307,6 +307,25 @@ def aplicar_tema(modo_claro=False):
     .stExpander summary { color: #1a1f2e !important; }
     div[data-testid="stNumberInput"] input { background: #ffffff !important; color: #1a1f2e !important; }
     ''' if modo_claro else ''}
+    [data-testid="stSidebar"] div[data-testid="stButton"]:has(button[kind="secondary"]) button {{
+        background: transparent !important;
+    }}
+    [data-testid="stSidebar"] button[key="btn_salir"],
+    [data-testid="stSidebar"] div:has(> button):has(> div > p:contains("SALIR")) button {{
+        background: linear-gradient(135deg, #f97316, #ea580c) !important;
+        color: #fff !important;
+        border: none !important;
+        border-radius: 8px !important;
+        font-weight: 700 !important;
+        letter-spacing: 0.08em !important;
+        font-size: 0.78rem !important;
+        padding: 4px 0 !important;
+        box-shadow: 0 2px 8px rgba(249,115,22,0.4) !important;
+        transition: all 0.2s !important;
+        width: 60% !important;
+        display: block !important;
+        margin: 0 auto !important;
+    }}
     </style>
 """, unsafe_allow_html=True)
 
@@ -1982,7 +2001,8 @@ else:
             st.markdown(f'<div class="stat-card" style="font-size:0.72rem;">📆 Año lectivo<br><b>{fi_s.strftime("%d/%m")}</b> → <b>{ff_s.strftime("%d/%m")}</b><br>{dias_r} días restantes</div>', unsafe_allow_html=True)
         st.markdown("---")
         # BOTÓN SALIR — sin confirmación, directo
-        if st.button("🚪 SALIR", use_container_width=True):
+        st.markdown('<div style="text-align:center">', unsafe_allow_html=True)
+        if st.button("🚪 SALIR", key="btn_salir", use_container_width=False):
             dias_sin_backup = dias_desde_ultimo_backup(u_data['id'])
             necesita_aviso = dias_sin_backup is None or dias_sin_backup >= 7
             if necesita_aviso:
@@ -1991,6 +2011,7 @@ else:
             else:
                 st.session_state.user = None
                 st.rerun()
+        st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("---")
         col_prev, col_next = st.columns(2)
         if col_prev.button("◀", key="cal_prev"):
@@ -3987,5 +4008,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v333 completa
+# FIN PARTE 2 DE 2 — v334 completa
 # ============================================================
