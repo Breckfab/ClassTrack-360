@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v328
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v329
 # ============================================================
 
 import streamlit as st
@@ -121,27 +121,31 @@ def set_modo_claro(profesor_id, valor):
     except: pass
 
 def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
-    """Devuelve lista de cursos con clase hoy, indicando si ya fue registrada."""
+    """Devuelve lista de cursos con clase hoy, indicando si ya fue registrada.
+    Si el curso no tiene días configurados en el nombre, se incluye siempre
+    para que el profesor pueda seleccionarlo."""
     hoy = datetime.date.today()
     dia_hoy = hoy.weekday()  # 0=lunes ... 6=domingo
     clases = []
     for nombre_curso, inscripcion_id in mapa_cursos.items():
         dias = extraer_dias_curso(nombre_curso)
-        if dia_hoy in dias:
-            curso_data = mapa_cursos_data.get(nombre_curso, {})
-            hi = str(curso_data.get('hora_inicio', '') or '')[:5]
-            hf = str(curso_data.get('hora_fin', '') or '')[:5]
-            horario = format_horario(hi, hf) if hi else "-"
-            try:
-                res = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(hoy)).execute()
-                ya_registrada = len(res.data) > 0
-            except:
-                ya_registrada = False
-            clases.append({
-                'nombre': nombre_curso,
-                'horario': horario,
-                'ya_registrada': ya_registrada,
-            })
+        # Si tiene días configurados, filtrar por hoy. Si no tiene días, mostrar siempre.
+        if dias and dia_hoy not in dias:
+            continue
+        curso_data = mapa_cursos_data.get(nombre_curso, {})
+        hi = str(curso_data.get('hora_inicio', '') or '')[:5]
+        hf = str(curso_data.get('hora_fin', '') or '')[:5]
+        horario = format_horario(hi, hf) if hi else "-"
+        try:
+            res = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(hoy)).execute()
+            ya_registrada = len(res.data) > 0
+        except:
+            ya_registrada = False
+        clases.append({
+            'nombre': nombre_curso,
+            'horario': horario,
+            'ya_registrada': ya_registrada,
+        })
     return clases
 
 def footer():
@@ -3791,8 +3795,18 @@ else:
         st.caption("Los alumnos inactivos no se muestran en las listas de asistencia ni notas, pero sus datos se conservan.")
         try:
             res_al_mant = supabase.table("inscripciones").select(
-                "id, nombre_curso_materia, alumnos(id, nombre, apellido, activo)"
+                "id, nombre_curso_materia, alumnos(id, nombre, apellido)"
             ).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+
+            # Cargar estados activo/inactivo desde tabla separada si existe,
+            # sino asumir todos activos (la columna 'activo' puede no existir en alumnos)
+            estados_activo = {}
+            try:
+                res_est = supabase.table("alumnos_estado").select("alumno_id, activo").execute()
+                for e in (res_est.data or []):
+                    estados_activo[e['alumno_id']] = e.get('activo', True)
+            except:
+                pass  # tabla no existe aún, todos activos por defecto
 
             alumnos_mant = []
             vistos = set()
@@ -3801,8 +3815,7 @@ else:
                 al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                 if al and al['id'] not in vistos:
                     vistos.add(al['id'])
-                    activo = al.get('activo', True)
-                    if activo is None: activo = True
+                    activo = estados_activo.get(al['id'], True)
                     alumnos_mant.append({
                         'id': al['id'],
                         'nombre': f"{al.get('apellido','').upper()}, {al.get('nombre','')}",
@@ -3834,10 +3847,15 @@ else:
                             lbl_btn = "✅ Activar" if not al_m['activo'] else "⛔ Inactivar"
                             if st.button(lbl_btn, key=f"mant_toggle_al_{al_m['id']}", use_container_width=True):
                                 try:
-                                    supabase.table("alumnos").update({"activo": nuevo_estado}).eq("id", al_m['id']).execute()
+                                    # Usar tabla alumnos_estado para guardar activo/inactivo
+                                    res_chk = supabase.table("alumnos_estado").select("id").eq("alumno_id", al_m['id']).execute()
+                                    if res_chk.data:
+                                        supabase.table("alumnos_estado").update({"activo": nuevo_estado}).eq("alumno_id", al_m['id']).execute()
+                                    else:
+                                        supabase.table("alumnos_estado").insert({"alumno_id": al_m['id'], "activo": nuevo_estado}).execute()
                                     st.rerun()
                                 except Exception as e_tog:
-                                    st.error(f"Error: {e_tog}")
+                                    st.error(f"Error: {e_tog}. Puede que necesites crear la tabla 'alumnos_estado' en Supabase.")
                         with col_ab:
                             if st.button("🗑️", key=f"mant_del_al_{al_m['id']}", help="Borrar alumno y todos sus datos"):
                                 st.session_state.mant_alumno_a_borrar = al_m
@@ -3972,5 +3990,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v328 completa
+# FIN PARTE 2 DE 2 — v329 completa
 # ============================================================
