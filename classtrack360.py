@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v327
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v328
 # ============================================================
 
 import streamlit as st
@@ -2103,6 +2103,34 @@ else:
                 f'</div>',
                 unsafe_allow_html=True
             )
+
+            # ── PANEL: CLASES DE HOY ──────────────────────────
+            clases_hoy_agenda = get_clases_hoy(u_data['id'], mapa_cursos, mapa_cursos_data)
+            if not clases_hoy_agenda:
+                st.markdown('''<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+                    border-radius:12px;padding:14px 20px;margin-bottom:16px;text-align:center;color:#888;font-size:0.95rem;">
+                    📭 Hoy no tenés clases programadas
+                </div>''', unsafe_allow_html=True)
+            else:
+                st.markdown(f'<div style="font-size:0.82rem;font-weight:700;color:#888;letter-spacing:0.08em;margin-bottom:8px;">CLASES DE HOY — {_dia_nombre.upper()} {_hoy_agenda.day}/{_hoy_agenda.month}</div>', unsafe_allow_html=True)
+                cols_hoy = st.columns(min(len(clases_hoy_agenda), 3))
+                for idx_h, c_h in enumerate(clases_hoy_agenda):
+                    with cols_hoy[idx_h % 3]:
+                        icono = "✅" if c_h['ya_registrada'] else "🔔"
+                        estado_color = "#22c55e" if c_h['ya_registrada'] else "#4facfe"
+                        estado_lbl = "Clase ya registrada" if c_h['ya_registrada'] else "Pendiente de registro"
+                        st.markdown(f'''<div style="background:rgba(79,172,254,0.07);border:1px solid rgba(79,172,254,0.25);
+                            border-radius:12px;padding:12px 16px;margin-bottom:8px;">
+                            <div style="font-weight:700;font-size:0.95rem;margin-bottom:4px;">{icono} {c_h["nombre"]}</div>
+                            <div style="font-size:0.8rem;color:#aaa;">🕐 {c_h["horario"]}</div>
+                            <div style="font-size:0.75rem;color:{estado_color};margin-top:4px;font-weight:600;">{estado_lbl}</div>
+                        </div>''', unsafe_allow_html=True)
+                        if st.button("📋 Trabajar con este curso", key=f"ag_hoy_btn_{idx_h}", use_container_width=True):
+                            st.session_state['ag_sel'] = c_h['nombre']
+                            st.rerun()
+                st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+
+            # ── SELECTOR DE CURSO (siempre disponible) ────────
             c_ag = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="ag_sel")
             if c_ag == "---":
                 st.markdown('''<div class="recordatorio-clase-ok" style="text-align:center;opacity:1;">
@@ -3944,5 +3972,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v327 completa
+# FIN PARTE 2 DE 2 — v328 completa
 # ============================================================
