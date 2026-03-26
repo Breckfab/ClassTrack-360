@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v336
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v337
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v336", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v337", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1933,15 +1933,25 @@ else:
             <div class="salir-backup-info">{fecha_ub_fmt}</div>
         </div>''', unsafe_allow_html=True)
 
-        col_bk, col_sl = st.columns(2)
-        if col_bk.button("💾 Sí, hacer backup primero", use_container_width=True, type="primary"):
-            st.session_state.mostrar_salir_backup = False
-            st.session_state._ir_a_backup = True
-            st.rerun()
-        if col_sl.button("🚪 Salir igual", use_container_width=True):
-            st.session_state.user = None
-            st.session_state.mostrar_salir_backup = False
-            st.rerun()
+        st.markdown("""
+        <style>
+        .backup-salir-wrap { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; }
+        .backup-salir-wrap .col-salir button { background: transparent !important; border: 1px solid rgba(255,255,255,0.2) !important; color: #ccc !important; font-size: 0.9rem !important; }
+        .backup-salir-wrap .col-backup button { background: #dc2626 !important; color: #fff !important; font-weight: 700 !important; font-size: 0.8rem !important; border: none !important; border-radius: 6px !important; box-shadow: 0 2px 8px rgba(220,38,38,0.4) !important; }
+        .backup-salir-wrap .col-backup button p { color: #fff !important; font-weight: 700 !important; }
+        </style>
+        """, unsafe_allow_html=True)
+        col_sl, col_bk = st.columns([3, 2])
+        with col_sl:
+            if st.button("🚪 Salir igual", use_container_width=True, key="btn_salir_igual"):
+                st.session_state.user = None
+                st.session_state.mostrar_salir_backup = False
+                st.rerun()
+        with col_bk:
+            if st.button("💾 Hacer backup", use_container_width=True, key="btn_hacer_backup", type="primary"):
+                st.session_state.mostrar_salir_backup = False
+                st.session_state._ir_a_backup = True
+                st.rerun()
         st.stop()
 
     with st.sidebar:
@@ -1985,28 +1995,45 @@ else:
             dias_r = max(0, (ff_s - f_hoy).days)
             st.markdown(f'<div class="stat-card" style="font-size:0.72rem;">📆 Año lectivo<br><b>{fi_s.strftime("%d/%m")}</b> → <b>{ff_s.strftime("%d/%m")}</b><br>{dias_r} días restantes</div>', unsafe_allow_html=True)
         st.markdown("---")
-        # BOTÓN SALIR — inyección CSS directa por key para color garantizado
+        # BOTÓN SALIR — HTML puro con color naranja garantizado
         st.markdown("""
         <style>
-        div[data-testid="stSidebar"] div.stButton > button[kind="secondary"]:last-of-type,
-        div[data-testid="stSidebar"] div.stButton:has(button[data-testid="baseButton-secondary"]) button {
-            background-color: #f97316 !important;
-            color: #ffffff !important;
+        div[data-testid="stSidebar"] .salir-btn-wrap button {
+            background: #f97316 !important;
+            color: #fff !important;
             font-weight: 800 !important;
+            font-size: 1rem !important;
             border: none !important;
-            box-shadow: 0 2px 10px rgba(249,115,22,0.5) !important;
+            border-radius: 8px !important;
+            box-shadow: 0 2px 10px rgba(249,115,22,0.45) !important;
+            width: 100% !important;
+            padding: 10px 0 !important;
+            cursor: pointer !important;
+            letter-spacing: 0.04em !important;
+        }
+        div[data-testid="stSidebar"] .salir-btn-wrap button:hover {
+            background: #ea580c !important;
+            box-shadow: 0 4px 14px rgba(249,115,22,0.6) !important;
+        }
+        div[data-testid="stSidebar"] .salir-btn-wrap button p {
+            color: #fff !important;
+            font-weight: 800 !important;
+            font-size: 1rem !important;
         }
         </style>
         """, unsafe_allow_html=True)
-        if st.button("🚪  SALIR", key="btn_salir", use_container_width=True):
-            dias_sin_backup = dias_desde_ultimo_backup(u_data['id'])
-            necesita_aviso = dias_sin_backup is None or dias_sin_backup >= 7
-            if necesita_aviso:
-                st.session_state.mostrar_salir_backup = True
-                st.rerun()
-            else:
-                st.session_state.user = None
-                st.rerun()
+        with st.container():
+            st.markdown('<div class="salir-btn-wrap">', unsafe_allow_html=True)
+            if st.button("🚪  SALIR", key="btn_salir", use_container_width=True):
+                dias_sin_backup = dias_desde_ultimo_backup(u_data['id'])
+                necesita_aviso = dias_sin_backup is None or dias_sin_backup >= 7
+                if necesita_aviso:
+                    st.session_state.mostrar_salir_backup = True
+                    st.rerun()
+                else:
+                    st.session_state.user = None
+                    st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
         st.markdown("---")
         col_prev, col_next = st.columns(2)
         if col_prev.button("◀", key="cal_prev"):
@@ -4066,5 +4093,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v336 completa
+# FIN PARTE 2 DE 2 — v337 completa
 # ============================================================
