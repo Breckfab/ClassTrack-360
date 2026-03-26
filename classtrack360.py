@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v338
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v339
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v338", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v339", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1938,10 +1938,10 @@ else:
             st.session_state.user = None
             st.session_state.mostrar_salir_backup = False
             st.rerun()
-        # Backup: centrado y más angosto usando columnas
-        _, col_bk, _ = st.columns([2, 3, 2])
+        # Backup: pequeño, alineado a la derecha
+        _, col_bk = st.columns([5, 2])
         with col_bk:
-            if st.button("💾 Hacer backup antes de salir", use_container_width=True, key="btn_hacer_backup", type="primary"):
+            if st.button("💾 Backup", use_container_width=True, key="btn_hacer_backup"):
                 st.session_state.mostrar_salir_backup = False
                 st.session_state._ir_a_backup = True
                 st.rerun()
@@ -4086,5 +4086,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v338 completa
+# FIN PARTE 2 DE 2 — v339 completa
 # ============================================================
