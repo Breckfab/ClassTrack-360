@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v335
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v336
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v335", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v336", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -391,6 +391,7 @@ def guardar_edicion_tarea_legacy(bit_id, nuevo_texto):
     except Exception as e:
         st.error(f"Error: {e}")
 
+@st.cache_data(ttl=30, show_spinner=False)
 def get_tareas_vencidas_count(profesor_id):
     hoy = datetime.date.today()
     try:
@@ -422,6 +423,7 @@ def get_stats_curso(inscripcion_id):
     except:
         return 0, None
 
+@st.cache_data(ttl=30, show_spinner=False)
 def get_total_clases_sidebar(profesor_id):
     try:
         res_insc = supabase.table("inscripciones").select("id").eq("profesor_id", profesor_id).is_("alumno_id", "null").execute()
@@ -716,6 +718,7 @@ def get_resumen_asistencia_universitario(inscripcion_id, cuatrimestre):
         return resultado
     except: return {}
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_alumnos_curso(nombre_curso):
     try:
         res = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null").execute()
@@ -984,6 +987,7 @@ def get_historial_backups(profesor_id, limite=10):
         return res.data or []
     except: return []
 
+@st.cache_data(ttl=60, show_spinner=False)
 def dias_desde_ultimo_backup(profesor_id):
     ub = get_ultimo_backup(profesor_id)
     if not ub: return None
@@ -2288,7 +2292,70 @@ else:
                 except:
                     ya_guardado_hoy = False
                 if ya_guardado_hoy:
-                    st.warning(f"⚠️ Ya existe un registro para el {fecha_clase.strftime('%d/%m/%Y')} en este curso.")
+                    st.success(f"✅ Clase del {fecha_clase.strftime('%d/%m/%Y')} ya registrada.")
+                    try:
+                        res_reg_hoy = supabase.table("bitacora").select("*").eq("inscripcion_id", inscripcion_id).eq("fecha", str(fecha_clase)).limit(1).execute()
+                        if res_reg_hoy.data:
+                            reg_hoy = res_reg_hoy.data[0]
+                            suplente_hoy = reg_hoy.get('profesor_suplente') or ''
+                            contenido_hoy = reg_hoy.get('contenido_clase', '-')
+                            obs_hoy = reg_hoy.get('observaciones', '') or ''
+                            resumen = f'<div class="biblio-box" style="margin:8px 0;"><b>Contenido:</b> {contenido_hoy}'
+                            if obs_hoy:
+                                resumen += f'<br><b>Obs:</b> {obs_hoy}'
+                            if suplente_hoy:
+                                resumen += f'<br><span class="suplente-badge">Suplente: {suplente_hoy}</span>'
+                            resumen += '</div>'
+                            st.markdown(resumen, unsafe_allow_html=True)
+                            if st.session_state.get('editando_bitacora') == reg_hoy['id']:
+                                with st.form(f"edit_bit_ag_{reg_hoy['id']}", clear_on_submit=False):
+                                    st.markdown("**Editando clase registrada**")
+                                    t_edit_ag = st.text_area("Contenido dictado:", value=reg_hoy.get('contenido_clase', ''), key=f"ag_cont_{reg_hoy['id']}")
+                                    obs_edit_ag = st.text_area("Observaciones (opcional):", value=reg_hoy.get('observaciones', '') or '', height=80, key=f"ag_obs_{reg_hoy['id']}")
+                                    es_sup_ag = st.checkbox("¿Clase dictada por suplente?", value=bool(suplente_hoy), key=f"ag_sup_chk_{reg_hoy['id']}")
+                                    sup_nom_ag = ""
+                                    if es_sup_ag:
+                                        sup_nom_ag = st.text_input("Apellido y Nombre del suplente:", value=suplente_hoy, key=f"ag_sup_nom_{reg_hoy['id']}")
+                                    st.markdown("**Tareas:**")
+                                    col_t1e, col_t2e, col_t3e = st.columns(3)
+                                    with col_t1e:
+                                        st.markdown("**Tarea 1**")
+                                        t1_ag = st.text_area("Descripcion:", value=reg_hoy.get('tarea1','') or '', key=f"ag_t1_{reg_hoy['id']}")
+                                        f1_ag = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg_hoy['tarea1_fecha']) if reg_hoy.get('tarea1_fecha') else f_hoy, key=f"ag_f1_{reg_hoy['id']}")
+                                    with col_t2e:
+                                        st.markdown("**Tarea 2**")
+                                        t2_ag = st.text_area("Descripcion:", value=reg_hoy.get('tarea2','') or '', key=f"ag_t2_{reg_hoy['id']}")
+                                        f2_ag = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg_hoy['tarea2_fecha']) if reg_hoy.get('tarea2_fecha') else f_hoy, key=f"ag_f2_{reg_hoy['id']}")
+                                    with col_t3e:
+                                        st.markdown("**Tarea 3**")
+                                        t3_ag = st.text_area("Descripcion:", value=reg_hoy.get('tarea3','') or '', key=f"ag_t3_{reg_hoy['id']}")
+                                        f3_ag = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg_hoy['tarea3_fecha']) if reg_hoy.get('tarea3_fecha') else f_hoy, key=f"ag_f3_{reg_hoy['id']}")
+                                    col_g, col_c = st.columns(2)
+                                    if col_g.form_submit_button("Guardar Cambios"):
+                                        try:
+                                            supabase.table("bitacora").update({
+                                                "contenido_clase": t_edit_ag,
+                                                "observaciones": obs_edit_ag.strip() or None,
+                                                "profesor_suplente": sup_nom_ag.strip() if es_sup_ag and sup_nom_ag.strip() else None,
+                                                "tarea1": t1_ag or None, "tarea1_fecha": str(f1_ag) if t1_ag else None,
+                                                "tarea2": t2_ag or None, "tarea2_fecha": str(f2_ag) if t2_ag else None,
+                                                "tarea3": t3_ag or None, "tarea3_fecha": str(f3_ag) if t3_ag else None,
+                                            }).eq("id", reg_hoy['id']).execute()
+                                            st.session_state.editando_bitacora = None
+                                            st.session_state.ok_bitacora_editada = True
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Error al guardar: {e}")
+                                    if col_c.form_submit_button("Cancelar"):
+                                        st.session_state.editando_bitacora = None; st.rerun()
+                            else:
+                                if st.session_state.get('ok_bitacora_editada'):
+                                    st.success("Clase editada correctamente.")
+                                    st.session_state.ok_bitacora_editada = False
+                                if st.button("✏️ Editar esta clase", key=f"btn_edit_ag_{reg_hoy['id']}", use_container_width=True):
+                                    st.session_state.editando_bitacora = reg_hoy['id']; st.rerun()
+                    except Exception as e_reg:
+                        st.error(f"Error al cargar registro: {e_reg}")
                 else:
                     col_tit, col_sup = st.columns([3, 1])
                     with col_tit:
@@ -3999,5 +4066,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v335 completa
+# FIN PARTE 2 DE 2 — v336 completa
 # ============================================================
