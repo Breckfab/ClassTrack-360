@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v337
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v338
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v337", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v338", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1933,22 +1933,15 @@ else:
             <div class="salir-backup-info">{fecha_ub_fmt}</div>
         </div>''', unsafe_allow_html=True)
 
-        st.markdown("""
-        <style>
-        .backup-salir-wrap { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 8px; }
-        .backup-salir-wrap .col-salir button { background: transparent !important; border: 1px solid rgba(255,255,255,0.2) !important; color: #ccc !important; font-size: 0.9rem !important; }
-        .backup-salir-wrap .col-backup button { background: #dc2626 !important; color: #fff !important; font-weight: 700 !important; font-size: 0.8rem !important; border: none !important; border-radius: 6px !important; box-shadow: 0 2px 8px rgba(220,38,38,0.4) !important; }
-        .backup-salir-wrap .col-backup button p { color: #fff !important; font-weight: 700 !important; }
-        </style>
-        """, unsafe_allow_html=True)
-        col_sl, col_bk = st.columns([3, 2])
-        with col_sl:
-            if st.button("🚪 Salir igual", use_container_width=True, key="btn_salir_igual"):
-                st.session_state.user = None
-                st.session_state.mostrar_salir_backup = False
-                st.rerun()
+        # Salir: ancho completo, estilo neutro
+        if st.button("🚪  Salir igual", use_container_width=True, key="btn_salir_igual"):
+            st.session_state.user = None
+            st.session_state.mostrar_salir_backup = False
+            st.rerun()
+        # Backup: centrado y más angosto usando columnas
+        _, col_bk, _ = st.columns([2, 3, 2])
         with col_bk:
-            if st.button("💾 Hacer backup", use_container_width=True, key="btn_hacer_backup", type="primary"):
+            if st.button("💾 Hacer backup antes de salir", use_container_width=True, key="btn_hacer_backup", type="primary"):
                 st.session_state.mostrar_salir_backup = False
                 st.session_state._ir_a_backup = True
                 st.rerun()
@@ -4093,5 +4086,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v337 completa
+# FIN PARTE 2 DE 2 — v338 completa
 # ============================================================
