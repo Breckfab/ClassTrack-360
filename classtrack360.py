@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v342
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v343
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v342", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v343", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -89,6 +89,7 @@ def init_state():
         'busq_global_val': '',
         'historial_renombres': [],
         'confirmar_salir': False,
+        'mostrar_form_clase': True,
         'duplicando_curso': None,
         # Mantenimiento
         'mant_confirmar_borrar_periodo': False,
@@ -2319,16 +2320,29 @@ else:
                 except Exception as e:
                     st.error(f"Error al cargar tarea legacy: {e}")
                 st.markdown("---")
-                st.subheader("📝 Registrar Clase")
+                col_reg_tit, col_reg_btn = st.columns([4, 1])
+                with col_reg_tit:
+                    st.subheader("📝 Registrar Clase")
+                with col_reg_btn:
+                    st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                    if st.session_state.get('mostrar_form_clase', True):
+                        if st.button("➖ Ocultar", key="btn_ocultar_form", use_container_width=True):
+                            st.session_state.mostrar_form_clase = False; st.rerun()
+                    else:
+                        if st.button("➕ Mostrar", key="btn_mostrar_form", use_container_width=True):
+                            st.session_state.mostrar_form_clase = True; st.rerun()
                 # Mensaje de éxito fuera del form
                 if st.session_state.get('ok_clase_guardada'):
                     st.success("✅ Clase guardada satisfactoriamente.")
                     st.session_state.ok_clase_guardada = False
-                fecha_clase = st.date_input("📆 Fecha de la clase:", value=f_hoy, max_value=f_hoy, key="f_agenda_fecha")
-                try:
+                if not st.session_state.get('mostrar_form_clase', True):
+                    st.info("Formulario oculto. Presioná ➕ Mostrar para registrar una clase.")
+                else:
+                 fecha_clase = st.date_input("📆 Fecha de la clase:", value=f_hoy, max_value=f_hoy, key="f_agenda_fecha")
+                 try:
                     res_hoy = supabase.table("bitacora").select("id").eq("inscripcion_id", inscripcion_id).eq("fecha", str(fecha_clase)).execute()
                     ya_guardado_hoy = len(res_hoy.data) > 0
-                except:
+                 except:
                     ya_guardado_hoy = False
                 if ya_guardado_hoy:
                     st.success(f"✅ Clase del {fecha_clase.strftime('%d/%m/%Y')} ya registrada.")
@@ -2431,8 +2445,9 @@ else:
                             tarea3 = st.text_area("Descripción:", key="t3_desc", height=100)
                             fecha3 = st.date_input("Fecha:", key="t3_fecha", value=f_hoy + datetime.timedelta(days=7))
                         col_btn_g, col_btn_c = st.columns(2)
-                        if col_btn_c.form_submit_button("❌ Limpiar / Cancelar", use_container_width=True):
+                        if col_btn_c.form_submit_button("❌ Cancelar", use_container_width=True):
                             st.session_state.es_suplente = False
+                            st.session_state.mostrar_form_clase = False
                             st.rerun()
                         if col_btn_g.form_submit_button("💾 Guardar Clase", use_container_width=True):
                             if not temas.strip():
@@ -2457,6 +2472,7 @@ else:
                                         }).execute()
                                         st.session_state.es_suplente = False
                                         st.session_state.ok_clase_guardada = True
+                                        st.session_state.mostrar_form_clase = True
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Error: {e}")
@@ -4113,5 +4129,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v342 completa
+# FIN PARTE 2 DE 2 — v343 completa
 # ============================================================
