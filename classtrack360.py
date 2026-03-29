@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v341
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v342
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v341", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v342", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -2430,7 +2430,11 @@ else:
                             st.markdown("**Tarea 3**")
                             tarea3 = st.text_area("Descripción:", key="t3_desc", height=100)
                             fecha3 = st.date_input("Fecha:", key="t3_fecha", value=f_hoy + datetime.timedelta(days=7))
-                        if st.form_submit_button("💾 Guardar Clase"):
+                        col_btn_g, col_btn_c = st.columns(2)
+                        if col_btn_c.form_submit_button("❌ Limpiar / Cancelar", use_container_width=True):
+                            st.session_state.es_suplente = False
+                            st.rerun()
+                        if col_btn_g.form_submit_button("💾 Guardar Clase", use_container_width=True):
                             if not temas.strip():
                                 st.error("El contenido de la clase no puede estar vacío.")
                             elif st.session_state.es_suplente and not suplente_nombre.strip():
@@ -4109,5 +4113,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v341 completa
+# FIN PARTE 2 DE 2 — v342 completa
 # ============================================================
