@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v340
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v341
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v340", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v341", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -45,7 +45,7 @@ def es_sistema_universitario(sede):
 def init_state():
     defaults = {
         'user': None, 'sede_admin': None,
-        'editando_bitacora': None, 'editando_alumno': None, 'editando_curso': None,
+        'editando_bitacora': None, 'editando_bitacora_agenda': None, 'editando_alumno': None, 'editando_curso': None,
         'confirmar_reset': None,
         'cal_mes': datetime.date.today().month, 'cal_anio': datetime.date.today().year,
         'es_suplente': False,
@@ -2346,7 +2346,7 @@ else:
                                 resumen += f'<br><span class="suplente-badge">Suplente: {suplente_hoy}</span>'
                             resumen += '</div>'
                             st.markdown(resumen, unsafe_allow_html=True)
-                            if st.session_state.get('editando_bitacora') == reg_hoy['id']:
+                            if st.session_state.get('editando_bitacora_agenda') == reg_hoy['id']:
                                 with st.form(f"edit_bit_ag_{reg_hoy['id']}", clear_on_submit=False):
                                     st.markdown("**Editando clase registrada**")
                                     t_edit_ag = st.text_area("Contenido dictado:", value=reg_hoy.get('contenido_clase', ''), key=f"ag_cont_{reg_hoy['id']}")
@@ -2370,7 +2370,7 @@ else:
                                         t3_ag = st.text_area("Descripcion:", value=reg_hoy.get('tarea3','') or '', key=f"ag_t3_{reg_hoy['id']}")
                                         f3_ag = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg_hoy['tarea3_fecha']) if reg_hoy.get('tarea3_fecha') else f_hoy, key=f"ag_f3_{reg_hoy['id']}")
                                     col_g, col_c = st.columns(2)
-                                    if col_g.form_submit_button("Guardar Cambios"):
+                                    if col_g.form_submit_button("💾 Guardar Cambios"):
                                         try:
                                             supabase.table("bitacora").update({
                                                 "contenido_clase": t_edit_ag,
@@ -2380,19 +2380,19 @@ else:
                                                 "tarea2": t2_ag or None, "tarea2_fecha": str(f2_ag) if t2_ag else None,
                                                 "tarea3": t3_ag or None, "tarea3_fecha": str(f3_ag) if t3_ag else None,
                                             }).eq("id", reg_hoy['id']).execute()
-                                            st.session_state.editando_bitacora = None
+                                            st.session_state.editando_bitacora_agenda = None
                                             st.session_state.ok_bitacora_editada = True
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Error al guardar: {e}")
-                                    if col_c.form_submit_button("Cancelar"):
-                                        st.session_state.editando_bitacora = None; st.rerun()
+                                    if col_c.form_submit_button("❌ Cancelar"):
+                                        st.session_state.editando_bitacora_agenda = None; st.rerun()
                             else:
                                 if st.session_state.get('ok_bitacora_editada'):
                                     st.success("Clase editada correctamente.")
                                     st.session_state.ok_bitacora_editada = False
                                 if st.button("✏️ Editar esta clase", key=f"btn_edit_ag_{reg_hoy['id']}", use_container_width=True):
-                                    st.session_state.editando_bitacora = reg_hoy['id']; st.rerun()
+                                    st.session_state.editando_bitacora_agenda = reg_hoy['id']; st.rerun()
                     except Exception as e_reg:
                         st.error(f"Error al cargar registro: {e_reg}")
                 else:
@@ -4109,5 +4109,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v340 completa
+# FIN PARTE 2 DE 2 — v341 completa
 # ============================================================
