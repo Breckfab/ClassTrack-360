@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v339
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v340
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v339", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v340", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -103,6 +103,7 @@ def init_state():
 
 init_state()
 
+@st.cache_data(ttl=120, show_spinner=False)
 def get_modo_claro(profesor_id):
     try:
         res = supabase.table("preferencias_usuario").select("modo_claro").eq("profesor_id", profesor_id).execute()
@@ -131,15 +132,21 @@ def extraer_nombre_limpio(nombre_curso):
     return nombre_curso.strip()
 
 def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
-    """Devuelve lista de cursos con clase hoy según los días configurados en el nombre."""
+    """Devuelve lista de cursos con clase hoy.
+    Busca los dias en el nombre completo guardado en BD (nombre_curso_materia),
+    que siempre tiene el formato: Nombre (Dia1, Dia2) | HH:MM -> HH:MM"""
     hoy = datetime.date.today()
     dia_hoy = hoy.weekday()
     clases = []
     for nombre_curso, inscripcion_id in mapa_cursos.items():
-        dias = extraer_dias_curso(nombre_curso)
+        curso_data = mapa_cursos_data.get(nombre_curso, {})
+        # Buscar dias primero en el nombre_curso_materia de BD, luego en la clave del mapa
+        nombre_en_bd = curso_data.get('nombre_curso_materia', nombre_curso)
+        dias = extraer_dias_curso(nombre_en_bd)
+        if not dias:
+            dias = extraer_dias_curso(nombre_curso)
         if not dias or dia_hoy not in dias:
             continue
-        curso_data = mapa_cursos_data.get(nombre_curso, {})
         hi = str(curso_data.get('hora_inicio', '') or '')[:5]
         hf = str(curso_data.get('hora_fin', '') or '')[:5]
         horario = format_horario(hi, hf) if hi else "-"
@@ -150,7 +157,7 @@ def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
             ya_registrada = False
         clases.append({
             'nombre': nombre_curso,
-            'nombre_limpio': extraer_nombre_limpio(nombre_curso),
+            'nombre_limpio': extraer_nombre_limpio(nombre_en_bd),
             'horario': horario,
             'ya_registrada': ya_registrada,
         })
@@ -414,6 +421,7 @@ def get_tareas_vencidas_count(profesor_id):
         return total_vencidas
     except: return 0
 
+@st.cache_data(ttl=30, show_spinner=False)
 def get_stats_curso(inscripcion_id):
     try:
         res = supabase.table("bitacora").select("fecha").eq("inscripcion_id", inscripcion_id).order("fecha", desc=True).execute()
@@ -482,6 +490,7 @@ def render_calendario(mes, anio):
     return f"""<div class="cal-box"><div class="cal-titulo">{MESES_ES[mes-1]} {anio}</div>
     <table class="cal-tabla"><tr><th>Lu</th><th>Ma</th><th>Mi</th><th>Ju</th><th>Vi</th><th>Sa</th><th>Do</th></tr>{filas}</table></div>"""
 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_calendario_sede(sede):
     try:
         res = supabase.table("calendario_sede").select("*").eq("sede", sede).execute()
@@ -508,6 +517,7 @@ def upsert_calendario_sede(sede, fecha_inicio, fecha_fin):
         st.error(f"Error guardando calendario: {e}")
         return False
 
+@st.cache_data(ttl=300, show_spinner=False)
 def get_url_calendario_oficial(sede):
     try:
         res = supabase.table("calendario_sede").select("url_calendario_oficial").eq("sede", sede).execute()
@@ -633,12 +643,14 @@ def guardar_asistencia_universitario(inscripcion_id, fecha, cuatrimestre, horas_
         st.error(f"Error guardando asistencia: {e}")
         return False
 
+@st.cache_data(ttl=30, show_spinner=False)
 def get_asistencia_fecha(inscripcion_id, fecha):
     try:
         res = supabase.table("asistencia").select("*").eq("inscripcion_id", inscripcion_id).eq("fecha", str(fecha)).execute()
         return res.data or []
     except: return []
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_resumen_asistencia_instituto(inscripcion_id, mes, anio):
     try:
         desde = datetime.date(anio, mes, 1)
@@ -653,6 +665,7 @@ def get_resumen_asistencia_instituto(inscripcion_id, mes, anio):
         return resultado
     except: return {}
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_asistencia_anual_alumno(alumno_id, profesor_id, anio):
     """Trae toda la asistencia de un alumno en el año lectivo, en todos sus cursos."""
     try:
@@ -676,6 +689,7 @@ def get_asistencia_anual_alumno(alumno_id, profesor_id, anio):
         return resultado
     except: return []
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_alertas_ausencias(profesor_id, anio, umbral=3):
     """Devuelve alumnos con ausencias >= umbral en el año, por curso."""
     try:
@@ -706,6 +720,7 @@ def get_alertas_ausencias(profesor_id, anio, umbral=3):
         return alertas
     except: return []
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_resumen_asistencia_universitario(inscripcion_id, cuatrimestre):
     try:
         res = supabase.table("asistencia").select("*").eq("inscripcion_id", inscripcion_id).eq("cuatrimestre", cuatrimestre).execute()
@@ -784,6 +799,7 @@ PLOTLY_LAYOUT = dict(
     yaxis=dict(gridcolor='rgba(255,255,255,0.05)', zerolinecolor='rgba(255,255,255,0.1)')
 )
 
+@st.cache_data(ttl=60, show_spinner=False)
 def get_datos_estadisticas(profesor_id):
     datos = {}
     try:
@@ -975,12 +991,14 @@ def render_tab_estadisticas(profesor_id, mapa_cursos, mapa_cursos_data):
 # =========================================================
 # --- FUNCIONES DE BACKUP ---
 # =========================================================
+@st.cache_data(ttl=120, show_spinner=False)
 def get_ultimo_backup(profesor_id):
     try:
         res = supabase.table("backup_log").select("*").eq("profesor_id", profesor_id).order("fecha", desc=True).limit(1).execute()
         return res.data[0] if res.data else None
     except: return None
 
+@st.cache_data(ttl=120, show_spinner=False)
 def get_historial_backups(profesor_id, limite=10):
     try:
         res = supabase.table("backup_log").select("*").eq("profesor_id", profesor_id).order("fecha", desc=True).limit(limite).execute()
@@ -1557,6 +1575,7 @@ def generar_html_impresion(sede, curso_nombre, curso_data, incluir_alumnos, incl
     html += "<script>window.onload=function(){window.print();}</script></body></html>"
     return html
 
+@st.cache_data(ttl=30, show_spinner=False)
 def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id, profesor_id=None):
     alumnos = []; notas_dict = {}; historial = []
     try:
@@ -2417,25 +2436,26 @@ else:
                             elif st.session_state.es_suplente and not suplente_nombre.strip():
                                 st.error("Ingresá el apellido y nombre del profesor suplente.")
                             else:
-                                try:
-                                    supabase.table("bitacora").insert({
-                                        "inscripcion_id": inscripcion_id, "fecha": str(fecha_clase),
-                                        "contenido_clase": temas,
-                                        "observaciones": observaciones.strip() or None,
-                                        "profesor_suplente": suplente_nombre.strip() if st.session_state.es_suplente else None,
-                                        "tarea_proxima": tarea1 or tarea2 or tarea3 or None,
-                                        "fecha_tarea": str(fecha1) if tarea1 else (str(fecha2) if tarea2 else (str(fecha3) if tarea3 else None)),
-                                        "tarea1": tarea1 or None, "tarea1_fecha": str(fecha1) if tarea1 else None,
-                                        "tarea2": tarea2 or None, "tarea2_fecha": str(fecha2) if tarea2 else None,
-                                        "tarea3": tarea3 or None, "tarea3_fecha": str(fecha3) if tarea3 else None,
-                                        "tarea1_completada": False, "tarea2_completada": False, "tarea3_completada": False,
-                                        "tarea_proxima_completada": False,
-                                    }).execute()
-                                    st.session_state.es_suplente = False
-                                    st.session_state.ok_clase_guardada = True
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Error: {e}")
+                                with st.spinner("Guardando clase..."):
+                                    try:
+                                        supabase.table("bitacora").insert({
+                                            "inscripcion_id": inscripcion_id, "fecha": str(fecha_clase),
+                                            "contenido_clase": temas,
+                                            "observaciones": observaciones.strip() or None,
+                                            "profesor_suplente": suplente_nombre.strip() if st.session_state.es_suplente else None,
+                                            "tarea_proxima": tarea1 or tarea2 or tarea3 or None,
+                                            "fecha_tarea": str(fecha1) if tarea1 else (str(fecha2) if tarea2 else (str(fecha3) if tarea3 else None)),
+                                            "tarea1": tarea1 or None, "tarea1_fecha": str(fecha1) if tarea1 else None,
+                                            "tarea2": tarea2 or None, "tarea2_fecha": str(fecha2) if tarea2 else None,
+                                            "tarea3": tarea3 or None, "tarea3_fecha": str(fecha3) if tarea3 else None,
+                                            "tarea1_completada": False, "tarea2_completada": False, "tarea3_completada": False,
+                                            "tarea_proxima_completada": False,
+                                        }).execute()
+                                        st.session_state.es_suplente = False
+                                        st.session_state.ok_clase_guardada = True
+                                        st.rerun()
+                                    except Exception as e:
+                                        st.error(f"Error: {e}")
 
     # =========================================================
     # TAB 1 — ASISTENCIA
@@ -2720,21 +2740,22 @@ else:
                                         f3_e = st.date_input("Fecha:", value=datetime.date.fromisoformat(reg['tarea3_fecha']) if reg.get('tarea3_fecha') else f_hoy, key=f"ef3_h_{reg['id']}")
                                     col_e1, col_e2 = st.columns(2)
                                     if col_e1.form_submit_button("💾 Guardar Cambios"):
-                                        try:
-                                            supabase.table("bitacora").update({
-                                                "fecha": str(fecha_edit),
-                                                "contenido_clase": t_edit,
-                                                "observaciones": obs_edit.strip() or None,
-                                                "profesor_suplente": sup_nombre_edit.strip() if es_sup_edit and sup_nombre_edit.strip() else None,
-                                                "tarea1": t1_e or None, "tarea1_fecha": str(f1_e) if t1_e else None,
-                                                "tarea2": t2_e or None, "tarea2_fecha": str(f2_e) if t2_e else None,
-                                                "tarea3": t3_e or None, "tarea3_fecha": str(f3_e) if t3_e else None,
-                                            }).eq("id", reg['id']).execute()
-                                            st.session_state.editando_bitacora = None
-                                            st.session_state.ok_bitacora_editada = True
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Error: {e}")
+                                        with st.spinner("Guardando cambios..."):
+                                            try:
+                                                supabase.table("bitacora").update({
+                                                    "fecha": str(fecha_edit),
+                                                    "contenido_clase": t_edit,
+                                                    "observaciones": obs_edit.strip() or None,
+                                                    "profesor_suplente": sup_nombre_edit.strip() if es_sup_edit and sup_nombre_edit.strip() else None,
+                                                    "tarea1": t1_e or None, "tarea1_fecha": str(f1_e) if t1_e else None,
+                                                    "tarea2": t2_e or None, "tarea2_fecha": str(f2_e) if t2_e else None,
+                                                    "tarea3": t3_e or None, "tarea3_fecha": str(f3_e) if t3_e else None,
+                                                }).eq("id", reg['id']).execute()
+                                                st.session_state.editando_bitacora = None
+                                                st.session_state.ok_bitacora_editada = True
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Error: {e}")
                                     if col_e2.form_submit_button("❌ Cancelar"):
                                         st.session_state.editando_bitacora = None; st.rerun()
                             else:
@@ -2837,16 +2858,17 @@ else:
                         if not n.strip() or not a.strip():
                             st.error("Nombre y Apellido son obligatorios.")
                         else:
-                            try:
-                                datos_alumno = {"nombre": n.strip(), "apellido": a.strip()}
-                                if e.strip(): datos_alumno["email"] = e.strip()
-                                ra = supabase.table("alumnos").insert(datos_alumno).execute()
-                                if ra.data:
-                                    supabase.table("inscripciones").insert({"alumno_id": ra.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": c_sel, "anio_lectivo": 2026}).execute()
-                                    st.session_state.ok_alumno_registrado = f"{a.upper()}, {n}"
-                                    st.rerun()
-                            except Exception as e_err:
-                                st.error(f"Error: {e_err}")
+                            with st.spinner("Registrando alumno..."):
+                                try:
+                                    datos_alumno = {"nombre": n.strip(), "apellido": a.strip()}
+                                    if e.strip(): datos_alumno["email"] = e.strip()
+                                    ra = supabase.table("alumnos").insert(datos_alumno).execute()
+                                    if ra.data:
+                                        supabase.table("inscripciones").insert({"alumno_id": ra.data[0]['id'], "profesor_id": u_data['id'], "nombre_curso_materia": c_sel, "anio_lectivo": 2026}).execute()
+                                        st.session_state.ok_alumno_registrado = f"{a.upper()}, {n}"
+                                        st.rerun()
+                                except Exception as e_err:
+                                    st.error(f"Error: {e_err}")
         else:
             if not mapa_cursos:
                 no_encontrado("No hay cursos creados.")
@@ -3252,22 +3274,23 @@ else:
                         for e in errores: st.error(e)
                     else:
                         info = f"{mat.strip()} ({', '.join(dias)}) | {hora_ini_n} → {hora_fin_n}"
-                        try:
-                            datos_curso = {
-                                "profesor_id": u_data['id'], "nombre_curso_materia": info,
-                                "anio_lectivo": 2026, "nota_aprobacion": nota_ap,
-                                "bibliografia": biblio.strip() if biblio.strip() else None,
-                                "hora_inicio": hora_ini_n, "hora_fin": hora_fin_n,
-                                "url_campus": url_campus.strip() if url_campus.strip() else None,
-                                "nro_automatriculacion": nro_autom.strip() if nro_autom.strip() else None,
-                            }
-                            if es_universitario and horas_catedra_new:
-                                datos_curso["horas_catedra"] = horas_catedra_new
-                            supabase.table("inscripciones").insert(datos_curso).execute()
-                            st.session_state.ok_curso_creado = info
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Error: {e}")
+                        with st.spinner("Creando curso..."):
+                            try:
+                                datos_curso = {
+                                    "profesor_id": u_data['id'], "nombre_curso_materia": info,
+                                    "anio_lectivo": 2026, "nota_aprobacion": nota_ap,
+                                    "bibliografia": biblio.strip() if biblio.strip() else None,
+                                    "hora_inicio": hora_ini_n, "hora_fin": hora_fin_n,
+                                    "url_campus": url_campus.strip() if url_campus.strip() else None,
+                                    "nro_automatriculacion": nro_autom.strip() if nro_autom.strip() else None,
+                                }
+                                if es_universitario and horas_catedra_new:
+                                    datos_curso["horas_catedra"] = horas_catedra_new
+                                supabase.table("inscripciones").insert(datos_curso).execute()
+                                st.session_state.ok_curso_creado = info
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Error: {e}")
         else:
             if not mapa_cursos:
                 no_encontrado("No tenés cursos creados todavía.")
@@ -4086,5 +4109,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v339 completa
+# FIN PARTE 2 DE 2 — v340 completa
 # ============================================================
