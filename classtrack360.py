@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v344
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v345
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v344", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v345", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -97,6 +97,10 @@ def init_state():
         'mant_alumno_a_borrar': None,
         'mant_paso_borrar_periodo': 0,
         'mant_paso_borrar_alumno': 0,
+        # Clases no registradas
+        'cnr_registrando': None,
+        'cnr_ignorando': None,
+        'cnr_ok': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -163,6 +167,63 @@ def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
             'ya_registrada': ya_registrada,
         })
     return clases
+
+def get_clases_no_registradas(profesor_id, mapa_cursos, mapa_cursos_data, cal_sede=None):
+    """Devuelve lista de fechas pasadas con clase programada pero sin registro en bitácora,
+    excluyendo las que tienen contenido_clase que empieza con [FERIADO], [PARO] o [IGNORAR].
+    Busca desde el inicio del año lectivo configurado, o desde el 1/1 del año actual."""
+    hoy = datetime.date.today()
+    # Determinar fecha de inicio de búsqueda
+    if cal_sede and cal_sede.get('fecha_inicio'):
+        try:
+            fecha_inicio_busq = datetime.date.fromisoformat(cal_sede['fecha_inicio'])
+        except:
+            fecha_inicio_busq = datetime.date(hoy.year, 1, 1)
+    else:
+        fecha_inicio_busq = datetime.date(hoy.year, 1, 1)
+
+    pendientes = []
+    for nombre_curso, inscripcion_id in mapa_cursos.items():
+        curso_data = mapa_cursos_data.get(nombre_curso, {})
+        nombre_en_bd = curso_data.get('nombre_curso_materia', nombre_curso)
+        dias_clase = extraer_dias_curso(nombre_en_bd)
+        if not dias_clase:
+            dias_clase = extraer_dias_curso(nombre_curso)
+        if not dias_clase:
+            continue
+        hi = str(curso_data.get('hora_inicio', '') or '')[:5]
+        hf = str(curso_data.get('hora_fin', '') or '')[:5]
+        horario = format_horario(hi, hf) if hi else "-"
+        # Traer todos los registros de bitácora del curso de una sola vez
+        try:
+            res_bit = supabase.table("bitacora").select("fecha, contenido_clase").eq(
+                "inscripcion_id", inscripcion_id
+            ).gte("fecha", str(fecha_inicio_busq)).lte("fecha", str(hoy)).execute()
+            fechas_registradas = set()
+            for r in (res_bit.data or []):
+                contenido = r.get('contenido_clase') or ''
+                # Incluir en "registradas" también las ignoradas (feriado/paro/ignorar)
+                fechas_registradas.add(r['fecha'])
+        except:
+            fechas_registradas = set()
+        # Iterar por cada fecha desde inicio hasta ayer (hoy no cuenta aún)
+        cursor = fecha_inicio_busq
+        while cursor < hoy:
+            if cursor.weekday() in dias_clase:
+                fecha_str = str(cursor)
+                if fecha_str not in fechas_registradas:
+                    pendientes.append({
+                        'curso': nombre_curso,
+                        'nombre_limpio': extraer_nombre_limpio(nombre_en_bd),
+                        'inscripcion_id': inscripcion_id,
+                        'fecha': cursor,
+                        'fecha_str': fecha_str,
+                        'horario': horario,
+                    })
+            cursor += datetime.timedelta(days=1)
+    # Ordenar por fecha descendente (más reciente primero)
+    pendientes.sort(key=lambda x: x['fecha'], reverse=True)
+    return pendientes
 
 def footer():
     st.markdown('<div class="footer-cr">&#174; Sistema diseñado y realizado por Fabián Belledi &nbsp;·&nbsp; 2026</div>', unsafe_allow_html=True)
@@ -2074,12 +2135,13 @@ else:
         st.error(f"Error al cargar cursos: {e}")
 
     # Índice de tabs — si volvemos de "hacer backup antes de salir"
-    tab_default = 10 if st.session_state.get('_ir_a_backup') else 0
+    tab_default = 11 if st.session_state.get('_ir_a_backup') else 0
     if st.session_state.get('_ir_a_backup'):
         st.session_state._ir_a_backup = False
 
     tabs = st.tabs([
         "📅 Agenda",
+        "⚠️ Clases NO registradas",
         f"📌 Tareas Pendientes{f'  🔴 {total_vencidas_sidebar}' if total_vencidas_sidebar > 0 else ''}",
         "📋 Asistencia",
         "📊 Historial de Clases",
@@ -2480,7 +2542,7 @@ else:
     # =========================================================
     # TAB 1 — ASISTENCIA
     # =========================================================
-    with tabs[2]:
+    with tabs[3]:
         st.subheader("📋 Asistencia")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -2668,7 +2730,7 @@ else:
     # =========================================================
     # TAB 2 — HISTORIAL DE CLASES
     # =========================================================
-    with tabs[3]:
+    with tabs[4]:
         st.subheader("📋 Historial de Clases")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -2820,7 +2882,7 @@ else:
     # =========================================================
     # TAB 3 — ALUMNOS
     # =========================================================
-    with tabs[4]:
+    with tabs[5]:
         sub_al = st.radio("Acción:", ["Ver Lista", "Registrar Alumno Nuevo", "🔍 Búsqueda Global"], horizontal=True)
         if sub_al == "🔍 Búsqueda Global":
             st.markdown("#### 🔍 Buscar alumno en todos los cursos")
@@ -3060,7 +3122,7 @@ else:
     # =========================================================
     # TAB 4 — NOTAS
     # =========================================================
-    with tabs[5]:
+    with tabs[6]:
         st.subheader("📝 Notas y Calificaciones")
         if not mapa_cursos:
             no_encontrado("No hay cursos creados.")
@@ -3209,13 +3271,13 @@ else:
     # =========================================================
     # TAB 5 — ESTADÍSTICAS
     # =========================================================
-    with tabs[6]:
+    with tabs[7]:
         render_tab_estadisticas(u_data['id'], mapa_cursos, mapa_cursos_data)
 
     # =========================================================
     # TAB 6 — CONTADOR DE CLASES
     # =========================================================
-    with tabs[7]:
+    with tabs[8]:
         st.subheader("🔢 Contador de Clases")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -3260,7 +3322,7 @@ else:
     # =========================================================
     # TAB 7 — CURSOS
     # =========================================================
-    with tabs[8]:
+    with tabs[9]:
         sub_cu = st.radio("Acción:", ["Mis Cursos", "Crear Nuevo Curso"], horizontal=True)
         if sub_cu == "Crear Nuevo Curso":
             if st.session_state.get('ok_curso_creado'):
@@ -3483,14 +3545,14 @@ else:
     # =========================================================
     # TAB 8 — CALENDARIO ACADÉMICO
     # =========================================================
-    with tabs[9]:
+    with tabs[10]:
         st.subheader(f"📆 Calendario Académico {ANIO_ACTUAL}")
         render_seccion_calendario(u_data['sede'])
 
     # =========================================================
     # TAB 10 — CALENDARIO OFICIAL
     # =========================================================
-    with tabs[10]:
+    with tabs[11]:
         st.subheader("🗓️ Calendario Oficial")
         sede_cal = u_data['sede']
         url_actual = get_url_calendario_oficial(sede_cal)
@@ -3537,7 +3599,7 @@ else:
     # =========================================================
     # TAB 11 — IMPRESIÓN
     # =========================================================
-    with tabs[11]:
+    with tabs[12]:
         st.subheader("🖨️ Impresión y Exportación")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -3591,7 +3653,7 @@ else:
     # =========================================================
     # TAB 10 — BACKUP
     # =========================================================
-    with tabs[12]:
+    with tabs[13]:
         st.subheader("🗄️ Backup y Restauración")
 
         st.markdown('''<div class="backup-aviso">
@@ -3732,9 +3794,192 @@ else:
 
 
     # =========================================================
-    # TAB 11 — TAREAS PENDIENTES
+    # TAB 1 — CLASES NO REGISTRADAS
     # =========================================================
     with tabs[1]:
+        st.subheader("⚠️ Clases NO registradas")
+        if not mapa_cursos:
+            no_encontrado("No tenés cursos creados.")
+        else:
+            cal_sede_cnr = get_calendario_sede(u_data['sede'])
+            with st.spinner("Buscando clases sin registrar..."):
+                pendientes_cnr = get_clases_no_registradas(
+                    u_data['id'], mapa_cursos, mapa_cursos_data, cal_sede_cnr
+                )
+
+            if st.session_state.get('cnr_ok'):
+                st.success(st.session_state.cnr_ok)
+                st.session_state.cnr_ok = None
+
+            if not pendientes_cnr:
+                st.markdown('''<div style="background:rgba(79,172,254,0.07);border:1px solid rgba(79,172,254,0.25);
+                    border-radius:12px;padding:20px;text-align:center;color:#4facfe;font-size:0.95rem;margin-top:8px;">
+                    ✅ ¡Todo al día! No hay clases sin registrar.
+                </div>''', unsafe_allow_html=True)
+            else:
+                st.markdown(f'''<div style="background:rgba(255,77,109,0.07);border:1px solid rgba(255,77,109,0.3);
+                    border-radius:10px;padding:12px 18px;margin-bottom:16px;color:#ff4d6d;font-size:0.88rem;font-weight:700;">
+                    ⚠️ {len(pendientes_cnr)} clase{"s" if len(pendientes_cnr) != 1 else ""} sin registrar
+                </div>''', unsafe_allow_html=True)
+                st.caption("Podés registrarlas normalmente con su fecha original, o ignorarlas si ese día no hubo clase (feriado, paro, etc.).")
+
+                for idx_cnr, item_cnr in enumerate(pendientes_cnr):
+                    fecha_fmt_cnr = item_cnr['fecha'].strftime('%d/%m/%Y')
+                    dia_nombre_cnr = DIAS_SEMANA_ES[item_cnr['fecha'].weekday()]
+                    key_cnr = f"{item_cnr['inscripcion_id']}_{item_cnr['fecha_str']}"
+
+                    st.markdown(f'''<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,77,109,0.2);
+                        border-radius:12px;padding:14px 18px;margin-bottom:10px;">
+                        <div style="font-weight:700;font-size:0.95rem;color:#e8eaf0;margin-bottom:4px;">
+                            📚 {item_cnr["nombre_limpio"]}
+                        </div>
+                        <div style="font-size:0.82rem;color:#ff4d6d;font-weight:600;">
+                            📅 {dia_nombre_cnr} {fecha_fmt_cnr} &nbsp;·&nbsp; 🕐 {item_cnr["horario"]}
+                        </div>
+                    </div>''', unsafe_allow_html=True)
+
+                    # ── ESTADO: registrando esta clase ──
+                    if st.session_state.get('cnr_registrando') == key_cnr:
+                        st.markdown(f"**📝 Registrar clase del {dia_nombre_cnr} {fecha_fmt_cnr} — {item_cnr['nombre_limpio']}**")
+                        col_tit_cnr, col_sup_cnr = st.columns([3, 1])
+                        with col_tit_cnr:
+                            if st.session_state.es_suplente:
+                                st.markdown('<span class="suplente-badge">⚠️ Registrando como SUPLENTE</span>', unsafe_allow_html=True)
+                            else:
+                                st.markdown('<span class="titular-badge">👤 Clase dictada por TITULAR</span>', unsafe_allow_html=True)
+                        with col_sup_cnr:
+                            if not st.session_state.es_suplente:
+                                if st.button("👥 Suplente", key=f"cnr_sup_{key_cnr}"):
+                                    st.session_state.es_suplente = True; st.rerun()
+                            else:
+                                if st.button("👤 Titular", key=f"cnr_tit_{key_cnr}"):
+                                    st.session_state.es_suplente = False; st.rerun()
+                        suplente_cnr = ""
+                        if st.session_state.es_suplente:
+                            suplente_cnr = st.text_input("Apellido y Nombre del suplente:", placeholder="Ej: García, María", key=f"cnr_sup_nom_{key_cnr}")
+                        with st.form(f"form_cnr_{key_cnr}", clear_on_submit=True):
+                            temas_cnr = st.text_area("Contenido dictado:", key=f"cnr_temas_{key_cnr}")
+                            obs_cnr = st.text_area("Observaciones (opcional):", height=80, key=f"cnr_obs_{key_cnr}")
+                            st.markdown("**📌 Tareas** (opcional)")
+                            col_ct1, col_ct2, col_ct3 = st.columns(3)
+                            with col_ct1:
+                                st.markdown("**Tarea 1**")
+                                t1_cnr = st.text_area("Descripción:", key=f"cnr_t1_{key_cnr}", height=80)
+                                f1_cnr = st.date_input("Fecha:", key=f"cnr_f1_{key_cnr}", value=f_hoy + datetime.timedelta(days=7))
+                            with col_ct2:
+                                st.markdown("**Tarea 2**")
+                                t2_cnr = st.text_area("Descripción:", key=f"cnr_t2_{key_cnr}", height=80)
+                                f2_cnr = st.date_input("Fecha:", key=f"cnr_f2_{key_cnr}", value=f_hoy + datetime.timedelta(days=7))
+                            with col_ct3:
+                                st.markdown("**Tarea 3**")
+                                t3_cnr = st.text_area("Descripción:", key=f"cnr_t3_{key_cnr}", height=80)
+                                f3_cnr = st.date_input("Fecha:", key=f"cnr_f3_{key_cnr}", value=f_hoy + datetime.timedelta(days=7))
+                            col_g_cnr, col_c_cnr = st.columns(2)
+                            if col_c_cnr.form_submit_button("❌ Cancelar", use_container_width=True):
+                                st.session_state.cnr_registrando = None
+                                st.session_state.es_suplente = False
+                                st.rerun()
+                            if col_g_cnr.form_submit_button("💾 Guardar Clase", use_container_width=True, type="primary"):
+                                if not temas_cnr.strip():
+                                    st.error("El contenido de la clase no puede estar vacío.")
+                                elif st.session_state.es_suplente and not suplente_cnr.strip():
+                                    st.error("Ingresá el nombre del profesor suplente.")
+                                else:
+                                    try:
+                                        supabase.table("bitacora").insert({
+                                            "inscripcion_id": item_cnr['inscripcion_id'],
+                                            "fecha": item_cnr['fecha_str'],
+                                            "contenido_clase": temas_cnr,
+                                            "observaciones": obs_cnr.strip() or None,
+                                            "profesor_suplente": suplente_cnr.strip() if st.session_state.es_suplente else None,
+                                            "tarea_proxima": t1_cnr or t2_cnr or t3_cnr or None,
+                                            "fecha_tarea": str(f1_cnr) if t1_cnr else (str(f2_cnr) if t2_cnr else (str(f3_cnr) if t3_cnr else None)),
+                                            "tarea1": t1_cnr or None, "tarea1_fecha": str(f1_cnr) if t1_cnr else None,
+                                            "tarea2": t2_cnr or None, "tarea2_fecha": str(f2_cnr) if t2_cnr else None,
+                                            "tarea3": t3_cnr or None, "tarea3_fecha": str(f3_cnr) if t3_cnr else None,
+                                            "tarea1_completada": False, "tarea2_completada": False, "tarea3_completada": False,
+                                            "tarea_proxima_completada": False,
+                                        }).execute()
+                                        st.session_state.cnr_registrando = None
+                                        st.session_state.es_suplente = False
+                                        st.session_state.cnr_ok = f"✅ Clase del {fecha_fmt_cnr} — {item_cnr['nombre_limpio']} registrada correctamente."
+                                        st.rerun()
+                                    except Exception as e_cnr:
+                                        st.error(f"Error al guardar: {e_cnr}")
+
+                    # ── ESTADO: ignorando esta clase ──
+                    elif st.session_state.get('cnr_ignorando') == key_cnr:
+                        st.markdown(f"**🚫 Ignorar clase del {dia_nombre_cnr} {fecha_fmt_cnr} — {item_cnr['nombre_limpio']}**")
+                        st.caption("Seleccioná el motivo por el que no hubo clase:")
+                        col_m1, col_m2, col_m3 = st.columns(3)
+                        motivo_sel_cnr = None
+                        if col_m1.button("🗓️ Feriado", key=f"cnr_fer_{key_cnr}", use_container_width=True):
+                            motivo_sel_cnr = "FERIADO"
+                        if col_m2.button("✊ Paro", key=f"cnr_par_{key_cnr}", use_container_width=True):
+                            motivo_sel_cnr = "PARO"
+                        if col_m3.button("📝 Otro motivo", key=f"cnr_otro_btn_{key_cnr}", use_container_width=True):
+                            st.session_state[f'cnr_otro_{key_cnr}'] = True
+                            st.rerun()
+                        # Formulario para "Otro motivo"
+                        if st.session_state.get(f'cnr_otro_{key_cnr}'):
+                            with st.form(f"form_cnr_otro_{key_cnr}", clear_on_submit=True):
+                                motivo_txt_cnr = st.text_input("Especificá el motivo:", placeholder="Ej: Suspensión por lluvia")
+                                col_go, col_co = st.columns(2)
+                                if col_co.form_submit_button("❌ Cancelar", use_container_width=True):
+                                    st.session_state[f'cnr_otro_{key_cnr}'] = False
+                                    st.session_state.cnr_ignorando = None
+                                    st.rerun()
+                                if col_go.form_submit_button("💾 Confirmar", use_container_width=True, type="primary"):
+                                    motivo_final = motivo_txt_cnr.strip() or "Sin especificar"
+                                    try:
+                                        supabase.table("bitacora").insert({
+                                            "inscripcion_id": item_cnr['inscripcion_id'],
+                                            "fecha": item_cnr['fecha_str'],
+                                            "contenido_clase": f"[IGNORAR: {motivo_final}]",
+                                        }).execute()
+                                        st.session_state.cnr_ignorando = None
+                                        st.session_state[f'cnr_otro_{key_cnr}'] = False
+                                        st.session_state.cnr_ok = f"✅ Clase del {fecha_fmt_cnr} marcada como ignorada ({motivo_final})."
+                                        st.rerun()
+                                    except Exception as e_ign:
+                                        st.error(f"Error: {e_ign}")
+                        # Guardar feriado o paro si se clickeó
+                        if motivo_sel_cnr:
+                            try:
+                                supabase.table("bitacora").insert({
+                                    "inscripcion_id": item_cnr['inscripcion_id'],
+                                    "fecha": item_cnr['fecha_str'],
+                                    "contenido_clase": f"[{motivo_sel_cnr}]",
+                                }).execute()
+                                st.session_state.cnr_ignorando = None
+                                st.session_state.cnr_ok = f"✅ Clase del {fecha_fmt_cnr} marcada como {motivo_sel_cnr.lower()}."
+                                st.rerun()
+                            except Exception as e_mot:
+                                st.error(f"Error: {e_mot}")
+                        if st.button("❌ Cancelar", key=f"cnr_ign_canc_{key_cnr}", use_container_width=True):
+                            st.session_state.cnr_ignorando = None
+                            st.rerun()
+
+                    # ── ESTADO NORMAL: botones de acción ──
+                    else:
+                        col_r_cnr, col_i_cnr = st.columns(2)
+                        with col_r_cnr:
+                            if st.button("📝 Registrar clase", key=f"cnr_btn_reg_{key_cnr}", use_container_width=True, type="primary"):
+                                st.session_state.cnr_registrando = key_cnr
+                                st.session_state.cnr_ignorando = None
+                                st.rerun()
+                        with col_i_cnr:
+                            if st.button("🚫 Ignorar", key=f"cnr_btn_ign_{key_cnr}", use_container_width=True):
+                                st.session_state.cnr_ignorando = key_cnr
+                                st.session_state.cnr_registrando = None
+                                st.rerun()
+
+                    st.markdown("<div style='margin-bottom:4px'></div>", unsafe_allow_html=True)
+
+    # =========================================================
+    # TAB 11 — TAREAS PENDIENTES
+    # =========================================================
+    with tabs[2]:
         st.subheader("📌 Tareas Pendientes")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -3855,7 +4100,7 @@ else:
     # =========================================================
     # TAB 12 — MANTENIMIENTO
     # =========================================================
-    with tabs[13]:
+    with tabs[14]:
         st.subheader("🔧 Mantenimiento de Base de Datos")
 
         # ── SECCIÓN 1: ESTADO DE LA BASE ──────────────────────
@@ -4129,5 +4374,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v344 completa
+# FIN PARTE 2 DE 2 — v345 completa
 # ============================================================
