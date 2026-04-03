@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v348
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v349
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v348", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v349", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -3898,9 +3898,13 @@ else:
                             st.rerun()
 
                     # ── CONFIRMACIÓN MASIVA ──
-                    if st.session_state.get('cnr_confirmar_masivo') and cant_sel > 0:
+                    # Guardamos snapshot de seleccionadas ANTES de dibujar los checkboxes
+                    # para que el bloque de confirmación use el valor correcto
+                    snap_seleccionadas = dict(seleccionadas)
+                    snap_cant_sel = cant_sel
+                    if st.session_state.get('cnr_confirmar_masivo'):
                         st.markdown(f'''<div class="advertencia-box">
-                            ⚠️ <b>Confirmación</b> — Estás por ignorar <b>{cant_sel} clase{"s" if cant_sel != 1 else ""}</b>.
+                            ⚠️ <b>Confirmación</b> — Estás por ignorar <b>{snap_cant_sel} clase{"s" if snap_cant_sel != 1 else ""}</b>.
                             Estas clases desaparecerán del listado. ¿Confirmar?
                         </div>''', unsafe_allow_html=True)
                         col_conf1, col_conf2 = st.columns(2)
@@ -3910,7 +3914,7 @@ else:
                                 rows_ignorar = []
                                 for item_x in pendientes_cnr:
                                     k_x = f"{item_x['inscripcion_id']}_{item_x['fecha_str']}"
-                                    if seleccionadas.get(k_x):
+                                    if snap_seleccionadas.get(k_x):
                                         rows_ignorar.append({
                                             "inscripcion_id": item_x['inscripcion_id'],
                                             "fecha": item_x['fecha_str'],
@@ -4501,5 +4505,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v348 completa
+# FIN PARTE 2 DE 2 — v349 completa
 # ============================================================
