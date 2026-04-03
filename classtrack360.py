@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v347
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v348
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v347", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v348", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -3849,7 +3849,15 @@ else:
 
                 elif pendientes_cnr:
                     # ── BARRA SUPERIOR: contador + acciones masivas ──
+                    # Leer selección actualizada directo de los widget keys (más confiable)
                     seleccionadas = st.session_state.get('cnr_seleccionadas', {})
+                    # Sincronizar con valores actuales de los checkboxes si ya existen en session_state
+                    for item_x in pendientes_cnr:
+                        k_x = f"{item_x['inscripcion_id']}_{item_x['fecha_str']}"
+                        chk_key = f"cnr_chk_{k_x}"
+                        if chk_key in st.session_state:
+                            seleccionadas[k_x] = st.session_state[chk_key]
+                    st.session_state.cnr_seleccionadas = seleccionadas
                     cant_sel = sum(1 for v in seleccionadas.values() if v)
                     cant_total = len(pendientes_cnr)
 
@@ -3882,11 +3890,12 @@ else:
                             st.session_state.cnr_confirmar_masivo = False
                             st.rerun()
                     with col_ignorar_sel:
-                        if cant_sel > 0:
-                            if st.button(f"🚫 Ignorar seleccionadas ({cant_sel})", key="cnr_ignorar_masivo",
-                                         use_container_width=True, type="primary"):
-                                st.session_state.cnr_confirmar_masivo = True
-                                st.rerun()
+                        btn_label = f"🚫 Ignorar seleccionadas ({cant_sel})" if cant_sel > 0 else "🚫 Ignorar seleccionadas"
+                        if st.button(btn_label, key="cnr_ignorar_masivo",
+                                     use_container_width=True, type="primary",
+                                     disabled=(cant_sel == 0)):
+                            st.session_state.cnr_confirmar_masivo = True
+                            st.rerun()
 
                     # ── CONFIRMACIÓN MASIVA ──
                     if st.session_state.get('cnr_confirmar_masivo') and cant_sel > 0:
@@ -3931,15 +3940,16 @@ else:
                         col_chk, col_card = st.columns([1, 10])
                         with col_chk:
                             st.markdown("<div style='height:18px'></div>", unsafe_allow_html=True)
-                            chk_val = st.checkbox("", key=f"cnr_chk_{key_cnr}",
-                                                  value=st.session_state.get('cnr_seleccionadas', {}).get(key_cnr, False),
-                                                  label_visibility="collapsed")
-                            # Actualizar estado de selección
-                            if chk_val != st.session_state.get('cnr_seleccionadas', {}).get(key_cnr, False):
-                                if 'cnr_seleccionadas' not in st.session_state:
-                                    st.session_state.cnr_seleccionadas = {}
-                                st.session_state.cnr_seleccionadas[key_cnr] = chk_val
-                                st.rerun()
+                            def _make_chk_change(k):
+                                def _fn():
+                                    if 'cnr_seleccionadas' not in st.session_state:
+                                        st.session_state.cnr_seleccionadas = {}
+                                    st.session_state.cnr_seleccionadas[k] = st.session_state[f"cnr_chk_{k}"]
+                                return _fn
+                            st.checkbox("", key=f"cnr_chk_{key_cnr}",
+                                        value=st.session_state.get('cnr_seleccionadas', {}).get(key_cnr, False),
+                                        on_change=_make_chk_change(key_cnr),
+                                        label_visibility="collapsed")
 
                         with col_card:
                             esta_sel = st.session_state.get('cnr_seleccionadas', {}).get(key_cnr, False)
@@ -4491,5 +4501,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v347 completa
+# FIN PARTE 2 DE 2 — v348 completa
 # ============================================================
