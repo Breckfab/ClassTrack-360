@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v346
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v347
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v346", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v347", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -579,6 +579,7 @@ def upsert_calendario_sede(sede, fecha_inicio, fecha_fin):
                 "fecha_inicio": str(fecha_inicio) if fecha_inicio else None,
                 "fecha_fin": str(fecha_fin) if fecha_fin else None,
             }).execute()
+        get_calendario_sede.clear()
         return True
     except Exception as e:
         st.error(f"Error guardando calendario: {e}")
@@ -817,6 +818,9 @@ def render_seccion_calendario(sede, es_admin=False):
     cal = get_calendario_sede(sede)
     fecha_inicio = datetime.date.fromisoformat(cal['fecha_inicio']) if cal and cal.get('fecha_inicio') else None
     fecha_fin = datetime.date.fromisoformat(cal['fecha_fin']) if cal and cal.get('fecha_fin') else None
+    if st.session_state.get('ok_calendario_guardado'):
+        st.success("✅ Calendario actualizado correctamente.")
+        st.session_state.ok_calendario_guardado = False
     if fecha_inicio and fecha_fin:
         hoy = datetime.date.today()
         total_dias = (fecha_fin - fecha_inicio).days
@@ -835,10 +839,10 @@ def render_seccion_calendario(sede, es_admin=False):
         if url_1c: render_cronograma_visor(url_1c, nombre_1c, "Cronograma 1° Cuatrimestre")
         if url_2c: render_cronograma_visor(url_2c, nombre_2c, "Cronograma 2° Cuatrimestre")
     with st.expander("✏️ Editar calendario y cronogramas", expanded=not fecha_inicio):
-        with st.form(f"cal_form_{sede}", clear_on_submit=True):
+        with st.form(f"cal_form_{sede}", clear_on_submit=False):
             col1, col2 = st.columns(2)
-            fi = col1.date_input("Fecha de inicio:", value=fecha_inicio if fecha_inicio else datetime.date(ANIO_ACTUAL, 3, 1))
-            ff = col2.date_input("Fecha de fin:", value=fecha_fin if fecha_fin else datetime.date(ANIO_ACTUAL, 11, 30))
+            fi = col1.date_input("Fecha de inicio:", value=fecha_inicio if fecha_inicio else datetime.date(ANIO_ACTUAL, 3, 1), format="DD/MM/YYYY")
+            ff = col2.date_input("Fecha de fin:", value=fecha_fin if fecha_fin else datetime.date(ANIO_ACTUAL, 11, 30), format="DD/MM/YYYY")
             st.markdown("**📁 Subir cronograma 1° Cuatrimestre**")
             arch_1c = st.file_uploader("Cronograma 1C:", type=['pdf','jpg','jpeg','png','gif','webp','xlsx','xls','docx','doc'], key=f"arch1c_{sede}")
             st.markdown("**📁 Subir cronograma 2° Cuatrimestre**")
@@ -849,9 +853,11 @@ def render_seccion_calendario(sede, es_admin=False):
                 else:
                     ok = upsert_calendario_sede(sede, fi, ff)
                     if ok:
+                        get_calendario_sede.clear()
                         if arch_1c: subir_cronograma(sede, 1, arch_1c)
                         if arch_2c: subir_cronograma(sede, 2, arch_2c)
-                        st.success("✅ Calendario actualizado."); st.rerun()
+                        st.session_state.ok_calendario_guardado = True
+                        st.rerun()
 
 # =========================================================
 # --- FUNCIONES ESTADÍSTICAS (PLOTLY) ---
@@ -4485,5 +4491,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v346 completa
+# FIN PARTE 2 DE 2 — v347 completa
 # ============================================================
