@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v352
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v353
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v352", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v353", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -4296,7 +4296,10 @@ else:
                                 if col_c.form_submit_button("❌ Cancelar"):
                                     st.session_state.editando_tarea_tp = None; st.rerun()
                         else:
-                            col_t, col_e, col_h = st.columns([6, 1, 1])
+                            if seccion == "vencidas":
+                                col_t, col_e, col_h = st.columns([6, 1, 1])
+                            else:
+                                col_t, col_e, col_h = st.columns([6, 1, 1])
                             with col_t:
                                 if seccion == "proximas":
                                     dias = (datetime.date.fromisoformat(t['fecha']) - f_hoy).days
@@ -4326,6 +4329,10 @@ else:
                             with col_h:
                                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
                                 if st.button("✅", key=f"btn_hecha_tp_{key_edit}", help="Marcar como hecha"):
+                                    marcar_tarea(t['bit_id'], t['num'], True)
+                            # Para vencidas, botón grande debajo para mayor visibilidad
+                            if seccion == "vencidas":
+                                if st.button(f"✅ Marcar como HECHA — {t['tarea'][:40]}{'...' if len(t['tarea']) > 40 else ''}", key=f"btn_hecha_grande_{key_edit}", use_container_width=True, type="primary"):
                                     marcar_tarea(t['bit_id'], t['num'], True)
 
                     if proximas_f:
@@ -4623,5 +4630,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v352 completa
+# FIN PARTE 2 DE 2 — v353 completa
 # ============================================================
