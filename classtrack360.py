@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v351
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v352
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v351", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v352", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -802,7 +802,34 @@ def get_resumen_asistencia_universitario(inscripcion_id, cuatrimestre):
     except: return {}
 
 @st.cache_data(ttl=60, show_spinner=False)
-def get_alumnos_curso(nombre_curso):
+def get_estados_alumnos(profesor_id):
+    """Devuelve dict {alumno_id: activo} para todos los alumnos del profesor."""
+    try:
+        res = supabase.table("alumnos_estado").select("alumno_id, activo").execute()
+        return {r['alumno_id']: r.get('activo', True) for r in (res.data or [])}
+    except:
+        return {}
+
+def set_alumno_activo(alumno_id, activo):
+    """Activa o inactiva un alumno en alumnos_estado."""
+    try:
+        res = supabase.table("alumnos_estado").select("id").eq("alumno_id", alumno_id).execute()
+        if res.data:
+            supabase.table("alumnos_estado").update({"activo": activo}).eq("alumno_id", alumno_id).execute()
+        else:
+            supabase.table("alumnos_estado").insert({"alumno_id": alumno_id, "activo": activo}).execute()
+        get_estados_alumnos.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error al cambiar estado: {e}")
+        return False
+
+def es_alumno_activo(alumno_id, estados_dict):
+    """Devuelve True si el alumno está activo (default True si no tiene registro)."""
+    return estados_dict.get(alumno_id, True)
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_alumnos_curso(nombre_curso, solo_activos=True):
     try:
         res = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null").execute()
         alumnos = []
@@ -811,6 +838,13 @@ def get_alumnos_curso(nombre_curso):
             al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
             if al:
                 alumnos.append({'insc_id': r['id'], 'id': al['id'], 'nombre': al['nombre'], 'apellido': al['apellido']})
+        if solo_activos:
+            try:
+                res_est = supabase.table("alumnos_estado").select("alumno_id, activo").execute()
+                inactivos = {r['alumno_id'] for r in (res_est.data or []) if not r.get('activo', True)}
+                alumnos = [a for a in alumnos if a['id'] not in inactivos]
+            except:
+                pass
         return sorted(alumnos, key=lambda x: x['apellido'])
     except: return []
 
@@ -3024,10 +3058,14 @@ else:
                 no_encontrado("No hay cursos creados.")
             else:
                 c_v = st.selectbox("Filtrar por curso:", ["Todos"] + list(mapa_cursos.keys()), key="curso_alumnos_sel")
+                ver_inactivos = st.checkbox("👁️ Mostrar también alumnos inactivos", key="alumnos_ver_inactivos", value=False)
                 if st.session_state.get('ok_alumno_movido'):
                     st.success(f"✅ Alumno movido: {st.session_state.ok_alumno_movido}")
                     st.session_state.ok_alumno_movido = None
                 try:
+                    # Cargar estados activo/inactivo
+                    estados_alumnos = get_estados_alumnos(u_data['id'])
+
                     # Cargar todos los alumnos del profesor (o del curso si está seleccionado)
                     if c_v == "Todos":
                         res_al = supabase.table("inscripciones").select("id, nombre_curso_materia, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
@@ -3040,16 +3078,27 @@ else:
                         al_raw = r.get('alumnos')
                         al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                         if al:
-                            todos_alumnos.append((r, al))
+                            activo = es_alumno_activo(al['id'], estados_alumnos)
+                            todos_alumnos.append((r, al, activo))
 
-                    if not todos_alumnos:
-                        no_encontrado("No hay alumnos inscriptos.")
+                    # Filtrar según ver_inactivos
+                    if ver_inactivos:
+                        alumnos_mostrar = todos_alumnos
+                    else:
+                        alumnos_mostrar = [(r, al, activo) for r, al, activo in todos_alumnos if activo]
+
+                    cant_inactivos = sum(1 for _, _, activo in todos_alumnos if not activo)
+                    if cant_inactivos > 0 and not ver_inactivos:
+                        st.caption(f"⚠️ {cant_inactivos} alumno/s inactivo/s oculto/s — activá 'Mostrar también alumnos inactivos' para verlos.")
+
+                    if not alumnos_mostrar:
+                        no_encontrado("No hay alumnos inscriptos." if not ver_inactivos else "No hay alumnos en este curso.")
                     else:
                         # Opciones para datalist HTML
                         opciones_nombres = sorted(
                             list(dict.fromkeys([
                                 f"{al.get('apellido','').upper()}, {al.get('nombre','')}"
-                                for _, al in todos_alumnos
+                                for _, al, _ in alumnos_mostrar
                             ])),
                             key=lambda x: normalizar(x)
                         )
@@ -3088,12 +3137,12 @@ else:
                         # Filtrar lista según lo escrito
                         if texto_busq.strip():
                             alumnos_filtrados = [
-                                (r, al) for r, al in todos_alumnos
+                                (r, al, activo) for r, al, activo in alumnos_mostrar
                                 if normalizar(texto_busq) in normalizar(al.get('apellido', ''))
                                 or normalizar(texto_busq) in normalizar(al.get('nombre', ''))
                             ]
                         else:
-                            alumnos_filtrados = todos_alumnos
+                            alumnos_filtrados = alumnos_mostrar
 
                         alumnos_filtrados.sort(key=lambda x: normalizar(x[1].get('apellido', '')))
 
@@ -3111,9 +3160,9 @@ else:
                                         wb_em = openpyxl.Workbook()
                                         ws_em = wb_em.active
                                         ws_em.title = "Alumnos"
-                                        ws_em.append(["Apellido", "Nombre", "Email", "Curso"])
-                                        for r_em, al_em in sorted(alumnos_filtrados, key=lambda x: normalizar(x[1].get('apellido',''))):
-                                            ws_em.append([al_em.get('apellido',''), al_em.get('nombre',''), al_em.get('email','') or '', r_em.get('nombre_curso_materia','')])
+                                        ws_em.append(["Apellido", "Nombre", "Email", "Curso", "Estado"])
+                                        for r_em, al_em, act_em in sorted(alumnos_filtrados, key=lambda x: normalizar(x[1].get('apellido',''))):
+                                            ws_em.append([al_em.get('apellido',''), al_em.get('nombre',''), al_em.get('email','') or '', r_em.get('nombre_curso_materia',''), "Activo" if act_em else "Inactivo"])
                                         buf_em = io.BytesIO()
                                         wb_em.save(buf_em)
                                         buf_em.seek(0)
@@ -3121,7 +3170,7 @@ else:
                                         st.download_button("⬇️ Descargar Excel", data=buf_em.getvalue(), file_name=nombre_em, mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", use_container_width=True)
                                     except Exception as e_em:
                                         st.error(f"Error al exportar: {e_em}")
-                            for r, al in alumnos_filtrados:
+                            for r, al, activo in alumnos_filtrados:
                                 if st.session_state.editando_alumno == r['id']:
                                     with st.form(f"edit_al_{r['id']}", clear_on_submit=True):
                                         n_edit = st.text_input("Nombre:", value=al.get('nombre', ''))
@@ -3141,12 +3190,18 @@ else:
                                 else:
                                     curso_badge = f' &nbsp;<span style="color:#4facfe;font-size:0.78rem">📖 {r.get("nombre_curso_materia","")}</span>' if c_v == "Todos" else ''
                                     email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
-                                    st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{curso_badge}{email_display}</div>', unsafe_allow_html=True)
-                                    ab1, ab2, ab3 = st.columns(3)
+                                    inactivo_badge = ' &nbsp;<span style="background:rgba(255,77,109,0.15);border:1px solid rgba(255,77,109,0.4);border-radius:5px;padding:2px 8px;color:#ff4d6d;font-size:0.75rem;font-weight:700;">INACTIVO</span>' if not activo else ''
+                                    st.markdown(f'<div class="planilla-row" style="opacity:{"0.5" if not activo else "1"};">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{inactivo_badge}{curso_badge}{email_display}</div>', unsafe_allow_html=True)
+                                    ab1, ab2, ab3, ab4 = st.columns(4)
                                     if ab1.button("✏️ Editar", key=f"eal_{r['id']}"):
                                         st.session_state.editando_alumno = r['id']; st.rerun()
                                     if ab2.button("↔️ Mover", key=f"mal_{r['id']}", help="Cambiar de curso"):
                                         st.session_state.moviendo_alumno = r['id']; st.rerun()
+                                    # Botón Inactivar / Activar
+                                    lbl_toggle = "✅ Activar" if not activo else "⛔ Inactivar"
+                                    if ab3.button(lbl_toggle, key=f"toggle_act_{r['id']}", use_container_width=True):
+                                        set_alumno_activo(al['id'], not activo)
+                                        st.rerun()
                                     if st.session_state.get('moviendo_alumno') == r['id']:
                                         with st.form(f"mover_al_{r['id']}", clear_on_submit=True):
                                             st.markdown(f"**↔️ Mover a {al.get('apellido','').upper()}, {al.get('nombre','')} a otro curso:**")
@@ -3182,7 +3237,7 @@ else:
                                                 st.error(f"Error: {e_err}")
                                         if col_ca2.button("❌ Cancelar", key=f"canc_dal_{r['id']}"):
                                             st.session_state.confirmar_borrar_alumno = None; st.rerun()
-                                    elif ab3.button("🗑️ Borrar", key=f"dal_{r['id']}"):
+                                    elif ab4.button("🗑️ Borrar", key=f"dal_{r['id']}"):
                                         st.session_state.confirmar_borrar_alumno = r['id']; st.rerun()
                 except Exception as e:
                     st.error(f"Error al cargar alumnos: {e}")
@@ -3293,11 +3348,13 @@ else:
                         if not res_al_n.data:
                             no_encontrado("No hay alumnos inscriptos en este curso.")
                         else:
+                            estados_nt = get_estados_alumnos(u_data['id'])
                             mostrados_carga = 0
                             for r in res_al_n.data:
                                 al_raw = r.get('alumnos')
                                 al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                 if al:
+                                    if not es_alumno_activo(al['id'], estados_nt): continue
                                     if busq_carga.strip() and normalizar(busq_carga) not in normalizar(al.get('nombre','')) and normalizar(busq_carga) not in normalizar(al.get('apellido','')): continue
                                     mostrados_carga += 1
                                     try:
@@ -4566,5 +4623,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v351 completa
+# FIN PARTE 2 DE 2 — v352 completa
 # ============================================================
