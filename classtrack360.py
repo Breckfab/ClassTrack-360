@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v354
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v355
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v354", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v355", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -579,6 +579,8 @@ def get_mapa_cursos(profesor_id):
     return mapa, mapa_data
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def get_calendario_sede(sede):
     try:
         res = supabase.table("calendario_sede").select("*").eq("sede", sede).execute()
         return res.data[0] if res.data else None
@@ -4660,5 +4662,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v354 completa
+# FIN PARTE 2 DE 2 — v355 completa
 # ============================================================
