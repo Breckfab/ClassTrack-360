@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v353
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v354
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v353", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v354", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -103,6 +103,7 @@ def init_state():
         'cnr_ok': None,
         'cnr_seleccionadas': {},
         'cnr_confirmar_masivo': False,
+        '_invalidar_cursos': False,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -465,30 +466,29 @@ def guardar_edicion_tarea_legacy(bit_id, nuevo_texto):
     except Exception as e:
         st.error(f"Error: {e}")
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_tareas_vencidas_count(profesor_id):
-    hoy = datetime.date.today()
+    hoy = str(datetime.date.today())
     try:
         res_insc = supabase.table("inscripciones").select("id").eq("profesor_id", profesor_id).is_("alumno_id", "null").execute()
         if not res_insc.data: return 0
         ids = [r['id'] for r in res_insc.data]
+        # Una sola query trayendo todas las tareas de todos los cursos
+        res = supabase.table("bitacora").select(
+            "tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
+        ).in_("inscripcion_id", ids).execute()
         total_vencidas = 0
-        for iid in ids:
-            res = supabase.table("bitacora").select(
-                "tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada"
-            ).eq("inscripcion_id", iid).execute()
-            for reg in (res.data or []):
-                for i in range(1, 4):
-                    txt = reg.get(f'tarea{i}')
-                    fecha_t = reg.get(f'tarea{i}_fecha')
-                    completada = reg.get(f'tarea{i}_completada', False)
-                    if txt and not completada and fecha_t:
-                        if datetime.date.fromisoformat(fecha_t) < hoy:
-                            total_vencidas += 1
+        for reg in (res.data or []):
+            for i in range(1, 4):
+                txt = reg.get(f'tarea{i}')
+                fecha_t = reg.get(f'tarea{i}_fecha')
+                completada = reg.get(f'tarea{i}_completada', False)
+                if txt and not completada and fecha_t and fecha_t < hoy:
+                    total_vencidas += 1
         return total_vencidas
     except: return 0
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_stats_curso(inscripcion_id):
     try:
         res = supabase.table("bitacora").select("fecha").eq("inscripcion_id", inscripcion_id).order("fecha", desc=True).execute()
@@ -498,16 +498,15 @@ def get_stats_curso(inscripcion_id):
     except:
         return 0, None
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=300, show_spinner=False)
 def get_total_clases_sidebar(profesor_id):
     try:
         res_insc = supabase.table("inscripciones").select("id").eq("profesor_id", profesor_id).is_("alumno_id", "null").execute()
         if not res_insc.data: return 0
-        total = 0
-        for r in res_insc.data:
-            cant, _ = get_stats_curso(r['id'])
-            total += cant
-        return total
+        ids = [r['id'] for r in res_insc.data]
+        # Una sola query contando todas las clases de todos los cursos
+        res = supabase.table("bitacora").select("id").in_("inscripcion_id", ids).execute()
+        return len(res.data) if res.data else 0
     except: return 0
 
 DIAS_SEMANA_MAP = {
@@ -558,7 +557,28 @@ def render_calendario(mes, anio):
     <table class="cal-tabla"><tr><th>Lu</th><th>Ma</th><th>Mi</th><th>Ju</th><th>Vi</th><th>Sa</th><th>Do</th></tr>{filas}</table></div>"""
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_calendario_sede(sede):
+def get_total_alumnos_sidebar(profesor_id):
+    try:
+        res = supabase.table("inscripciones").select("id").eq("profesor_id", profesor_id).eq("anio_lectivo", 2026).not_.is_("alumno_id", "null").execute()
+        return len(res.data) if res.data else 0
+    except: return 0
+
+@st.cache_data(ttl=300, show_spinner=False)
+def get_mapa_cursos(profesor_id):
+    """Devuelve (mapa_cursos, mapa_cursos_data) cacheados."""
+    mapa = {}
+    mapa_data = {}
+    try:
+        res = supabase.table("inscripciones").select("*").eq("profesor_id", profesor_id).is_("alumno_id", "null").execute()
+        if res.data:
+            for c in res.data:
+                if 'nombre_curso_materia' in c:
+                    mapa[c['nombre_curso_materia']] = c['id']
+                    mapa_data[c['nombre_curso_materia']] = c
+    except: pass
+    return mapa, mapa_data
+
+
     try:
         res = supabase.table("calendario_sede").select("*").eq("sede", sede).execute()
         return res.data[0] if res.data else None
@@ -1682,7 +1702,7 @@ def generar_html_impresion(sede, curso_nombre, curso_data, incluir_alumnos, incl
     html += "<script>window.onload=function(){window.print();}</script></body></html>"
     return html
 
-@st.cache_data(ttl=30, show_spinner=False)
+@st.cache_data(ttl=120, show_spinner=False)
 def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id, profesor_id=None):
     alumnos = []; notas_dict = {}; historial = []
     try:
@@ -2087,8 +2107,8 @@ else:
             set_modo_claro(u_data['id'], nuevo_modo)
             st.rerun()
         try:
-            res_total = supabase.table("inscripciones").select("id").eq("profesor_id", u_data['id']).eq("anio_lectivo", 2026).not_.is_("alumno_id", "null").execute()
-            st.markdown(f'<div class="stat-card">Total Alumnos 2026: <b>{len(res_total.data)}</b></div>', unsafe_allow_html=True)
+            total_alumnos_sb = get_total_alumnos_sidebar(u_data['id'])
+            st.markdown(f'<div class="stat-card">Total Alumnos 2026: <b>{total_alumnos_sb}</b></div>', unsafe_allow_html=True)
         except:
             st.markdown('<div class="stat-card">Total Alumnos 2026: <b>-</b></div>', unsafe_allow_html=True)
         if total_clases_sidebar > 0:
@@ -2167,17 +2187,14 @@ else:
 
     footer()
 
-    mapa_cursos = {}
-    mapa_cursos_data = {}
-    try:
-        res_c = supabase.table("inscripciones").select("*").eq("profesor_id", u_data['id']).is_("alumno_id", "null").execute()
-        if res_c.data:
-            for c in res_c.data:
-                if 'nombre_curso_materia' in c:
-                    mapa_cursos[c['nombre_curso_materia']] = c['id']
-                    mapa_cursos_data[c['nombre_curso_materia']] = c
-    except Exception as e:
-        st.error(f"Error al cargar cursos: {e}")
+    # Cargar mapa de cursos desde caché
+    mapa_cursos, mapa_cursos_data = get_mapa_cursos(u_data['id'])
+
+    # Invalidar caché de cursos si hubo cambios en esta sesión
+    if st.session_state.get('_invalidar_cursos'):
+        get_mapa_cursos.clear()
+        mapa_cursos, mapa_cursos_data = get_mapa_cursos(u_data['id'])
+        st.session_state._invalidar_cursos = False
 
     # Índice de tabs — si volvemos de "hacer backup antes de salir"
     tab_default = 11 if st.session_state.get('_ir_a_backup') else 0
@@ -2814,6 +2831,26 @@ else:
                     if st.session_state.get('ok_bitacora_editada'):
                         st.success("✅ Registro actualizado satisfactoriamente.")
                         st.session_state.ok_bitacora_editada = False
+
+                    # ── PRE-FETCH asistencia de todos los registros en UNA sola query ──
+                    asist_por_insc_fecha = {}  # {(inscripcion_id, fecha): {alumno_id: estado}}
+                    try:
+                        insc_ids_hist = list(set(r['inscripcion_id'] for r in filtrados))
+                        fechas_hist = list(set(r['fecha'] for r in filtrados))
+                        if insc_ids_hist and fechas_hist:
+                            res_asist_bulk = supabase.table("asistencia").select(
+                                "inscripcion_id, fecha, alumno_id, estado"
+                            ).in_("inscripcion_id", insc_ids_hist).in_("fecha", fechas_hist).execute()
+                            for ra in (res_asist_bulk.data or []):
+                                key = (ra['inscripcion_id'], ra['fecha'])
+                                if key not in asist_por_insc_fecha:
+                                    asist_por_insc_fecha[key] = {}
+                                aid = ra['alumno_id']
+                                if aid not in asist_por_insc_fecha[key]:
+                                    asist_por_insc_fecha[key][aid] = ra['estado']
+                    except:
+                        pass
+
                     for reg in filtrados:
                         suplente_h = reg.get('profesor_suplente')
                         prof_label = f"👥 Suplente: {suplente_h}" if suplente_h else "👤 Titular"
@@ -2840,24 +2877,13 @@ else:
                         tipo_esp, label_esp, color_esp = detectar_especial(contenido_raw)
                         es_especial = tipo_esp is not None
 
-                        # Contar asistencia de esa clase
-                        try:
-                            res_asist_h = supabase.table("asistencia").select("estado").eq("inscripcion_id", reg['inscripcion_id']).eq("fecha", reg['fecha']).execute()
-                            estados_h = [r['estado'] for r in (res_asist_h.data or [])]
-                            res_asist_u = supabase.table("asistencia").select("alumno_id, estado").eq("inscripcion_id", reg['inscripcion_id']).eq("fecha", reg['fecha']).execute()
-                            vistos = {}
-                            for r in (res_asist_u.data or []):
-                                if r['alumno_id'] not in vistos:
-                                    vistos[r['alumno_id']] = r['estado']
-                            n_pres = sum(1 for s in vistos.values() if s == 'presente')
-                            n_tard = sum(1 for s in vistos.values() if s == 'tarde')
-                            n_ause = sum(1 for s in vistos.values() if s == 'ausente')
-                            total_h = len(vistos)
-                            asist_label = f" · ✅{n_pres} 🕐{n_tard} ❌{n_ause}" if total_h > 0 else ""
-                        except:
-                            asist_label = ""
-                            total_h = 0
-                            n_pres = n_tard = n_ause = 0
+                        # Usar datos pre-fetched de asistencia
+                        vistos = asist_por_insc_fecha.get((reg['inscripcion_id'], reg['fecha']), {})
+                        n_pres = sum(1 for s in vistos.values() if s == 'presente')
+                        n_tard = sum(1 for s in vistos.values() if s == 'tarde')
+                        n_ause = sum(1 for s in vistos.values() if s == 'ausente')
+                        total_h = len(vistos)
+                        asist_label = f" · ✅{n_pres} 🕐{n_tard} ❌{n_ause}" if total_h > 0 else ""
 
                         # Título del expander con badge especial si corresponde
                         if es_especial:
@@ -3495,6 +3521,7 @@ else:
                                     datos_curso["horas_catedra"] = horas_catedra_new
                                 supabase.table("inscripciones").insert(datos_curso).execute()
                                 st.session_state.ok_curso_creado = info
+                                get_mapa_cursos.clear()
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Error: {e}")
@@ -3590,6 +3617,7 @@ else:
                                                 })
                                             st.session_state.editando_curso = None
                                             st.session_state.ok_curso_editado = True
+                                            get_mapa_cursos.clear()
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Error: {e}")
@@ -3647,6 +3675,7 @@ else:
                                             supabase.table("inscripciones").insert(datos_dup).execute()
                                             st.session_state.duplicando_curso = None
                                             st.session_state.ok_curso_creado = nombre_nuevo_dup
+                                            get_mapa_cursos.clear()
                                             st.rerun()
                                         except Exception as e_dup:
                                             st.error(f"Error al duplicar: {e_dup}")
@@ -3659,6 +3688,7 @@ else:
                                     try:
                                         supabase.table("inscripciones").delete().eq("id", i_c).execute()
                                         st.session_state.confirmar_borrar_curso = None
+                                        get_mapa_cursos.clear()
                                         st.success("Curso eliminado."); st.rerun()
                                     except Exception as e:
                                         st.error(f"Error: {e}")
@@ -4630,5 +4660,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v353 completa
+# FIN PARTE 2 DE 2 — v354 completa
 # ============================================================
