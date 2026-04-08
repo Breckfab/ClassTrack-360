@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v355
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v356
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v355", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v356", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -3065,10 +3065,12 @@ else:
                     n = st.text_input("Nombre *")
                     a = st.text_input("Apellido *")
                     e = st.text_input("Email (opcional)", placeholder="alumno@mail.com")
-                    c_sel = st.selectbox("Asignar a curso:", list(mapa_cursos.keys()))
+                    c_sel = st.selectbox("Asignar a curso: *", ["--- Seleccioná un curso ---"] + list(mapa_cursos.keys()))
                     if st.form_submit_button("💾 REGISTRAR"):
                         if not n.strip() or not a.strip():
                             st.error("Nombre y Apellido son obligatorios.")
+                        elif c_sel == "--- Seleccioná un curso ---":
+                            st.error("Seleccioná un curso para el alumno.")
                         else:
                             with st.spinner("Registrando alumno..."):
                                 try:
@@ -4662,5 +4664,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v355 completa
+# FIN PARTE 2 DE 2 — v356 completa
 # ============================================================
