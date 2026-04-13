@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v356
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v357
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v356", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v357", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -627,30 +627,6 @@ def set_url_calendario_oficial(sede, url):
     except Exception as e:
         st.error(f"Error guardando URL: {e}")
         return False
-    try:
-        ext = archivo.name.split('.')[-1].lower()
-        path = f"{sede}/cronograma_{cuatrimestre}c.{ext}"
-        data = archivo.read()
-        try: supabase.storage.from_("cronogramas").remove([path])
-        except: pass
-        supabase.storage.from_("cronogramas").upload(path, data, {"content-type": archivo.type, "upsert": "true"})
-        url = supabase.storage.from_("cronogramas").get_public_url(path)
-        existing = get_calendario_sede(sede)
-        campo_url = f"cronograma_{cuatrimestre}c_url"
-        campo_nombre = f"cronograma_{cuatrimestre}c_nombre"
-        if existing:
-            supabase.table("calendario_sede").update({
-                campo_url: url, campo_nombre: archivo.name,
-                "updated_at": datetime.datetime.now().isoformat()
-            }).eq("sede", sede).execute()
-        else:
-            supabase.table("calendario_sede").insert({
-                "sede": sede, campo_url: url, campo_nombre: archivo.name,
-            }).execute()
-        return url
-    except Exception as e:
-        st.error(f"Error subiendo cronograma: {e}")
-        return None
 
 def render_cronograma_visor(url, nombre, titulo):
     if not url: return
@@ -1148,7 +1124,7 @@ def generar_datos_backup(profesor_id, sede):
     """Recolecta todos los datos del profesor para el backup."""
     datos = {
         "meta": {
-            "version": "292",
+            "version": "357",
             "sede": sede,
             "fecha_backup": datetime.datetime.now().isoformat(),
         },
@@ -2417,11 +2393,12 @@ else:
                 except Exception as e:
                     st.error(f"Error al cargar tareas: {e}")
                 try:
-                    res_t = supabase.table("bitacora").select("id, tarea_proxima, fecha, tarea_proxima_completada").eq("inscripcion_id", inscripcion_id).not_.is_("tarea_proxima", "null").order("fecha", desc=True).limit(1).execute()
+                    res_t = supabase.table("bitacora").select("id, tarea_proxima, fecha, fecha_tarea, tarea_proxima_completada").eq("inscripcion_id", inscripcion_id).not_.is_("tarea_proxima", "null").order("fecha", desc=True).limit(1).execute()
                     if res_t.data:
                         reg_legacy = res_t.data[0]
                         tarea_txt = reg_legacy.get('tarea_proxima', '')
                         tarea_fecha = reg_legacy.get('fecha', '')
+                        tarea_entrega = reg_legacy.get('fecha_tarea', '')
                         completada_legacy = reg_legacy.get('tarea_proxima_completada', False)
                         if tarea_txt and not completada_legacy:
                             if st.session_state.editando_tarea_legacy == reg_legacy['id']:
@@ -2434,8 +2411,11 @@ else:
                                     if col_cl.form_submit_button("❌ Cancelar"):
                                         st.session_state.editando_tarea_legacy = None; st.rerun()
                             else:
+                                tarea_fecha_fmt = datetime.date.fromisoformat(tarea_fecha).strftime('%d/%m/%Y') if tarea_fecha else tarea_fecha
+                                tarea_entrega_fmt = datetime.date.fromisoformat(tarea_entrega).strftime('%d/%m/%Y') if tarea_entrega else None
+                                entrega_str = f" — Entrega: {tarea_entrega_fmt}" if tarea_entrega_fmt else ""
                                 st.markdown(f'''<div class="tarea-alerta">
-                                    🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({tarea_fecha})<br>
+                                    🔔 TAREA PENDIENTE DE LA CLASE ANTERIOR ({tarea_fecha_fmt}){entrega_str}<br>
                                     <div style="margin-top:10px;border-top:1px solid #ffc107;padding-top:10px;color:#fff;font-weight:400;font-size:1rem;">{tarea_txt}</div>
                                 </div>''', unsafe_allow_html=True)
                                 col_l1, col_l2 = st.columns(2)
@@ -4664,5 +4644,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v356 completa
+# FIN PARTE 2 DE 2 — v357 completa
 # ============================================================
