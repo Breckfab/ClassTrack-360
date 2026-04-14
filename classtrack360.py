@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v357
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v358
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v357", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v358", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -53,6 +53,11 @@ def init_state():
         'prev_curso_notas_carga': None, 'prev_curso_busq_hist': None,
         'busq_alumno_val': '', 'busq_alumno_texto': '', 'busq_nota_val': '', 'filtro_estado_val': 'Todos',
         'busq_carga_val': '', 'busq_contenido_hist_val': '', 'tipo_prof_val': 'Todos',
+        # Búsqueda en tiempo real
+        'rt_busq_alumnos': '',
+        'rt_busq_nota_ver': '',
+        'rt_busq_nota_carga': '',
+        'rt_busq_asistencia': '',
         'pantalla_login': 'login',
         'editando_tarea': None,
         'editando_tarea_legacy': None,
@@ -2667,7 +2672,11 @@ else:
                         </div>''', unsafe_allow_html=True)
             else:
                 # --- BUSCADOR POR ALUMNO ---
-                busq_al_asist = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_al_asist", placeholder="Escribí para buscar...")
+                busq_al_asist = st.text_input("🔍 Buscar alumno por nombre o apellido:", key="busq_al_asist",
+                    value=st.session_state.rt_busq_asistencia,
+                    placeholder="Escribí para buscar...",
+                    on_change=lambda: setattr(st.session_state, 'rt_busq_asistencia', st.session_state.busq_al_asist))
+                busq_al_asist = st.session_state.rt_busq_asistencia
                 if busq_al_asist.strip():
                     # Buscar en todos los alumnos del profesor
                     try:
@@ -3117,14 +3126,20 @@ else:
                         # Fila: buscador + botón limpiar
                         col_busq, col_limpiar = st.columns([5, 1])
                         with col_busq:
+                            def _on_change_busq_alumnos():
+                                st.session_state.rt_busq_alumnos = st.session_state._input_busq_alumnos
                             texto_busq = st.text_input(
                                 "🔍 Buscar alumno:",
-                                key="busq_alumno_texto",
+                                key="_input_busq_alumnos",
+                                value=st.session_state.rt_busq_alumnos,
                                 placeholder="Escribí una letra para filtrar...",
+                                on_change=_on_change_busq_alumnos,
                             )
+                            texto_busq = st.session_state.rt_busq_alumnos
                         with col_limpiar:
                             st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
                             if st.button("🧹 Limpiar", key="btn_limpiar_busq", use_container_width=True):
+                                st.session_state.rt_busq_alumnos = ""
                                 st.session_state.busq_alumno_texto = ""
                                 st.rerun()
 
@@ -3265,7 +3280,11 @@ else:
                 col_f1, col_f2 = st.columns([2, 1])
                 c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver_sel")
                 filtro_estado = col_f2.selectbox("Filtrar por estado:", ["Todos", "✅ Aprobados", "❌ Desaprobados"], key="filtro_estado_sel")
-                busq_nota = st.text_input("🔍 Buscar alumno:", key="busq_nota_input")
+                busq_nota = st.text_input("🔍 Buscar alumno:", key="busq_nota_input",
+                    value=st.session_state.rt_busq_nota_ver,
+                    placeholder="Escribí para filtrar...",
+                    on_change=lambda: setattr(st.session_state, 'rt_busq_nota_ver', st.session_state.busq_nota_input))
+                busq_nota = st.session_state.rt_busq_nota_ver
                 if c_ver != "---":
                     curso_data = mapa_cursos_data.get(c_ver, {})
                     nota_aprobacion = curso_data.get('nota_aprobacion')
@@ -3348,7 +3367,11 @@ else:
                         st.error(f"Error: {e}")
             else:
                 c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga_sel")
-                busq_carga = st.text_input("🔍 Buscar alumno:", key="busq_carga_input")
+                busq_carga = st.text_input("🔍 Buscar alumno:", key="busq_carga_input",
+                    value=st.session_state.rt_busq_nota_carga,
+                    placeholder="Escribí para filtrar...",
+                    on_change=lambda: setattr(st.session_state, 'rt_busq_nota_carga', st.session_state.busq_carga_input))
+                busq_carga = st.session_state.rt_busq_nota_carga
                 if st.session_state.get('ok_nota_agregada') is not None:
                     st.success(f"✅ Nota {st.session_state.ok_nota_agregada} agregada satisfactoriamente.")
                     st.session_state.ok_nota_agregada = None
@@ -4644,5 +4667,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v357 completa
+# FIN PARTE 2 DE 2 — v358 completa
 # ============================================================
