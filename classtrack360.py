@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v358
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v359
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v358", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v359", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -58,6 +58,12 @@ def init_state():
         'rt_busq_nota_ver': '',
         'rt_busq_nota_carga': '',
         'rt_busq_asistencia': '',
+        # Observaciones de Clases
+        'obs_editando': None,
+        'obs_confirmar_borrar': None,
+        'obs_paso_borrar': 0,
+        'ok_obs_guardada': False,
+        'ok_obs_editada': False,
         'pantalla_login': 'login',
         'editando_tarea': None,
         'editando_tarea_legacy': None,
@@ -1125,11 +1131,140 @@ def dias_desde_ultimo_backup(profesor_id):
         return (ahora - fecha_ub).days
     except: return None
 
+
+# =========================================================
+# --- FUNCIONES DE OBSERVACIONES DE CLASES ---
+# =========================================================
+def get_cuatrimestre_obs(fecha):
+    mes = fecha.month
+    if 3 <= mes <= 6: return 1
+    elif 7 <= mes <= 11: return 2
+    return 0
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_observaciones(profesor_id):
+    try:
+        res = supabase.table("observaciones_clases").select("*").eq("profesor_id", profesor_id).order("fecha", desc=True).execute()
+        return res.data or []
+    except: return []
+
+@st.cache_data(ttl=60, show_spinner=False)
+def get_todas_observaciones():
+    try:
+        res = supabase.table("observaciones_clases").select("*, usuarios(sede, nombre)").order("fecha", desc=True).execute()
+        return res.data or []
+    except: return []
+
+def guardar_observacion(profesor_id, sede, fecha, prof_observado, dia, horario, curso, cuatrimestre, comentarios):
+    try:
+        supabase.table("observaciones_clases").insert({
+            "profesor_id": profesor_id, "sede": sede,
+            "fecha": str(fecha), "prof_observado": prof_observado.strip(),
+            "dia": dia, "horario": horario.strip(),
+            "curso": curso.strip(), "cuatrimestre": cuatrimestre,
+            "comentarios": comentarios.strip() or None,
+        }).execute()
+        get_observaciones.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error al guardar observación: {e}"); return False
+
+def actualizar_observacion(obs_id, fecha, prof_observado, dia, horario, curso, cuatrimestre, comentarios):
+    try:
+        supabase.table("observaciones_clases").update({
+            "fecha": str(fecha), "prof_observado": prof_observado.strip(),
+            "dia": dia, "horario": horario.strip(),
+            "curso": curso.strip(), "cuatrimestre": cuatrimestre,
+            "comentarios": comentarios.strip() or None,
+        }).eq("id", obs_id).execute()
+        get_observaciones.clear(); get_todas_observaciones.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error al actualizar observación: {e}"); return False
+
+def borrar_observacion(obs_id):
+    try:
+        supabase.table("observaciones_clases").delete().eq("id", obs_id).execute()
+        get_observaciones.clear(); get_todas_observaciones.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error al borrar observación: {e}"); return False
+
+def exportar_observaciones_excel(observaciones, sede):
+    wb = openpyxl.Workbook()
+    ws = wb.active; ws.title = "Observaciones"
+    azul = "1A5276"; gris_clr = "F2F2F2"
+    hfont = Font(name="Calibri", bold=True, color="FFFFFF", size=11)
+    hfill = PatternFill("solid", fgColor=azul)
+    halign = Alignment(horizontal="center", vertical="center")
+    nfont = Font(name="Calibri", size=10)
+    thin = Side(style="thin", color="CCCCCC")
+    brd = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ws.merge_cells("A1:G1")
+    ws["A1"] = f"ClassTrack 360 — Observaciones de Clases — Sede: {sede.upper()}"
+    ws["A1"].font = Font(name="Calibri", bold=True, size=13, color="FFFFFF")
+    ws["A1"].fill = hfill; ws["A1"].alignment = halign
+    ws.row_dimensions[1].height = 26
+    headers = ["Fecha", "Cuatrimestre", "Profesor Observado", "Día", "Horario", "Curso", "Comentarios"]
+    col_widths = [14, 24, 25, 14, 14, 28, 45]
+    for ci, (h, w) in enumerate(zip(headers, col_widths), 1):
+        c = ws.cell(row=2, column=ci, value=h)
+        c.font = hfont; c.fill = hfill; c.alignment = halign; c.border = brd
+        ws.column_dimensions[c.column_letter].width = w
+    ws.row_dimensions[2].height = 20
+    for i, obs in enumerate(observaciones, 3):
+        cl = "1° Cuatrimestre (Mar–Jun)" if obs.get('cuatrimestre') == 1 else ("2° Cuatrimestre (Jul–Nov)" if obs.get('cuatrimestre') == 2 else "—")
+        row = [obs.get('fecha',''), cl, obs.get('prof_observado',''), obs.get('dia',''), obs.get('horario',''), obs.get('curso',''), obs.get('comentarios','') or '']
+        for ci, val in enumerate(row, 1):
+            c = ws.cell(row=i, column=ci, value=val)
+            c.font = nfont; c.border = brd
+            c.alignment = Alignment(wrap_text=(ci==7), vertical="top")
+            if i % 2 == 0: c.fill = PatternFill("solid", fgColor=gris_clr)
+        ws.row_dimensions[i].height = 16
+    buf = io.BytesIO(); wb.save(buf); return buf.getvalue()
+
+def exportar_observaciones_pdf(observaciones, sede):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.5*cm, leftMargin=1.5*cm, topMargin=2*cm, bottomMargin=2*cm)
+    styles = getSampleStyleSheet()
+    azul = colors.HexColor('#1a5276'); gris_pdf = colors.HexColor('#f2f2f2'); gris_txt = colors.HexColor('#555555')
+    e_tit = ParagraphStyle('t', parent=styles['Normal'], fontSize=16, fontName='Helvetica-Bold', textColor=azul, spaceAfter=4, alignment=TA_CENTER)
+    e_sub = ParagraphStyle('s', parent=styles['Normal'], fontSize=10, fontName='Helvetica', textColor=gris_txt, spaceAfter=14, alignment=TA_CENTER)
+    e_sec = ParagraphStyle('sc', parent=styles['Normal'], fontSize=12, fontName='Helvetica-Bold', textColor=azul, spaceBefore=14, spaceAfter=6)
+    e_sm = ParagraphStyle('sm', parent=styles['Normal'], fontSize=8, fontName='Helvetica', textColor=gris_txt)
+    story = [
+        Paragraph("ClassTrack 360", e_tit),
+        Paragraph(f"Observaciones de Clases — Sede: {sede.upper()}", e_sub),
+        Paragraph(f"Generado el {datetime.date.today().strftime('%d/%m/%Y')}", e_sm),
+        HRFlowable(width="100%", thickness=2, color=azul, spaceAfter=12),
+    ]
+    obs_c1 = [o for o in observaciones if o.get('cuatrimestre') == 1]
+    obs_c2 = [o for o in observaciones if o.get('cuatrimestre') == 2]
+    obs_otro = [o for o in observaciones if o.get('cuatrimestre') not in (1, 2)]
+    for label, grupo in [("1° Cuatrimestre (Marzo – Junio)", obs_c1), ("2° Cuatrimestre (Julio – Noviembre)", obs_c2), ("Sin cuatrimestre asignado", obs_otro)]:
+        if not grupo: continue
+        story.append(Paragraph(label, e_sec))
+        rows = [["Fecha", "Profesor Observado", "Día", "Horario", "Curso", "Comentarios"]]
+        for obs in grupo:
+            rows.append([obs.get('fecha',''), obs.get('prof_observado',''), obs.get('dia',''), obs.get('horario',''), obs.get('curso',''), Paragraph(obs.get('comentarios','') or '—', e_sm)])
+        t = Table(rows, colWidths=[2*cm, 4*cm, 2.2*cm, 2.2*cm, 3.5*cm, 4.6*cm])
+        t.setStyle(TableStyle([
+            ('BACKGROUND',(0,0),(-1,0),azul), ('TEXTCOLOR',(0,0),(-1,0),colors.white),
+            ('FONTNAME',(0,0),(-1,0),'Helvetica-Bold'), ('FONTSIZE',(0,0),(-1,-1),8),
+            ('ALIGN',(0,0),(-1,-1),'LEFT'), ('VALIGN',(0,0),(-1,-1),'TOP'),
+            ('GRID',(0,0),(-1,-1),0.4,colors.grey),
+            ('ROWBACKGROUNDS',(0,1),(-1,-1),[colors.white, gris_pdf]),
+            ('TOPPADDING',(0,0),(-1,-1),4), ('BOTTOMPADDING',(0,0),(-1,-1),4),
+        ]))
+        story.append(t); story.append(Spacer(1, 10))
+    doc.build(story); buffer.seek(0); return buffer.read()
+
+
 def generar_datos_backup(profesor_id, sede):
     """Recolecta todos los datos del profesor para el backup."""
     datos = {
         "meta": {
-            "version": "357",
+            "version": "359",
             "sede": sede,
             "fecha_backup": datetime.datetime.now().isoformat(),
         },
@@ -2180,7 +2315,7 @@ else:
         st.session_state._invalidar_cursos = False
 
     # Índice de tabs — si volvemos de "hacer backup antes de salir"
-    tab_default = 11 if st.session_state.get('_ir_a_backup') else 0
+    tab_default = 14 if st.session_state.get('_ir_a_backup') else 0
     if st.session_state.get('_ir_a_backup'):
         st.session_state._ir_a_backup = False
 
@@ -2196,6 +2331,7 @@ else:
         "🔢 Contador de Clases",
         "🏗️ Cursos",
         f"📆 Calendario Académico {ANIO_ACTUAL}",
+        "👁️ Observaciones de Clases",
         "🗓️ Calendario Oficial",
         "🖨️ Impresión",
         "🗄️ Backup",
@@ -3711,10 +3847,194 @@ else:
         st.subheader(f"📆 Calendario Académico {ANIO_ACTUAL}")
         render_seccion_calendario(u_data['sede'])
 
+
+    # =========================================================
+    # TAB 11 — OBSERVACIONES DE CLASES
+    # =========================================================
+    with tabs[11]:
+        st.subheader("👁️ Observaciones de Clases")
+        sede_obs = u_data['sede']
+
+        # Mensajes de éxito
+        if st.session_state.get('ok_obs_guardada'):
+            st.success("✅ Observación guardada correctamente.")
+            st.session_state.ok_obs_guardada = False
+        if st.session_state.get('ok_obs_editada'):
+            st.success("✅ Observación actualizada correctamente.")
+            st.session_state.ok_obs_editada = False
+
+        # ── FORMULARIO DE CARGA ──────────────────────────────
+        with st.expander("➕ Registrar nueva observación", expanded=False):
+            with st.form("form_obs_nueva", clear_on_submit=True):
+                col_o1, col_o2 = st.columns(2)
+                fecha_obs = col_o1.date_input("📆 Fecha de la observación:", value=datetime.date.today(), format="DD/MM/YYYY", key="obs_fecha")
+                dia_obs = col_o2.selectbox("📅 Día:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"], key="obs_dia")
+                prof_obs = st.text_input("👤 Nombre del profesor observado:", placeholder="Ej: García, María", key="obs_prof")
+                col_o3, col_o4 = st.columns(2)
+                horario_obs = col_o3.text_input("🕐 Horario:", placeholder="Ej: 08:00 → 10:00", key="obs_horario")
+                cuatri_auto = get_cuatrimestre_obs(datetime.date.today())
+                opciones_cuatri = ["1° Cuatrimestre (Mar–Jun)", "2° Cuatrimestre (Jul–Nov)"]
+                cuatri_default = 0 if cuatri_auto in (1, 0) else 1
+                cuatri_sel_obs = col_o4.selectbox("📚 Cuatrimestre:", opciones_cuatri, index=cuatri_default, key="obs_cuatri")
+                curso_obs = st.text_input("📋 Nombre del curso:", placeholder="Ej: Matemática 3° B", key="obs_curso")
+                comentarios_obs = st.text_area("💬 Comentarios / Conclusiones (opcional):", placeholder="Observaciones generales, aspectos destacados, sugerencias...", height=120, key="obs_comentarios")
+                if st.form_submit_button("💾 Guardar Observación", use_container_width=True):
+                    if not prof_obs.strip():
+                        st.error("El nombre del profesor observado es obligatorio.")
+                    elif not curso_obs.strip():
+                        st.error("El nombre del curso es obligatorio.")
+                    elif not horario_obs.strip():
+                        st.error("El horario es obligatorio.")
+                    else:
+                        cuatri_num = 1 if cuatri_sel_obs.startswith("1°") else 2
+                        if guardar_observacion(u_data['id'], sede_obs, fecha_obs, prof_obs, dia_obs, horario_obs, curso_obs, cuatri_num, comentarios_obs):
+                            st.session_state.ok_obs_guardada = True
+                            st.rerun()
+
+        # ── LISTADO DE OBSERVACIONES ─────────────────────────
+        try:
+            observaciones = get_observaciones(u_data['id'])
+        except Exception as e_obs_load:
+            st.error(f"Error al cargar observaciones: {e_obs_load}")
+            observaciones = []
+
+        if not observaciones:
+            st.markdown('''<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+                border-radius:12px;padding:24px;text-align:center;color:#778;margin-top:16px;">
+                📭 Todavía no hay observaciones registradas.<br>
+                <span style="font-size:0.85rem">Usá el panel de arriba para agregar la primera.</span>
+            </div>''', unsafe_allow_html=True)
+        else:
+            # Exportaciones
+            if EXCEL_OK or True:
+                col_ex1, col_ex2 = st.columns(2)
+                with col_ex1:
+                    if EXCEL_OK:
+                        excel_obs = exportar_observaciones_excel(observaciones, sede_obs)
+                        st.download_button("📥 Exportar Excel", data=excel_obs,
+                            file_name=f"Observaciones_{sede_obs}.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                            use_container_width=True)
+                with col_ex2:
+                    pdf_obs = exportar_observaciones_pdf(observaciones, sede_obs)
+                    st.download_button("📄 Exportar PDF", data=pdf_obs,
+                        file_name=f"Observaciones_{sede_obs}.pdf",
+                        mime="application/pdf",
+                        use_container_width=True)
+
+            st.markdown(f'<div style="color:#778;font-size:0.82rem;margin:12px 0 4px;">{len(observaciones)} observación/es registrada/s</div>', unsafe_allow_html=True)
+
+            # Agrupar por cuatrimestre
+            obs_c1 = [o for o in observaciones if o.get('cuatrimestre') == 1]
+            obs_c2 = [o for o in observaciones if o.get('cuatrimestre') == 2]
+            obs_otro = [o for o in observaciones if o.get('cuatrimestre') not in (1, 2)]
+
+            def _render_obs_grupo(grupo, key_prefix):
+                for obs in grupo:
+                    obs_id = obs['id']
+                    fecha_fmt = datetime.date.fromisoformat(obs['fecha']).strftime('%d/%m/%Y') if obs.get('fecha') else '—'
+
+                    # Confirmación doble de borrado
+                    if st.session_state.get('obs_confirmar_borrar') == obs_id:
+                        paso = st.session_state.get('obs_paso_borrar', 0)
+                        if paso == 1:
+                            st.markdown(f'<div class="advertencia-box">⚠️ <b>Primera confirmación</b> — ¿Borrar la observación del <b>{fecha_fmt}</b> ({obs.get("prof_observado","")})? Esta acción no se puede deshacer.</div>', unsafe_allow_html=True)
+                            c1b, c2b = st.columns(2)
+                            if c1b.button("⚠️ SÍ, CONTINUAR", key=f"obs_conf1_{obs_id}", type="primary", use_container_width=True):
+                                st.session_state.obs_paso_borrar = 2; st.rerun()
+                            if c2b.button("❌ CANCELAR", key=f"obs_canc1_{obs_id}", use_container_width=True):
+                                st.session_state.obs_confirmar_borrar = None
+                                st.session_state.obs_paso_borrar = 0; st.rerun()
+                        elif paso == 2:
+                            st.markdown(f'<div class="advertencia-box">🔴 <b>ÚLTIMA CONFIRMACIÓN</b> — ¿Borrar definitivamente esta observación?</div>', unsafe_allow_html=True)
+                            c1b, c2b = st.columns(2)
+                            if c1b.button("🗑️ BORRAR DEFINITIVAMENTE", key=f"obs_conf2_{obs_id}", type="primary", use_container_width=True):
+                                if borrar_observacion(obs_id):
+                                    st.session_state.obs_confirmar_borrar = None
+                                    st.session_state.obs_paso_borrar = 0
+                                    st.success("✅ Observación eliminada."); st.rerun()
+                            if c2b.button("❌ CANCELAR", key=f"obs_canc2_{obs_id}", use_container_width=True):
+                                st.session_state.obs_confirmar_borrar = None
+                                st.session_state.obs_paso_borrar = 0; st.rerun()
+                        continue
+
+                    # Modo edición
+                    if st.session_state.get('obs_editando') == obs_id:
+                        with st.form(f"form_obs_edit_{obs_id}", clear_on_submit=False):
+                            st.markdown(f"**✏️ Editando observación del {fecha_fmt}**")
+                            col_e1, col_e2 = st.columns(2)
+                            fecha_e = col_e1.date_input("Fecha:", value=datetime.date.fromisoformat(obs['fecha']), format="DD/MM/YYYY", key=f"oe_fecha_{obs_id}")
+                            dia_e = col_e2.selectbox("Día:", ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"],
+                                index=["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"].index(obs.get('dia','Lunes')) if obs.get('dia') in ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"] else 0,
+                                key=f"oe_dia_{obs_id}")
+                            prof_e = st.text_input("Profesor observado:", value=obs.get('prof_observado',''), key=f"oe_prof_{obs_id}")
+                            col_e3, col_e4 = st.columns(2)
+                            horario_e = col_e3.text_input("Horario:", value=obs.get('horario',''), key=f"oe_hora_{obs_id}")
+                            opciones_cuatri_e = ["1° Cuatrimestre (Mar–Jun)", "2° Cuatrimestre (Jul–Nov)"]
+                            cuatri_idx_e = 0 if obs.get('cuatrimestre', 1) == 1 else 1
+                            cuatri_e = col_e4.selectbox("Cuatrimestre:", opciones_cuatri_e, index=cuatri_idx_e, key=f"oe_cuatri_{obs_id}")
+                            curso_e = st.text_input("Curso:", value=obs.get('curso',''), key=f"oe_curso_{obs_id}")
+                            coment_e = st.text_area("Comentarios:", value=obs.get('comentarios','') or '', height=100, key=f"oe_coment_{obs_id}")
+                            col_ge, col_ce = st.columns(2)
+                            if col_ge.form_submit_button("💾 Guardar", use_container_width=True):
+                                cuatri_num_e = 1 if cuatri_e.startswith("1°") else 2
+                                if actualizar_observacion(obs_id, fecha_e, prof_e, dia_e, horario_e, curso_e, cuatri_num_e, coment_e):
+                                    st.session_state.obs_editando = None
+                                    st.session_state.ok_obs_editada = True; st.rerun()
+                            if col_ce.form_submit_button("❌ Cancelar", use_container_width=True):
+                                st.session_state.obs_editando = None; st.rerun()
+                        continue
+
+                    # Vista normal de la card
+                    comentarios_html = f'<div style="color:#aaa;font-size:0.85rem;margin-top:8px;border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;">{obs.get("comentarios","")}</div>' if obs.get('comentarios') else ''
+                    st.markdown(f'''<div style="background:rgba(79,172,254,0.06);border:1px solid rgba(79,172,254,0.2);
+                        border-radius:12px;padding:14px 18px;margin-bottom:10px;">
+                        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;">
+                            <div>
+                                <div style="color:#4facfe;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">
+                                    📅 {fecha_fmt} &nbsp;·&nbsp; {obs.get("dia","—")} &nbsp;·&nbsp; 🕐 {obs.get("horario","—")}
+                                </div>
+                                <div style="font-size:1rem;font-weight:700;margin-bottom:2px;">👤 {obs.get("prof_observado","—")}</div>
+                                <div style="color:#99a;font-size:0.85rem;">📋 {obs.get("curso","—")}</div>
+                            </div>
+                        </div>
+                        {comentarios_html}
+                    </div>''', unsafe_allow_html=True)
+                    col_act1, col_act2 = st.columns([1, 1])
+                    with col_act1:
+                        if st.button("✏️ Editar", key=f"obs_edit_{key_prefix}_{obs_id}", use_container_width=True):
+                            st.session_state.obs_editando = obs_id; st.rerun()
+                    with col_act2:
+                        if st.button("🗑️ Borrar", key=f"obs_del_{key_prefix}_{obs_id}", use_container_width=True):
+                            st.session_state.obs_confirmar_borrar = obs_id
+                            st.session_state.obs_paso_borrar = 1; st.rerun()
+
+            # Mostrar por cuatrimestre
+            cuatri_tab1, cuatri_tab2 = st.tabs([
+                f"📘 1° Cuatrimestre (Mar–Jun) · {len(obs_c1)}",
+                f"📗 2° Cuatrimestre (Jul–Nov) · {len(obs_c2)}",
+            ])
+            with cuatri_tab1:
+                if not obs_c1:
+                    st.info("No hay observaciones registradas para el 1° cuatrimestre.")
+                else:
+                    _render_obs_grupo(obs_c1, "c1")
+            with cuatri_tab2:
+                if not obs_c2:
+                    st.info("No hay observaciones registradas para el 2° cuatrimestre.")
+                else:
+                    _render_obs_grupo(obs_c2, "c2")
+            if obs_otro:
+                with st.expander(f"⚠️ Sin cuatrimestre asignado ({len(obs_otro)})"):
+                    _render_obs_grupo(obs_otro, "otro")
+
+        footer()
+
+
     # =========================================================
     # TAB 10 — CALENDARIO OFICIAL
     # =========================================================
-    with tabs[11]:
+    with tabs[12]:
         st.subheader("🗓️ Calendario Oficial")
         sede_cal = u_data['sede']
         url_actual = get_url_calendario_oficial(sede_cal)
@@ -3761,7 +4081,7 @@ else:
     # =========================================================
     # TAB 11 — IMPRESIÓN
     # =========================================================
-    with tabs[12]:
+    with tabs[13]:
         st.subheader("🖨️ Impresión y Exportación")
         if not mapa_cursos:
             no_encontrado("No tenés cursos creados.")
@@ -3815,7 +4135,7 @@ else:
     # =========================================================
     # TAB 10 — BACKUP
     # =========================================================
-    with tabs[13]:
+    with tabs[14]:
         st.subheader("🗄️ Backup y Restauración")
 
         st.markdown('''<div class="backup-aviso">
@@ -4393,7 +4713,7 @@ else:
     # =========================================================
     # TAB 12 — MANTENIMIENTO
     # =========================================================
-    with tabs[14]:
+    with tabs[15]:
         st.subheader("🔧 Mantenimiento de Base de Datos")
 
         # ── SECCIÓN 1: ESTADO DE LA BASE ──────────────────────
@@ -4667,5 +4987,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v358 completa
+# FIN PARTE 2 DE 2 — v359 completa
 # ============================================================
