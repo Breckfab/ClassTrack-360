@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v359
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v360
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v359", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v360", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -521,22 +521,35 @@ def get_total_clases_sidebar(profesor_id):
     except: return 0
 
 DIAS_SEMANA_MAP = {
-    'lunes': 0, 'martes': 1, 'miércoles': 2, 'miercoles': 2,
-    'jueves': 3, 'viernes': 4, 'sábado': 5, 'sabado': 5, 'domingo': 6
+    'lunes': 0, 'lun': 0, 'lu': 0,
+    'martes': 1, 'mar': 1, 'ma': 1,
+    'miércoles': 2, 'miercoles': 2, 'mié': 2, 'mie': 2, 'mi': 2,
+    'jueves': 3, 'jue': 3, 'ju': 3,
+    'viernes': 4, 'vie': 4, 'vi': 4,
+    'sábado': 5, 'sabado': 5, 'sáb': 5, 'sab': 5, 'sa': 5,
+    'domingo': 6, 'dom': 6, 'do': 6,
 }
 DIAS_SEMANA_ES = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
 MESES_ES_LARGO = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre']
 MESES_ES = ["Enero","Febrero","Marzo","Abril","Mayo","Junio","Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"]
 
 def extraer_dias_curso(nombre_curso):
+    """Extrae los días de la semana del nombre del curso.
+    Soporta formato: Nombre (Lunes, Miércoles) | HH:MM -> HH:MM
+    También intenta detectar días separados por / o espacios como fallback."""
     dias = []
     try:
         if '(' in nombre_curso and ')' in nombre_curso:
             parte = nombre_curso.split('(')[1].split(')')[0]
-            for token in parte.split(','):
-                t = normalizar(token.strip())  # sin tildes, minúsculas
-                if t in DIAS_SEMANA_MAP:
-                    dias.append(DIAS_SEMANA_MAP[t])
+            # Intentar separar por coma, luego por slash, luego por espacio
+            for sep in [',', '/', ' ']:
+                tokens = [t.strip() for t in parte.split(sep) if t.strip()]
+                for token in tokens:
+                    t = normalizar(token)
+                    if t in DIAS_SEMANA_MAP:
+                        dias.append(DIAS_SEMANA_MAP[t])
+                if dias:
+                    break
     except: pass
     return sorted(set(dias))
 
@@ -1159,9 +1172,12 @@ def guardar_observacion(profesor_id, sede, fecha, prof_observado, dia, horario, 
     try:
         supabase.table("observaciones_clases").insert({
             "profesor_id": profesor_id, "sede": sede,
-            "fecha": str(fecha), "prof_observado": prof_observado.strip(),
-            "dia": dia, "horario": horario.strip(),
-            "curso": curso.strip(), "cuatrimestre": cuatrimestre,
+            "fecha": str(fecha) if fecha else None,
+            "prof_observado": prof_observado.strip(),
+            "dia": dia or None,
+            "horario": horario.strip() if horario else None,
+            "curso": curso.strip() if curso else None,
+            "cuatrimestre": cuatrimestre,
             "comentarios": comentarios.strip() or None,
         }).execute()
         get_observaciones.clear()
@@ -1264,7 +1280,7 @@ def generar_datos_backup(profesor_id, sede):
     """Recolecta todos los datos del profesor para el backup."""
     datos = {
         "meta": {
-            "version": "359",
+            "version": "360",
             "sede": sede,
             "fecha_backup": datetime.datetime.now().isoformat(),
         },
@@ -2217,6 +2233,19 @@ else:
         st.caption(tipo_sistema)
         st.write(f"📅 {f_hoy.strftime('%d/%m/%Y')}")
         components.html("""<div style="color:#4facfe;font-family:monospace;font-size:24px;text-align:center;"><div id="c">00:00:00</div></div><script>setInterval(()=>{document.getElementById('c').innerText=new Date().toLocaleTimeString('es-AR',{hour12:false})},1000);</script>""", height=50)
+        # Keep-alive: ping cada 4 minutos para evitar cierre de sesión por inactividad
+        components.html("""<script>
+        (function(){
+            function ping(){
+                try {
+                    var xhr = new XMLHttpRequest();
+                    xhr.open('GET', window.location.href, true);
+                    xhr.send();
+                } catch(e){}
+            }
+            setInterval(ping, 240000);
+        })();
+        </script>""", height=0)
         # Toggle modo claro/oscuro
         label_tema = "☀️ Modo claro" if not st.session_state.modo_claro else "🌙 Modo oscuro"
         if st.button(label_tema, key="btn_tema", use_container_width=True):
@@ -2406,6 +2435,28 @@ else:
 
             # ── PANEL: CLASES DE HOY ──────────────────────────
             clases_hoy_agenda = get_clases_hoy(u_data['id'], mapa_cursos, mapa_cursos_data)
+
+            # Advertencia: cursos sin días detectados
+            cursos_sin_dias = []
+            for nombre_curso, curso_data in mapa_cursos_data.items():
+                nombre_en_bd = curso_data.get('nombre_curso_materia', nombre_curso)
+                dias_det = extraer_dias_curso(nombre_en_bd)
+                if not dias_det:
+                    dias_det = extraer_dias_curso(nombre_curso)
+                if not dias_det:
+                    cursos_sin_dias.append(extraer_nombre_limpio(nombre_en_bd))
+            if cursos_sin_dias:
+                with st.expander(f"⚠️ {len(cursos_sin_dias)} curso/s sin días configurados", expanded=True):
+                    st.markdown(f'''<div style="background:rgba(255,193,7,0.10);border:1px solid rgba(255,193,7,0.4);
+                        border-radius:10px;padding:12px 16px;">
+                        <b style="color:#ffc107;">⚠️ Los siguientes cursos no tienen días de clase detectados</b><br>
+                        <span style="color:#aaa;font-size:0.85rem;">Para que aparezcan en Agenda y Clases no registradas, el nombre debe incluir los días entre paréntesis.<br>
+                        Ejemplo: <code>TEENS 2 (Martes, Miércoles, Viernes) | 18:00 -> 20:00</code></span>
+                        <ul style="margin-top:8px;color:#e8eaf0;">
+                        {"".join(f"<li>{c}</li>" for c in cursos_sin_dias)}
+                        </ul>
+                    </div>''', unsafe_allow_html=True)
+                    st.caption("Editá el nombre del curso en la pestaña 🏗️ Cursos para incluir los días.")
             if not clases_hoy_agenda:
                 st.markdown('''<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
                     border-radius:12px;padding:14px 20px;margin-bottom:16px;text-align:center;color:#888;font-size:0.95rem;">
@@ -3866,28 +3917,30 @@ else:
         # ── FORMULARIO DE CARGA ──────────────────────────────
         with st.expander("➕ Registrar nueva observación", expanded=False):
             with st.form("form_obs_nueva", clear_on_submit=True):
+                prof_obs = st.text_input("👤 Nombre del profesor observado: *", placeholder="Ej: García, María (único campo obligatorio)", key="obs_prof")
                 col_o1, col_o2 = st.columns(2)
-                fecha_obs = col_o1.date_input("📆 Fecha de la observación:", value=datetime.date.today(), format="DD/MM/YYYY", key="obs_fecha")
-                dia_obs = col_o2.selectbox("📅 Día:", ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"], key="obs_dia")
-                prof_obs = st.text_input("👤 Nombre del profesor observado:", placeholder="Ej: García, María", key="obs_prof")
+                completar_fecha = col_o1.checkbox("📆 Completar fecha ahora", value=True, key="obs_check_fecha")
+                dia_obs = col_o2.selectbox("📅 Día:", ["—", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"], key="obs_dia")
+                fecha_obs = None
+                if completar_fecha:
+                    fecha_obs = st.date_input("Fecha de la observación:", value=datetime.date.today(), format="DD/MM/YYYY", key="obs_fecha")
+                else:
+                    st.caption("📌 Podés completar la fecha más tarde editando la observación.")
                 col_o3, col_o4 = st.columns(2)
-                horario_obs = col_o3.text_input("🕐 Horario:", placeholder="Ej: 08:00 → 10:00", key="obs_horario")
+                horario_obs = col_o3.text_input("🕐 Horario (opcional):", placeholder="Ej: 08:00 → 10:00", key="obs_horario")
                 cuatri_auto = get_cuatrimestre_obs(datetime.date.today())
                 opciones_cuatri = ["1° Cuatrimestre (Mar–Jun)", "2° Cuatrimestre (Jul–Nov)"]
                 cuatri_default = 0 if cuatri_auto in (1, 0) else 1
                 cuatri_sel_obs = col_o4.selectbox("📚 Cuatrimestre:", opciones_cuatri, index=cuatri_default, key="obs_cuatri")
-                curso_obs = st.text_input("📋 Nombre del curso:", placeholder="Ej: Matemática 3° B", key="obs_curso")
+                curso_obs = st.text_input("📋 Nombre del curso (opcional):", placeholder="Completá con el nombre del curso", key="obs_curso")
                 comentarios_obs = st.text_area("💬 Comentarios / Conclusiones (opcional):", placeholder="Observaciones generales, aspectos destacados, sugerencias...", height=120, key="obs_comentarios")
                 if st.form_submit_button("💾 Guardar Observación", use_container_width=True):
                     if not prof_obs.strip():
-                        st.error("El nombre del profesor observado es obligatorio.")
-                    elif not curso_obs.strip():
-                        st.error("El nombre del curso es obligatorio.")
-                    elif not horario_obs.strip():
-                        st.error("El horario es obligatorio.")
+                        st.error("⚠️ El nombre del profesor observado es el único campo obligatorio.")
                     else:
                         cuatri_num = 1 if cuatri_sel_obs.startswith("1°") else 2
-                        if guardar_observacion(u_data['id'], sede_obs, fecha_obs, prof_obs, dia_obs, horario_obs, curso_obs, cuatri_num, comentarios_obs):
+                        dia_val = dia_obs if dia_obs != "—" else ""
+                        if guardar_observacion(u_data['id'], sede_obs, fecha_obs, prof_obs, dia_val, horario_obs, curso_obs, cuatri_num, comentarios_obs):
                             st.session_state.ok_obs_guardada = True
                             st.rerun()
 
@@ -4987,5 +5040,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v359 completa
+# FIN PARTE 2 DE 2 — v360 completa
 # ============================================================
