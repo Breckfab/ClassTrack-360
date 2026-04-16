@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v360
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v361
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v360", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v361", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1174,9 +1174,9 @@ def guardar_observacion(profesor_id, sede, fecha, prof_observado, dia, horario, 
             "profesor_id": profesor_id, "sede": sede,
             "fecha": str(fecha) if fecha else None,
             "prof_observado": prof_observado.strip(),
-            "dia": dia or None,
-            "horario": horario.strip() if horario else None,
-            "curso": curso.strip() if curso else None,
+            "dia": dia if dia else "",
+            "horario": horario.strip() if horario else "",
+            "curso": curso.strip() if curso and curso.strip() else "(pendiente)",
             "cuatrimestre": cuatrimestre,
             "comentarios": comentarios.strip() or None,
         }).execute()
@@ -1188,9 +1188,12 @@ def guardar_observacion(profesor_id, sede, fecha, prof_observado, dia, horario, 
 def actualizar_observacion(obs_id, fecha, prof_observado, dia, horario, curso, cuatrimestre, comentarios):
     try:
         supabase.table("observaciones_clases").update({
-            "fecha": str(fecha), "prof_observado": prof_observado.strip(),
-            "dia": dia, "horario": horario.strip(),
-            "curso": curso.strip(), "cuatrimestre": cuatrimestre,
+            "fecha": str(fecha) if fecha else None,
+            "prof_observado": prof_observado.strip(),
+            "dia": dia if dia else "",
+            "horario": horario.strip() if horario else "",
+            "curso": curso.strip() if curso and curso.strip() else "(pendiente)",
+            "cuatrimestre": cuatrimestre,
             "comentarios": comentarios.strip() or None,
         }).eq("id", obs_id).execute()
         get_observaciones.clear(); get_todas_observaciones.clear()
@@ -1280,7 +1283,7 @@ def generar_datos_backup(profesor_id, sede):
     """Recolecta todos los datos del profesor para el backup."""
     datos = {
         "meta": {
-            "version": "360",
+            "version": "361",
             "sede": sede,
             "fecha_backup": datetime.datetime.now().isoformat(),
         },
@@ -5040,5 +5043,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v360 completa
+# FIN PARTE 2 DE 2 — v361 completa
 # ============================================================
