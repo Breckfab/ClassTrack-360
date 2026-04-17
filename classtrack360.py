@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v363
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v364
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v363", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v364", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -3928,9 +3928,7 @@ else:
                 col_o1, col_o2 = st.columns(2)
                 completar_fecha = col_o1.checkbox("📆 Completar fecha ahora", value=False, key="obs_check_fecha")
                 dia_obs = col_o2.selectbox("📅 Día:", ["—", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"], key="obs_dia")
-                fecha_obs = None
-                if completar_fecha:
-                    fecha_obs = st.date_input("Fecha de la observación:", value=datetime.date.today(), format="DD/MM/YYYY", key="obs_fecha")
+                fecha_obs = col_o1.date_input("Fecha de la observación:", value=datetime.date.today(), format="DD/MM/YYYY", key="obs_fecha") if completar_fecha else None
                 col_o3, col_o4 = st.columns(2)
                 horario_obs = col_o3.text_input("🕐 Horario (opcional):", placeholder="Ej: 08:00 → 10:00", key="obs_horario")
                 cuatri_auto = get_cuatrimestre_obs(datetime.date.today())
@@ -3939,7 +3937,8 @@ else:
                 cuatri_sel_obs = col_o4.selectbox("📚 Cuatrimestre:", opciones_cuatri, index=cuatri_default, key="obs_cuatri")
                 curso_obs = st.text_input("📋 Nombre del curso (opcional):", placeholder="Completá con el nombre del curso", key="obs_curso")
                 comentarios_obs = st.text_area("💬 Comentarios / Conclusiones (opcional):", placeholder="Observaciones generales, aspectos destacados, sugerencias...", height=120, key="obs_comentarios")
-                if st.form_submit_button("💾 Guardar Observación", use_container_width=True):
+                submitted_obs = st.form_submit_button("💾 Guardar Observación", use_container_width=True)
+                if submitted_obs:
                     if not prof_obs.strip():
                         st.error("⚠️ El nombre del profesor observado es obligatorio.")
                     else:
@@ -4019,11 +4018,12 @@ else:
                     # Modo edición
                     if st.session_state.get('obs_editando') == obs_id:
                         with st.form(f"form_obs_edit_{obs_id}", clear_on_submit=False):
-                            st.markdown(f"**✏️ Editando observación del {fecha_fmt}**")
+                            st.markdown(f"**✏️ Editando: {obs.get('prof_observado','—')}**")
                             col_e1, col_e2 = st.columns(2)
-                            fecha_e = col_e1.date_input("Fecha:", value=datetime.date.fromisoformat(obs['fecha']), format="DD/MM/YYYY", key=f"oe_fecha_{obs_id}")
-                            dia_e = col_e2.selectbox("Día:", ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"],
-                                index=["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"].index(obs.get('dia','Lunes')) if obs.get('dia') in ["Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"] else 0,
+                            fecha_val_e = datetime.date.fromisoformat(obs['fecha']) if obs.get('fecha') else datetime.date.today()
+                            fecha_e = col_e1.date_input("Fecha:", value=fecha_val_e, format="DD/MM/YYYY", key=f"oe_fecha_{obs_id}")
+                            dia_e = col_e2.selectbox("Día:", ["—", "Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"],
+                                index=(["—","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"].index(obs.get('dia','—')) if obs.get('dia') in ["—","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"] else 0),
                                 key=f"oe_dia_{obs_id}")
                             prof_e = st.text_input("Profesor observado:", value=obs.get('prof_observado',''), key=f"oe_prof_{obs_id}")
                             col_e3, col_e4 = st.columns(2)
@@ -4034,12 +4034,15 @@ else:
                             curso_e = st.text_input("Curso:", value=obs.get('curso',''), key=f"oe_curso_{obs_id}")
                             coment_e = st.text_area("Comentarios:", value=obs.get('comentarios','') or '', height=100, key=f"oe_coment_{obs_id}")
                             col_ge, col_ce = st.columns(2)
-                            if col_ge.form_submit_button("💾 Guardar", use_container_width=True):
+                            guardar_e = col_ge.form_submit_button("💾 Guardar", use_container_width=True)
+                            cancelar_e = col_ce.form_submit_button("❌ Cancelar", use_container_width=True)
+                            if guardar_e:
                                 cuatri_num_e = 1 if cuatri_e.startswith("1°") else 2
-                                if actualizar_observacion(obs_id, fecha_e, prof_e, dia_e, horario_e, curso_e, cuatri_num_e, coment_e):
+                                fecha_guardar_e = fecha_e if fecha_e else None
+                                if actualizar_observacion(obs_id, fecha_guardar_e, prof_e, dia_e if dia_e != "—" else "", horario_e, curso_e, cuatri_num_e, coment_e):
                                     st.session_state.obs_editando = None
                                     st.session_state.ok_obs_editada = True; st.rerun()
-                            if col_ce.form_submit_button("❌ Cancelar", use_container_width=True):
+                            if cancelar_e:
                                 st.session_state.obs_editando = None; st.rerun()
                         continue
 
@@ -5045,5 +5048,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v363 completa
+# FIN PARTE 2 DE 2 — v364 completa
 # ============================================================
