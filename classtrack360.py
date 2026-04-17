@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v364
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v365
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v364", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v365", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -1157,15 +1157,28 @@ def get_cuatrimestre_obs(fecha):
 @st.cache_data(ttl=60, show_spinner=False)
 def get_observaciones(profesor_id):
     try:
-        res = supabase.table("observaciones_clases").select("*").eq("profesor_id", profesor_id).order("created_at", desc=True).execute()
-        return res.data or []
+        res = supabase.table("observaciones_clases").select("*").eq("profesor_id", profesor_id).execute()
+        datos = res.data or []
+        # Ordenar: primero por cuatrimestre, luego por fecha (None al final)
+        def sort_key(o):
+            c = o.get('cuatrimestre') or 9
+            f = o.get('fecha') or 'zzzz'
+            return (c, f)
+        datos.sort(key=sort_key)
+        return datos
     except: return []
 
 @st.cache_data(ttl=60, show_spinner=False)
 def get_todas_observaciones():
     try:
-        res = supabase.table("observaciones_clases").select("*, usuarios(sede, nombre)").order("created_at", desc=True).execute()
-        return res.data or []
+        res = supabase.table("observaciones_clases").select("*, usuarios(sede, nombre)").execute()
+        datos = res.data or []
+        def sort_key(o):
+            c = o.get('cuatrimestre') or 9
+            f = o.get('fecha') or 'zzzz'
+            return (c, f)
+        datos.sort(key=sort_key)
+        return datos
     except: return []
 
 def guardar_observacion(profesor_id, sede, fecha, prof_observado, dia, horario, curso, cuatrimestre, comentarios):
@@ -3989,7 +4002,17 @@ else:
             def _render_obs_grupo(grupo, key_prefix):
                 for obs in grupo:
                     obs_id = obs['id']
-                    fecha_fmt = datetime.date.fromisoformat(obs['fecha']).strftime('%d/%m/%Y') if obs.get('fecha') else '—'
+                    fecha_fmt = datetime.date.fromisoformat(obs['fecha']).strftime('%d/%m/%Y') if obs.get('fecha') else '📌 Sin fecha asignada aún'
+                    dia_fmt = obs.get('dia','') or ''
+                    horario_fmt = obs.get('horario','') or ''
+                    curso_fmt = obs.get('curso','') or ''
+
+                    # Línea de metadata solo con lo que tiene valor
+                    meta_partes = []
+                    meta_partes.append(fecha_fmt)
+                    if dia_fmt: meta_partes.append(dia_fmt)
+                    if horario_fmt: meta_partes.append(f"🕐 {horario_fmt}")
+                    meta_str = ' &nbsp;·&nbsp; '.join(meta_partes)
 
                     # Confirmación doble de borrado
                     if st.session_state.get('obs_confirmar_borrar') == obs_id:
@@ -4048,15 +4071,16 @@ else:
 
                     # Vista normal de la card
                     comentarios_html = f'<div style="color:#aaa;font-size:0.85rem;margin-top:8px;border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;">{obs.get("comentarios","")}</div>' if obs.get('comentarios') else ''
+                    curso_html = f'<div style="color:#99a;font-size:0.85rem;">📋 {curso_fmt}</div>' if curso_fmt else ''
                     st.markdown(f'''<div style="background:rgba(79,172,254,0.06);border:1px solid rgba(79,172,254,0.2);
                         border-radius:12px;padding:14px 18px;margin-bottom:10px;">
                         <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;">
                             <div>
                                 <div style="color:#4facfe;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">
-                                    📅 {fecha_fmt} &nbsp;·&nbsp; {obs.get("dia","—")} &nbsp;·&nbsp; 🕐 {obs.get("horario","—")}
+                                    📅 {meta_str}
                                 </div>
                                 <div style="font-size:1rem;font-weight:700;margin-bottom:2px;">👤 {obs.get("prof_observado","—")}</div>
-                                <div style="color:#99a;font-size:0.85rem;">📋 {obs.get("curso","—")}</div>
+                                {curso_html}
                             </div>
                         </div>
                         {comentarios_html}
@@ -5048,5 +5072,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v364 completa
+# FIN PARTE 2 DE 2 — v365 completa
 # ============================================================
