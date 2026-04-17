@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v362
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v363
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v362", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v363", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -3924,13 +3924,28 @@ else:
         with st.expander("➕ Registrar nueva observación", expanded=False):
             with st.form("form_obs_nueva", clear_on_submit=True):
                 prof_obs = st.text_input("👤 Nombre del profesor a observar: *", placeholder="Ej: García, María", key="obs_prof")
-                st.caption("💡 Solo se requiere el nombre. Fecha, horario, curso y comentarios se completan después con el botón ✏️ Editar.")
-                if st.form_submit_button("💾 Guardar", use_container_width=True):
+                st.caption("💡 Solo el nombre es obligatorio. El resto podés completarlo ahora o después con ✏️ Editar.")
+                col_o1, col_o2 = st.columns(2)
+                completar_fecha = col_o1.checkbox("📆 Completar fecha ahora", value=False, key="obs_check_fecha")
+                dia_obs = col_o2.selectbox("📅 Día:", ["—", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"], key="obs_dia")
+                fecha_obs = None
+                if completar_fecha:
+                    fecha_obs = st.date_input("Fecha de la observación:", value=datetime.date.today(), format="DD/MM/YYYY", key="obs_fecha")
+                col_o3, col_o4 = st.columns(2)
+                horario_obs = col_o3.text_input("🕐 Horario (opcional):", placeholder="Ej: 08:00 → 10:00", key="obs_horario")
+                cuatri_auto = get_cuatrimestre_obs(datetime.date.today())
+                opciones_cuatri = ["1° Cuatrimestre (Mar–Jun)", "2° Cuatrimestre (Jul–Nov)"]
+                cuatri_default = 0 if cuatri_auto in (1, 0) else 1
+                cuatri_sel_obs = col_o4.selectbox("📚 Cuatrimestre:", opciones_cuatri, index=cuatri_default, key="obs_cuatri")
+                curso_obs = st.text_input("📋 Nombre del curso (opcional):", placeholder="Completá con el nombre del curso", key="obs_curso")
+                comentarios_obs = st.text_area("💬 Comentarios / Conclusiones (opcional):", placeholder="Observaciones generales, aspectos destacados, sugerencias...", height=120, key="obs_comentarios")
+                if st.form_submit_button("💾 Guardar Observación", use_container_width=True):
                     if not prof_obs.strip():
-                        st.error("⚠️ Ingresá el nombre del profesor a observar.")
+                        st.error("⚠️ El nombre del profesor observado es obligatorio.")
                     else:
-                        cuatri_num = get_cuatrimestre_obs(datetime.date.today())
-                        if guardar_observacion(u_data['id'], sede_obs, None, prof_obs, "", "", "", cuatri_num, None):
+                        cuatri_num = 1 if cuatri_sel_obs.startswith("1°") else 2
+                        dia_val = dia_obs if dia_obs != "—" else ""
+                        if guardar_observacion(u_data['id'], sede_obs, fecha_obs, prof_obs, dia_val, horario_obs, curso_obs, cuatri_num, comentarios_obs):
                             st.session_state.ok_obs_guardada = True
                             st.rerun()
 
@@ -5030,5 +5045,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v362 completa
+# FIN PARTE 2 DE 2 — v363 completa
 # ============================================================
