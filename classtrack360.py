@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v365
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v366
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v365", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v366", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -3944,16 +3944,16 @@ else:
                 fecha_obs = col_o1.date_input("Fecha de la observación:", value=datetime.date.today(), format="DD/MM/YYYY", key="obs_fecha") if completar_fecha else None
                 col_o3, col_o4 = st.columns(2)
                 horario_obs = col_o3.text_input("🕐 Horario (opcional):", placeholder="Ej: 08:00 → 10:00", key="obs_horario")
-                cuatri_auto = get_cuatrimestre_obs(datetime.date.today())
-                opciones_cuatri = ["1° Cuatrimestre (Mar–Jun)", "2° Cuatrimestre (Jul–Nov)"]
-                cuatri_default = 0 if cuatri_auto in (1, 0) else 1
-                cuatri_sel_obs = col_o4.selectbox("📚 Cuatrimestre:", opciones_cuatri, index=cuatri_default, key="obs_cuatri")
+                opciones_cuatri = ["— Elegí el cuatrimestre —", "1° Cuatrimestre (Mar–Jun)", "2° Cuatrimestre (Jul–Nov)"]
+                cuatri_sel_obs = col_o4.selectbox("📚 Cuatrimestre:", opciones_cuatri, index=0, key="obs_cuatri")
                 curso_obs = st.text_input("📋 Nombre del curso (opcional):", placeholder="Completá con el nombre del curso", key="obs_curso")
                 comentarios_obs = st.text_area("💬 Comentarios / Conclusiones (opcional):", placeholder="Observaciones generales, aspectos destacados, sugerencias...", height=120, key="obs_comentarios")
                 submitted_obs = st.form_submit_button("💾 Guardar Observación", use_container_width=True)
                 if submitted_obs:
                     if not prof_obs.strip():
                         st.error("⚠️ El nombre del profesor observado es obligatorio.")
+                    elif cuatri_sel_obs == "— Elegí el cuatrimestre —":
+                        st.error("⚠️ Seleccioná el cuatrimestre.")
                     else:
                         cuatri_num = 1 if cuatri_sel_obs.startswith("1°") else 2
                         dia_val = dia_obs if dia_obs != "—" else ""
@@ -4070,21 +4070,21 @@ else:
                         continue
 
                     # Vista normal de la card
-                    comentarios_html = f'<div style="color:#aaa;font-size:0.85rem;margin-top:8px;border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;">{obs.get("comentarios","")}</div>' if obs.get('comentarios') else ''
-                    curso_html = f'<div style="color:#99a;font-size:0.85rem;">📋 {curso_fmt}</div>' if curso_fmt else ''
-                    st.markdown(f'''<div style="background:rgba(79,172,254,0.06);border:1px solid rgba(79,172,254,0.2);
-                        border-radius:12px;padding:14px 18px;margin-bottom:10px;">
-                        <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:6px;">
-                            <div>
-                                <div style="color:#4facfe;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">
-                                    📅 {meta_str}
-                                </div>
-                                <div style="font-size:1rem;font-weight:700;margin-bottom:2px;">👤 {obs.get("prof_observado","—")}</div>
-                                {curso_html}
-                            </div>
-                        </div>
-                        {comentarios_html}
-                    </div>''', unsafe_allow_html=True)
+                    lineas_card = []
+                    lineas_card.append(f'<div style="color:#4facfe;font-size:0.75rem;font-weight:700;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:4px;">📅 {meta_str}</div>')
+                    lineas_card.append(f'<div style="font-size:1rem;font-weight:700;margin-bottom:2px;">👤 {obs.get("prof_observado","—")}</div>')
+                    if curso_fmt:
+                        lineas_card.append(f'<div style="color:#99a;font-size:0.85rem;">📋 {curso_fmt}</div>')
+                    if obs.get('comentarios'):
+                        lineas_card.append(f'<div style="color:#aaa;font-size:0.85rem;margin-top:8px;border-top:1px solid rgba(255,255,255,0.07);padding-top:8px;">{obs["comentarios"]}</div>')
+                    card_inner = '\n'.join(lineas_card)
+                    st.markdown(
+                        f'<div style="background:rgba(79,172,254,0.06);border:1px solid rgba(79,172,254,0.2);'
+                        f'border-radius:12px;padding:14px 18px;margin-bottom:10px;">'
+                        f'{card_inner}'
+                        f'</div>',
+                        unsafe_allow_html=True
+                    )
                     col_act1, col_act2 = st.columns([1, 1])
                     with col_act1:
                         if st.button("✏️ Editar", key=f"obs_edit_{key_prefix}_{obs_id}", use_container_width=True):
@@ -5072,5 +5072,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v365 completa
+# FIN PARTE 2 DE 2 — v366 completa
 # ============================================================
