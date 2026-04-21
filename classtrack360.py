@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v366
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v367
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v366", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v367", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -115,6 +115,7 @@ def init_state():
         'cnr_seleccionadas': {},
         'cnr_confirmar_masivo': False,
         '_invalidar_cursos': False,
+        '_confirmar_cambio_sede': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -2300,6 +2301,45 @@ else:
             dias_r = max(0, (ff_s - f_hoy).days)
             st.markdown(f'<div class="stat-card" style="font-size:0.72rem;">📆 Año lectivo<br><b>{fi_s.strftime("%d/%m")}</b> → <b>{ff_s.strftime("%d/%m")}</b><br>{dias_r} días restantes</div>', unsafe_allow_html=True)
         st.markdown("---")
+        # BOTÓN CAMBIAR SESIÓN — si hay otra sede con la misma contraseña
+        try:
+            pwd_actual = u_data.get('password_text', '')
+            sede_actual = u_data.get('sede', '').lower()
+            res_otras = supabase.table("usuarios").select("id, sede, nombre").eq("password_text", pwd_actual).neq("sede", sede_actual).neq("sede", "admin").execute()
+            otras_sedes = [r for r in (res_otras.data or []) if r.get('habilitado', True) != False]
+            if otras_sedes:
+                for otra in otras_sedes:
+                    otra_sede_label = otra['sede'].upper()
+                    if st.button(f"🔄 Cambiar a {otra_sede_label}", key=f"btn_cambiar_{otra['sede']}", use_container_width=True):
+                        st.session_state['_confirmar_cambio_sede'] = otra
+                        st.rerun()
+        except: pass
+
+        # Confirmación cambio de sesión
+        if st.session_state.get('_confirmar_cambio_sede'):
+            otra = st.session_state['_confirmar_cambio_sede']
+            otra_label = otra['sede'].upper()
+            st.markdown(f'<div class="advertencia-box">🔄 ¿Querés cambiar a la sesión <b>{otra_label}</b>?</div>', unsafe_allow_html=True)
+            col_cs1, col_cs2 = st.columns(2)
+            if col_cs1.button("✅ Sí, cambiar", key="btn_cs_si", use_container_width=True, type="primary"):
+                # Hacer login automático en la otra sede
+                try:
+                    res_u = supabase.table("usuarios").select("*").eq("id", otra['id']).execute()
+                    if res_u.data:
+                        nuevo_user = res_u.data[0]
+                        # Limpiar estado de sesión manteniendo solo lo esencial
+                        keys_a_limpiar = [k for k in st.session_state.keys() if k not in ('cal_mes', 'cal_anio')]
+                        for k in keys_a_limpiar:
+                            del st.session_state[k]
+                        st.session_state.user = nuevo_user
+                        st.rerun()
+                except Exception as e_cs:
+                    st.error(f"Error al cambiar de sesión: {e_cs}")
+            if col_cs2.button("❌ Cancelar", key="btn_cs_no", use_container_width=True):
+                st.session_state['_confirmar_cambio_sede'] = None
+                st.rerun()
+
+        st.markdown("---")
         # BOTÓN SALIR — HTML puro con color naranja garantizado
         st.markdown("""
         <style>
@@ -3269,7 +3309,7 @@ else:
                         else:
                             with st.spinner("Registrando alumno..."):
                                 try:
-                                    datos_alumno = {"nombre": n.strip(), "apellido": a.strip()}
+                                    datos_alumno = {"nombre": n.strip(), "apellido": a.strip().upper()}
                                     if e.strip(): datos_alumno["email"] = e.strip()
                                     ra = supabase.table("alumnos").insert(datos_alumno).execute()
                                     if ra.data:
@@ -3410,7 +3450,7 @@ else:
                                         col_a1, col_a2 = st.columns(2)
                                         if col_a1.form_submit_button("💾 Guardar"):
                                             try:
-                                                supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip(), "email": e_edit.strip() if e_edit.strip() else None}).eq("id", al['id']).execute()
+                                                supabase.table("alumnos").update({"nombre": n_edit.strip(), "apellido": a_edit.strip().upper(), "email": e_edit.strip() if e_edit.strip() else None}).eq("id", al['id']).execute()
                                                 st.session_state.editando_alumno = None
                                                 st.session_state.ok_alumno_editado = True
                                                 st.rerun()
@@ -5072,5 +5112,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v366 completa
+# FIN PARTE 2 DE 2 — v367 completa
 # ============================================================
