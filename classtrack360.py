@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v368
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v369
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v368", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v369", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -946,7 +946,7 @@ def get_datos_estadisticas(profesor_id):
                 if al:
                     alumnos.append({'insc_id': r['id'], 'id': al['id'], 'nombre': al['nombre'], 'apellido': al['apellido']})
                     res_n = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at").execute()
-                    notas[r['id']] = [{'val': float(n['calificacion']), 'fecha': n['created_at'][:10]} for n in (res_n.data or [])]
+                    notas[r['id']] = [{'val': float(n['calificacion']), 'fecha': n['created_at'][:10]} for n in (res_n.data or []) if n.get('calificacion') is not None]
             promedios = {}
             for al in alumnos:
                 vals = [x['val'] for x in notas.get(al['insc_id'], [])]
@@ -1871,7 +1871,7 @@ def cargar_datos_por_nombre_curso(nombre_curso, inscripcion_id, profesor_id=None
             if al:
                 alumnos.append({'insc_id': r['id'], 'nombre': al.get('nombre',''), 'apellido': al.get('apellido',''), 'email': al.get('email','') or ''})
                 res_n = supabase.table("notas").select("calificacion").eq("inscripcion_id", r['id']).order("created_at").execute()
-                notas_dict[r['id']] = [float(n['calificacion']) for n in (res_n.data or [])]
+                notas_dict[r['id']] = [float(n['calificacion']) for n in (res_n.data or []) if n.get('calificacion') is not None]
     except: pass
     try:
         res_h = supabase.table("bitacora").select("*").eq("inscripcion_id", inscripcion_id).order("fecha").execute()
@@ -2140,9 +2140,13 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
                                         notas = res_notas.data if res_notas.data else []
                                         filas_html = ""; valores = []
                                         for i, nt in enumerate(notas):
-                                            val = float(nt['calificacion']); valores.append(val)
+                                            cal_raw = nt.get('calificacion')
                                             fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
-                                            filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {color_nota(val)}">{val}</span></div>'
+                                            if cal_raw is None:
+                                                filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge" style="background:rgba(255,255,255,0.07);color:#99a;">N/A</span></div>'
+                                            else:
+                                                val = float(cal_raw); valores.append(val)
+                                                filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {color_nota(val)}">{val}</span></div>'
                                         if not filas_html:
                                             filas_html = '<div class="nota-linea"><span style="color:#555">Sin notas</span></div>'
                                             promedio_html = estado_html = ""
@@ -2454,7 +2458,7 @@ else:
             res_insc_al = supabase.table("inscripciones").select("id, alumnos(nombre, apellido)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", nombre_curso).not_.is_("alumno_id", "null").execute()
             for r_al in (res_insc_al.data or []):
                 res_nt_al = supabase.table("notas").select("calificacion").eq("inscripcion_id", r_al['id']).execute()
-                vals_al = [float(n['calificacion']) for n in (res_nt_al.data or [])]
+                vals_al = [float(n['calificacion']) for n in (res_nt_al.data or []) if n.get('calificacion') is not None]
                 if vals_al:
                     prom_al = sum(vals_al) / len(vals_al)
                     if prom_al < float(nota_ap_al):
@@ -3275,7 +3279,7 @@ else:
                             email_g = f'<br><span class="email-tag">✉️ {al_g.get("email","")}</span>' if al_g.get('email') else ''
                             try:
                                 res_nt_g = supabase.table("notas").select("calificacion").eq("inscripcion_id", r_g['id']).execute()
-                                vals_g = [float(n['calificacion']) for n in (res_nt_g.data or [])]
+                                vals_g = [float(n['calificacion']) for n in (res_nt_g.data or []) if n.get('calificacion') is not None]
                                 prom_g = round(sum(vals_g)/len(vals_g), 2) if vals_g else None
                                 nota_ap_g = mapa_cursos_data.get(curso_g, {}).get('nota_aprobacion')
                                 if prom_g is not None:
@@ -3538,6 +3542,49 @@ else:
                     curso_data = mapa_cursos_data.get(c_ver, {})
                     nota_aprobacion = curso_data.get('nota_aprobacion')
                     if nota_aprobacion: st.caption(f"Nota de aprobación del curso: {nota_aprobacion}")
+                    # ── Selector de rango de fechas para promedio del curso ──
+                    with st.expander("📅 Calcular promedio del curso por rango de fechas", expanded=False):
+                        col_fd1, col_fd2 = st.columns(2)
+                        fecha_desde_prom = col_fd1.date_input("Desde:", value=datetime.date(ANIO_ACTUAL, 1, 1), format="DD/MM/YYYY", key="prom_desde")
+                        fecha_hasta_prom = col_fd2.date_input("Hasta:", value=datetime.date.today(), format="DD/MM/YYYY", key="prom_hasta")
+                        if st.button("📊 Calcular promedio del curso", key="btn_prom_curso", use_container_width=True):
+                            if fecha_desde_prom > fecha_hasta_prom:
+                                st.error("La fecha de inicio debe ser anterior a la fecha fin.")
+                            else:
+                                try:
+                                    res_al_prom = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
+                                    promedios_alumnos = []
+                                    filas_prom = []
+                                    for r_p in (res_al_prom.data or []):
+                                        al_raw_p = r_p.get('alumnos')
+                                        al_p = al_raw_p[0] if isinstance(al_raw_p, list) and al_raw_p else al_raw_p
+                                        if not al_p: continue
+                                        res_np = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r_p['id']).gte("created_at", str(fecha_desde_prom)).lte("created_at", str(fecha_hasta_prom) + "T23:59:59").execute()
+                                        # Solo notas numéricas (no N/A = NULL)
+                                        vals_p = [float(n['calificacion']) for n in (res_np.data or []) if n.get('calificacion') is not None]
+                                        prom_p = round(sum(vals_p) / len(vals_p), 2) if vals_p else None
+                                        nombre_al = f"{al_p.get('apellido','').upper()}, {al_p.get('nombre','')}"
+                                        filas_prom.append((nombre_al, vals_p, prom_p))
+                                        if prom_p is not None:
+                                            promedios_alumnos.append(prom_p)
+                                    if not filas_prom:
+                                        st.info("No hay alumnos en este curso.")
+                                    else:
+                                        # Promedio general del curso (solo alumnos con al menos una nota)
+                                        prom_curso = round(sum(promedios_alumnos) / len(promedios_alumnos), 2) if promedios_alumnos else None
+                                        desde_fmt = fecha_desde_prom.strftime('%d/%m/%Y')
+                                        hasta_fmt = fecha_hasta_prom.strftime('%d/%m/%Y')
+                                        prom_txt = f"<b>{prom_curso}</b>" if prom_curso is not None else "<span style='color:#556'>Sin notas en el período</span>"
+                                        st.markdown(f'''<div style="background:rgba(79,172,254,0.08);border:1px solid rgba(79,172,254,0.25);border-radius:10px;padding:14px 18px;margin:10px 0;">
+                                            <div style="font-size:0.8rem;color:#556;margin-bottom:6px;">📅 Período: {desde_fmt} → {hasta_fmt}</div>
+                                            <div style="font-size:1rem;">Promedio general del curso: {prom_txt} <span style="color:#556;font-size:0.8rem">({len(promedios_alumnos)} alumno/s con nota)</span></div>
+                                        </div>''', unsafe_allow_html=True)
+                                        for nombre_al, vals_p, prom_p in sorted(filas_prom, key=lambda x: x[0]):
+                                            notas_str = " + ".join([str(v) for v in vals_p]) if vals_p else "—"
+                                            prom_str = f"Promedio: <b>{prom_p}</b>" if prom_p is not None else "<span style='color:#556'>N/A</span>"
+                                            st.markdown(f'<div style="font-size:0.85rem;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.04);">👤 {nombre_al} &nbsp;·&nbsp; {notas_str} &nbsp;=&nbsp; {prom_str}</div>', unsafe_allow_html=True)
+                                except Exception as e_prom:
+                                    st.error(f"Error al calcular promedio: {e_prom}")
                     try:
                         res_al_v = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_ver).not_.is_("alumno_id", "null").execute()
                         if not res_al_v.data:
@@ -3555,14 +3602,20 @@ else:
                                     except: notas = []
                                     filas_html = ""; valores = []
                                     for i, nt in enumerate(notas):
-                                        val = float(nt['calificacion']); valores.append(val)
+                                        # calificacion puede ser NULL (N/A) o numérica
+                                        cal_raw = nt.get('calificacion')
                                         fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
-                                        filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {color_nota(val)}">{val}</span></div>'
+                                        if cal_raw is None:
+                                            filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge" style="background:rgba(255,255,255,0.07);color:#99a;">N/A</span></div>'
+                                        else:
+                                            val = float(cal_raw); valores.append(val)
+                                            filas_html += f'<div class="nota-linea"><span>Nota {i+1} · {fecha_fmt}</span><span class="nota-badge {color_nota(val)}">{val}</span></div>'
                                     if not valores:
                                         if filtro_estado != "Todos": continue
-                                        filas_html = '<div class="nota-linea"><span style="color:#555">Sin notas cargadas</span></div>'
+                                        filas_html = filas_html or '<div class="nota-linea"><span style="color:#555">Sin notas cargadas</span></div>'
                                         promedio_html = estado_html = ""
                                     else:
+                                        # Promedio solo sobre notas numéricas (N/A no cuenta)
                                         promedio = round(sum(valores)/len(valores), 2)
                                         nota_min = min(valores)
                                         nota_max = max(valores)
@@ -3577,11 +3630,13 @@ else:
                                     if notas:
                                         for i, nt in enumerate(notas):
                                             col_n, col_d = st.columns([6, 1])
-                                            col_n.caption(f"Nota {i+1}: {nt['calificacion']}")
+                                            cal_raw = nt.get('calificacion')
+                                            etiqueta_nota = str(cal_raw) if cal_raw is not None else "N/A"
+                                            col_n.caption(f"Nota {i+1}: {etiqueta_nota}")
                                             if col_d.button("🗑️", key=f"del_nota_{nt['id']}"):
                                                 st.session_state[f'confirm_nota_{nt["id"]}'] = True; st.rerun()
                                             if st.session_state.get(f'confirm_nota_{nt["id"]}'):
-                                                st.warning(f"⚠️ ¿Borrar Nota {i+1}: {nt['calificacion']}?")
+                                                st.warning(f"⚠️ ¿Borrar Nota {i+1}: {etiqueta_nota}?")
                                                 c1, c2 = st.columns(2)
                                                 if c1.button("✅ Sí, borrar", key=f"conf_nota_{nt['id']}"):
                                                     supabase.table("notas").delete().eq("id", nt['id']).execute()
@@ -3604,7 +3659,8 @@ else:
                                                 al_ex = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                                 if al_ex:
                                                     res_nx = supabase.table("notas").select("calificacion").eq("inscripcion_id", rx['id']).order("created_at").execute()
-                                                    notas_vals = [float(n['calificacion']) for n in (res_nx.data or [])]
+                                                    # Solo notas numéricas para el Excel
+                                                    notas_vals = [float(n['calificacion']) for n in (res_nx.data or []) if n.get('calificacion') is not None]
                                                     alumnos_export.append({'apellido': al_ex.get('apellido',''), 'nombre': al_ex.get('nombre',''), 'email': al_ex.get('email',''), 'notas': notas_vals})
                                             alumnos_export.sort(key=lambda x: x['apellido'])
                                             excel_bytes = exportar_notas_excel(c_ver, alumnos_export, nota_aprobacion)
@@ -3622,7 +3678,9 @@ else:
                     on_change=lambda: setattr(st.session_state, 'rt_busq_nota_carga', st.session_state.busq_carga_input))
                 busq_carga = st.session_state.rt_busq_nota_carga
                 if st.session_state.get('ok_nota_agregada') is not None:
-                    st.success(f"✅ Nota {st.session_state.ok_nota_agregada} agregada satisfactoriamente.")
+                    val_ok = st.session_state.ok_nota_agregada
+                    msg_ok = "N/A (no aplica)" if val_ok == "NA" else f"Nota {val_ok}"
+                    st.success(f"✅ {msg_ok} agregada satisfactoriamente.")
                     st.session_state.ok_nota_agregada = None
                 if c_nt != "---":
                     try:
@@ -3648,12 +3706,14 @@ else:
                                     if notas_existentes:
                                         for i, nt in enumerate(notas_existentes):
                                             fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
+                                            cal_raw = nt.get('calificacion')
+                                            etiqueta = "N/A" if cal_raw is None else str(cal_raw)
                                             col_n, col_d = st.columns([6, 1])
-                                            col_n.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{nt["calificacion"]}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
+                                            col_n.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{etiqueta}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
                                             if col_d.button("🗑️", key=f"del_nota_c_{nt['id']}"):
                                                 st.session_state[f'confirm_nota_c_{nt["id"]}'] = True; st.rerun()
                                             if st.session_state.get(f'confirm_nota_c_{nt["id"]}'):
-                                                st.warning(f"⚠️ ¿Borrar Nota {i+1}?")
+                                                st.warning(f"⚠️ ¿Borrar Nota {i+1}: {etiqueta}?")
                                                 c1, c2 = st.columns(2)
                                                 if c1.button("✅ Sí", key=f"conf_nota_c_{nt['id']}"):
                                                     supabase.table("notas").delete().eq("id", nt['id']).execute()
@@ -3662,11 +3722,29 @@ else:
                                                 if c2.button("❌ No", key=f"canc_nota_c_{nt['id']}"):
                                                     st.session_state[f'confirm_nota_c_{nt["id"]}'] = False; st.rerun()
                                     with st.form(f"nt_{r['id']}", clear_on_submit=True):
-                                        nueva_nota = st.number_input("Nueva calificación:", 0.0, 10.0, value=0.0, step=0.1, key=f"ni_{r['id']}")
+                                        es_na = st.checkbox("N/A — No aplica (dejar sin nota)", value=False, key=f"na_check_{r['id']}")
+                                        nueva_nota = st.number_input(
+                                            "Calificación (1.00 – 10.00):",
+                                            min_value=1.0, max_value=10.0,
+                                            value=5.0, step=0.01,
+                                            format="%.2f",
+                                            disabled=es_na,
+                                            key=f"ni_{r['id']}"
+                                        )
                                         if st.form_submit_button("💾 Agregar Nota"):
                                             try:
-                                                supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nueva_nota}).execute()
-                                                st.session_state.ok_nota_agregada = nueva_nota
+                                                if es_na:
+                                                    # Guardar NULL en Supabase = N/A
+                                                    supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": None}).execute()
+                                                    st.session_state.ok_nota_agregada = "NA"
+                                                else:
+                                                    # Validar rango 1-10 con 2 decimales
+                                                    nota_val = round(float(nueva_nota), 2)
+                                                    if nota_val < 1.0 or nota_val > 10.0:
+                                                        st.error("La nota debe estar entre 1.00 y 10.00.")
+                                                    else:
+                                                        supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nota_val}).execute()
+                                                        st.session_state.ok_nota_agregada = nota_val
                                                 st.rerun()
                                             except Exception as e_err:
                                                 st.error(f"Error: {e_err}")
@@ -5115,5 +5193,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v368 completa
+# FIN PARTE 2 DE 2 — v369 completa
 # ============================================================
