@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v369
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v370
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v369", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v370", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -89,6 +89,14 @@ def init_state():
         'ok_nota_agregada': None,
         'ok_bitacora_editada': False,
         'confirmar_borrar_clase': None,
+        # Historial Universitario
+        'hu_editando': None,
+        'hu_confirmar_borrar': None,
+        'hu_filtro_anio': datetime.date.today().year,
+        'hu_filtro_materia': 'Todas',
+        'hu_vista': 'ficha',
+        'ok_hu_guardado': False,
+        'ok_hu_editado': False,
         'confirmar_borrar_alumno': None,
         'confirmar_borrar_curso': None,
         'ok_calendario_guardado': False,
@@ -2431,7 +2439,7 @@ else:
         "🖨️ Impresión",
         "🗄️ Backup",
         "🔧 Mantenimiento",
-    ])
+    ] + (["📚 Historial Universitario"] if es_universitario else []))
 
     # =========================================================
     # RECORDATORIO DE CLASES DE HOY
@@ -5191,7 +5199,272 @@ else:
 
         footer()
 
+    # =========================================================
+    # TAB 16 — HISTORIAL UNIVERSITARIO (solo modo universitario)
+    # =========================================================
+    if es_universitario:
+        with tabs[16]:
+            st.subheader("📚 Historial Universitario")
+            st.caption("Registro extendido de historial académico por alumno. Solo disponible en modo universitario.")
+
+            # ── Sub-navegación: Ficha vs Vista Global ─────────────────
+            hu_modo = st.radio(
+                "Modo:",
+                ["📋 Ficha de Alumno", "🌐 Vista Global"],
+                horizontal=True,
+                key="hu_modo_radio"
+            )
+
+            # ── Helpers de query ──────────────────────────────────────
+            def hu_get_materias():
+                """Obtiene lista de materias únicas del historial universitario del profesor."""
+                try:
+                    res = supabase.table("historial_universitario").select("materia").eq("profesor_id", u_data['id']).execute()
+                    return sorted(list(set(r['materia'] for r in (res.data or []) if r.get('materia'))))
+                except:
+                    return []
+
+            def hu_get_alumnos():
+                """Obtiene lista de alumnos del profesor para el selector."""
+                try:
+                    res = supabase.table("inscripciones").select("alumno_id, alumnos(id, nombre, apellido)").eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null").execute()
+                    vistos = set()
+                    alumnos = []
+                    for r in (res.data or []):
+                        al_raw = r.get('alumnos')
+                        al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
+                        if al and al['id'] not in vistos:
+                            vistos.add(al['id'])
+                            alumnos.append(al)
+                    return sorted(alumnos, key=lambda x: normalizar(x.get('apellido', '')))
+                except:
+                    return []
+
+            # ── MODO FICHA DE ALUMNO ───────────────────────────────────
+            if hu_modo == "📋 Ficha de Alumno":
+                alumnos_hu = hu_get_alumnos()
+                if not alumnos_hu:
+                    no_encontrado("No hay alumnos registrados. Primero registrá alumnos en la pestaña 👥 Alumnos.")
+                else:
+                    opciones_al = {f"{a.get('apellido','').upper()}, {a.get('nombre','')}": a['id'] for a in alumnos_hu}
+                    alumno_sel_label = st.selectbox(
+                        "Seleccioná un alumno:",
+                        list(opciones_al.keys()),
+                        key="hu_alumno_sel"
+                    )
+                    alumno_sel_id = opciones_al[alumno_sel_label]
+
+                    # Éxito guardado / editado
+                    if st.session_state.get('ok_hu_guardado'):
+                        st.success("✅ Registro guardado satisfactoriamente.")
+                        st.session_state.ok_hu_guardado = False
+                    if st.session_state.get('ok_hu_editado'):
+                        st.success("✅ Registro actualizado satisfactoriamente.")
+                        st.session_state.ok_hu_editado = False
+
+                    # Cargar registros del alumno
+                    try:
+                        res_hu = supabase.table("historial_universitario").select("*").eq("alumno_id", alumno_sel_id).eq("profesor_id", u_data['id']).order("anio", desc=True).execute()
+                        registros_hu = res_hu.data or []
+                    except Exception as e_hu_load:
+                        st.error(f"Error al cargar historial: {e_hu_load}")
+                        registros_hu = []
+
+                    st.markdown(f"**{len(registros_hu)} registro/s** para {alumno_sel_label}")
+                    st.markdown("---")
+
+                    # Formulario de carga nuevo registro
+                    with st.expander("➕ Agregar nuevo registro", expanded=(len(registros_hu) == 0)):
+                        with st.form("hu_nuevo_form", clear_on_submit=True):
+                            col_h1, col_h2 = st.columns(2)
+                            with col_h1:
+                                hu_anio = st.number_input("Año *", min_value=2000, max_value=2099, value=datetime.date.today().year, step=1, key="hu_nuevo_anio")
+                            with col_h2:
+                                hu_materia = st.text_input("Materia *", placeholder="Ej: Matemática I", key="hu_nuevo_materia")
+                            hu_comentarios = st.text_area("Comentarios", placeholder="Observaciones, condición final, etc.", key="hu_nuevo_comentarios", height=100)
+                            if st.form_submit_button("💾 GUARDAR REGISTRO"):
+                                if not hu_materia.strip():
+                                    st.error("La materia es obligatoria.")
+                                else:
+                                    try:
+                                        supabase.table("historial_universitario").insert({
+                                            "alumno_id": alumno_sel_id,
+                                            "profesor_id": u_data['id'],
+                                            "anio": int(hu_anio),
+                                            "materia": hu_materia.strip(),
+                                            "comentarios": hu_comentarios.strip() if hu_comentarios.strip() else None,
+                                        }).execute()
+                                        st.session_state.ok_hu_guardado = True
+                                        st.rerun()
+                                    except Exception as e_hu_ins:
+                                        st.error(f"Error al guardar: {e_hu_ins}")
+
+                    # Listado de registros del alumno
+                    if registros_hu:
+                        for reg in registros_hu:
+                            reg_id = reg['id']
+                            if st.session_state.get('hu_editando') == reg_id:
+                                # Formulario edición inline
+                                with st.form(f"hu_edit_{reg_id}", clear_on_submit=False):
+                                    st.markdown(f"**✏️ Editando registro #{reg_id}**")
+                                    col_e1, col_e2 = st.columns(2)
+                                    with col_e1:
+                                        hu_e_anio = st.number_input("Año", min_value=2000, max_value=2099, value=int(reg.get('anio', datetime.date.today().year)), step=1, key=f"hu_e_anio_{reg_id}")
+                                    with col_e2:
+                                        hu_e_materia = st.text_input("Materia", value=reg.get('materia', ''), key=f"hu_e_mat_{reg_id}")
+                                    hu_e_comentarios = st.text_area("Comentarios", value=reg.get('comentarios', '') or '', key=f"hu_e_com_{reg_id}", height=90)
+                                    col_eb1, col_eb2 = st.columns(2)
+                                    if col_eb1.form_submit_button("💾 Guardar cambios"):
+                                        if not hu_e_materia.strip():
+                                            st.error("La materia es obligatoria.")
+                                        else:
+                                            try:
+                                                supabase.table("historial_universitario").update({
+                                                    "anio": int(hu_e_anio),
+                                                    "materia": hu_e_materia.strip(),
+                                                    "comentarios": hu_e_comentarios.strip() if hu_e_comentarios.strip() else None,
+                                                }).eq("id", reg_id).execute()
+                                                st.session_state.hu_editando = None
+                                                st.session_state.ok_hu_editado = True
+                                                st.rerun()
+                                            except Exception as e_hu_upd:
+                                                st.error(f"Error al actualizar: {e_hu_upd}")
+                                    if col_eb2.form_submit_button("❌ Cancelar"):
+                                        st.session_state.hu_editando = None
+                                        st.rerun()
+                            else:
+                                comentario_display = f'<br><span style="color:#aab;font-size:0.82rem;font-style:italic;">💬 {reg.get("comentarios","")}</span>' if reg.get('comentarios') else ''
+                                st.markdown(f'''<div class="planilla-row">
+                                    📅 <b>{reg.get("anio","—")}</b> &nbsp;·&nbsp;
+                                    📖 <b>{reg.get("materia","—")}</b>
+                                    {comentario_display}
+                                </div>''', unsafe_allow_html=True)
+                                col_rb1, col_rb2, col_rb3 = st.columns([2, 2, 6])
+                                if col_rb1.button("✏️ Editar", key=f"hu_edit_btn_{reg_id}"):
+                                    st.session_state.hu_editando = reg_id
+                                    st.rerun()
+                                if st.session_state.get('hu_confirmar_borrar') == reg_id:
+                                    st.warning(f"⚠️ ¿Confirmás que querés borrar este registro ({reg.get('anio','')}, {reg.get('materia','')})? Esta acción no se puede deshacer.")
+                                    col_cb1, col_cb2 = st.columns(2)
+                                    if col_cb1.button("✅ Sí, borrar", key=f"hu_conf_del_{reg_id}", type="primary"):
+                                        try:
+                                            supabase.table("historial_universitario").delete().eq("id", reg_id).execute()
+                                            st.session_state.hu_confirmar_borrar = None
+                                            st.success("Registro eliminado.")
+                                            st.rerun()
+                                        except Exception as e_hu_del:
+                                            st.error(f"Error al borrar: {e_hu_del}")
+                                    if col_cb2.button("❌ Cancelar", key=f"hu_canc_del_{reg_id}"):
+                                        st.session_state.hu_confirmar_borrar = None
+                                        st.rerun()
+                                elif col_rb2.button("🗑️ Borrar", key=f"hu_del_btn_{reg_id}"):
+                                    st.session_state.hu_confirmar_borrar = reg_id
+                                    st.rerun()
+
+            # ── MODO VISTA GLOBAL ──────────────────────────────────────
+            else:
+                st.markdown("#### 🌐 Vista global de historial universitario")
+
+                # Filtros
+                col_gf1, col_gf2 = st.columns(2)
+                with col_gf1:
+                    anios_glob = list(range(datetime.date.today().year, 1999, -1))
+                    filtro_anio_glob = st.selectbox("Filtrar por año:", ["Todos"] + [str(a) for a in anios_glob], key="hu_glob_anio")
+                with col_gf2:
+                    materias_glob = ["Todas"] + hu_get_materias()
+                    filtro_mat_glob = st.selectbox("Filtrar por materia:", materias_glob, key="hu_glob_mat")
+
+                # Cargar datos con filtros
+                try:
+                    q = supabase.table("historial_universitario").select(
+                        "*, alumnos(nombre, apellido)"
+                    ).eq("profesor_id", u_data['id'])
+                    if filtro_anio_glob != "Todos":
+                        q = q.eq("anio", int(filtro_anio_glob))
+                    if filtro_mat_glob != "Todas":
+                        q = q.eq("materia", filtro_mat_glob)
+                    res_glob = q.order("anio", desc=True).execute()
+                    registros_glob = res_glob.data or []
+                except Exception as e_glob:
+                    st.error(f"Error al cargar datos: {e_glob}")
+                    registros_glob = []
+
+                st.caption(f"{len(registros_glob)} registro/s encontrado/s")
+
+                if not registros_glob:
+                    no_encontrado("No hay registros con los filtros seleccionados.")
+                else:
+                    if st.session_state.get('ok_hu_editado'):
+                        st.success("✅ Registro actualizado satisfactoriamente.")
+                        st.session_state.ok_hu_editado = False
+
+                    for reg in registros_glob:
+                        reg_id = reg['id']
+                        al_raw = reg.get('alumnos')
+                        al_g = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
+                        nombre_al = f"{al_g.get('apellido','').upper()}, {al_g.get('nombre','')}" if al_g else "—"
+
+                        if st.session_state.get('hu_editando') == reg_id:
+                            with st.form(f"hu_gedit_{reg_id}", clear_on_submit=False):
+                                st.markdown(f"**✏️ Editando — {nombre_al}**")
+                                col_ge1, col_ge2 = st.columns(2)
+                                with col_ge1:
+                                    hu_ge_anio = st.number_input("Año", min_value=2000, max_value=2099, value=int(reg.get('anio', datetime.date.today().year)), step=1, key=f"hu_ge_anio_{reg_id}")
+                                with col_ge2:
+                                    hu_ge_materia = st.text_input("Materia", value=reg.get('materia', ''), key=f"hu_ge_mat_{reg_id}")
+                                hu_ge_comentarios = st.text_area("Comentarios", value=reg.get('comentarios', '') or '', key=f"hu_ge_com_{reg_id}", height=80)
+                                col_geb1, col_geb2 = st.columns(2)
+                                if col_geb1.form_submit_button("💾 Guardar cambios"):
+                                    if not hu_ge_materia.strip():
+                                        st.error("La materia es obligatoria.")
+                                    else:
+                                        try:
+                                            supabase.table("historial_universitario").update({
+                                                "anio": int(hu_ge_anio),
+                                                "materia": hu_ge_materia.strip(),
+                                                "comentarios": hu_ge_comentarios.strip() if hu_ge_comentarios.strip() else None,
+                                            }).eq("id", reg_id).execute()
+                                            st.session_state.hu_editando = None
+                                            st.session_state.ok_hu_editado = True
+                                            st.rerun()
+                                        except Exception as e_gupd:
+                                            st.error(f"Error al actualizar: {e_gupd}")
+                                if col_geb2.form_submit_button("❌ Cancelar"):
+                                    st.session_state.hu_editando = None
+                                    st.rerun()
+                        else:
+                            comentario_glob = f'<br><span style="color:#aab;font-size:0.82rem;font-style:italic;">💬 {reg.get("comentarios","")}</span>' if reg.get('comentarios') else ''
+                            st.markdown(f'''<div class="planilla-row">
+                                👤 <b>{nombre_al}</b> &nbsp;·&nbsp;
+                                📅 <b>{reg.get("anio","—")}</b> &nbsp;·&nbsp;
+                                📖 {reg.get("materia","—")}
+                                {comentario_glob}
+                            </div>''', unsafe_allow_html=True)
+                            col_gr1, col_gr2, col_gr3 = st.columns([2, 2, 6])
+                            if col_gr1.button("✏️ Editar", key=f"hu_gedit_btn_{reg_id}"):
+                                st.session_state.hu_editando = reg_id
+                                st.rerun()
+                            if st.session_state.get('hu_confirmar_borrar') == reg_id:
+                                st.warning(f"⚠️ ¿Confirmás el borrado de este registro ({nombre_al}, {reg.get('anio','')}, {reg.get('materia','')})? Esta acción no se puede deshacer.")
+                                col_gcb1, col_gcb2 = st.columns(2)
+                                if col_gcb1.button("✅ Sí, borrar", key=f"hu_gconf_del_{reg_id}", type="primary"):
+                                    try:
+                                        supabase.table("historial_universitario").delete().eq("id", reg_id).execute()
+                                        st.session_state.hu_confirmar_borrar = None
+                                        st.success("Registro eliminado.")
+                                        st.rerun()
+                                    except Exception as e_gdel:
+                                        st.error(f"Error al borrar: {e_gdel}")
+                                if col_gcb2.button("❌ Cancelar", key=f"hu_gcanc_del_{reg_id}"):
+                                    st.session_state.hu_confirmar_borrar = None
+                                    st.rerun()
+                            elif col_gr2.button("🗑️ Borrar", key=f"hu_gdel_btn_{reg_id}"):
+                                st.session_state.hu_confirmar_borrar = reg_id
+                                st.rerun()
+
+            footer()
+
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v369 completa
+# FIN PARTE 2 DE 2 — v370 completa
 # ============================================================
