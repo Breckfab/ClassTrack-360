@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v373
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v374
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v372", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v373", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -98,6 +98,7 @@ def init_state():
         'ok_hu_guardado': False,
         'ok_hu_editado': False,
         'hu_busq_alumno': '',
+        '_last_prompt': '',
         'confirmar_borrar_alumno': None,
         'confirmar_borrar_curso': None,
         'ok_calendario_guardado': False,
@@ -5404,47 +5405,123 @@ else:
                     st.error(f"Error al cargar datos: {e_glob}")
                     registros_glob = []
 
-                # Buscador en tiempo real por alumno — mismo patrón que pestaña Alumnos
-                opciones_glob_nombres = sorted(list(dict.fromkeys([
+                # Armar lista de nombres únicos para el buscador JS
+                nombres_glob = sorted(list(dict.fromkeys([
                     f"{(al_r[0] if isinstance(al_r, list) and al_r else al_r).get('apellido','').upper()}, {(al_r[0] if isinstance(al_r, list) and al_r else al_r).get('nombre','')}"
                     for reg in registros_glob
                     for al_r in [reg.get('alumnos')]
                     if (al_r[0] if isinstance(al_r, list) and al_r else al_r)
                 ])), key=lambda x: normalizar(x))
-                opciones_glob_html = ''.join([f'<option value="{op}">' for op in opciones_glob_nombres])
+                nombres_glob_json = json.dumps(nombres_glob, ensure_ascii=False)
 
-                col_busq_g, col_limp_g = st.columns([5, 1])
-                with col_busq_g:
-                    def _on_change_hu_glob():
-                        st.session_state.hu_busq_alumno = st.session_state._hu_glob_input
-                    st.text_input(
-                        "🔍 Buscar por alumno:",
-                        key="_hu_glob_input",
-                        value=st.session_state.get('hu_busq_alumno', ''),
-                        placeholder="Escribí una letra para filtrar...",
-                        on_change=_on_change_hu_glob,
-                    )
-                    busq_alumno_glob = st.session_state.get('hu_busq_alumno', '')
-                with col_limp_g:
-                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                    if st.button("🧹 Limpiar", key="hu_limpiar_busq", use_container_width=True):
+                # Buscador JS en tiempo real — filtra letra por letra sin depender de Streamlit
+                busq_alumno_glob = st.session_state.get('hu_busq_alumno', '')
+                if busq_alumno_glob:
+                    st.markdown(f'<div style="background:rgba(79,172,254,0.1);border:1px solid rgba(79,172,254,0.3);border-radius:8px;padding:6px 14px;font-size:0.85rem;color:#4facfe;margin-bottom:6px;">🔍 Filtrando por: <b>{busq_alumno_glob}</b></div>', unsafe_allow_html=True)
+                    col_clear, _ = st.columns([2, 8])
+                    if col_clear.button("🧹 Limpiar filtro", key="hu_limpiar_glob"):
                         st.session_state.hu_busq_alumno = ""
                         st.rerun()
 
                 components.html(f"""
                 <style>
-                    #hu-busq-hint {{
-                        width:100%; padding:8px 12px;
-                        background:rgba(79,172,254,0.07); color:#4facfe;
-                        border:1px solid rgba(79,172,254,0.3); border-radius:8px;
-                        font-size:13px; outline:none; box-sizing:border-box;
-                    }}
+                  #hu-search-wrap {{ position:relative; width:100%; font-family:sans-serif; }}
+                  #hu-search-input {{
+                    width:100%; padding:9px 14px; box-sizing:border-box;
+                    background:rgba(79,172,254,0.07); color:#e0e8ff;
+                    border:1px solid rgba(79,172,254,0.35); border-radius:8px;
+                    font-size:14px; outline:none;
+                  }}
+                  #hu-search-input::placeholder {{ color:#556; }}
+                  #hu-dropdown {{
+                    display:none; position:absolute; top:100%; left:0; right:0; z-index:9999;
+                    background:#1a1f2e; border:1px solid rgba(79,172,254,0.4);
+                    border-radius:0 0 8px 8px; max-height:220px; overflow-y:auto;
+                  }}
+                  .hu-item {{
+                    padding:9px 14px; cursor:pointer; color:#cde; font-size:13px;
+                    border-bottom:1px solid rgba(255,255,255,0.05);
+                  }}
+                  .hu-item:hover, .hu-item.active {{ background:rgba(79,172,254,0.18); color:#fff; }}
+                  .hu-highlight {{ color:#4facfe; font-weight:700; }}
                 </style>
-                <input id="hu-busq-hint" list="hu-alumnos-list"
-                    placeholder="💡 Sugerencias: escribí arriba y elegí acá..."
+                <div id="hu-search-wrap">
+                  <input id="hu-search-input" type="text"
+                    placeholder="🔍 Escribí un apellido para filtrar en tiempo real..."
                     autocomplete="off" />
-                <datalist id="hu-alumnos-list">{opciones_glob_html}</datalist>
-                """, height=44)
+                  <div id="hu-dropdown"></div>
+                </div>
+                <script>
+                  const NAMES = {nombres_glob_json};
+                  const input = document.getElementById('hu-search-input');
+                  const drop  = document.getElementById('hu-dropdown');
+                  let active  = -1;
+
+                  function normalize(s) {{
+                    return s.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase();
+                  }}
+
+                  function highlight(text, q) {{
+                    const ni = normalize(text), nq = normalize(q);
+                    const i = ni.indexOf(nq);
+                    if (i < 0) return text;
+                    return text.slice(0,i) +
+                      '<span class="hu-highlight">' + text.slice(i, i+q.length) + '</span>' +
+                      text.slice(i+q.length);
+                  }}
+
+                  function render(q) {{
+                    const nq = normalize(q);
+                    const matches = q.length < 1 ? [] :
+                      NAMES.filter(n => normalize(n).includes(nq));
+                    if (!matches.length) {{ drop.style.display='none'; return; }}
+                    drop.innerHTML = matches.map((n,i) =>
+                      `<div class="hu-item" data-val="${{n}}" data-idx="${{i}}">${{highlight(n,q)}}</div>`
+                    ).join('');
+                    drop.style.display = 'block';
+                    active = -1;
+                    drop.querySelectorAll('.hu-item').forEach(el => {{
+                      el.addEventListener('mousedown', e => {{
+                        e.preventDefault();
+                        select(el.dataset.val);
+                      }});
+                    }});
+                  }}
+
+                  function select(val) {{
+                    input.value = val;
+                    drop.style.display = 'none';
+                    window.parent.postMessage({{type:'streamlit:sendPrompt', prompt: '__HU_BUSQ__:' + val}}, '*');
+                  }}
+
+                  input.addEventListener('input', () => render(input.value));
+                  input.addEventListener('keydown', e => {{
+                    const items = drop.querySelectorAll('.hu-item');
+                    if (!items.length) return;
+                    if (e.key === 'ArrowDown') {{
+                      active = Math.min(active+1, items.length-1);
+                    }} else if (e.key === 'ArrowUp') {{
+                      active = Math.max(active-1, 0);
+                    }} else if (e.key === 'Enter' && active >= 0) {{
+                      select(items[active].dataset.val);
+                      e.preventDefault(); return;
+                    }} else {{ return; }}
+                    items.forEach((el,i) => el.classList.toggle('active', i===active));
+                    items[active].scrollIntoView({{block:'nearest'}});
+                    e.preventDefault();
+                  }});
+                  document.addEventListener('click', e => {{
+                    if (!e.target.closest('#hu-search-wrap')) drop.style.display='none';
+                  }});
+                </script>
+                """, height=60)
+
+                # Capturar selección del componente JS via prompt
+                if st.session_state.get('_last_prompt', '').startswith('__HU_BUSQ__:'):
+                    val = st.session_state._last_prompt.replace('__HU_BUSQ__:', '', 1).strip()
+                    st.session_state.hu_busq_alumno = val
+                    st.session_state._last_prompt = ''
+                    st.rerun()
 
                 # Filtrar por alumno en cliente
                 if busq_alumno_glob.strip():
@@ -5536,5 +5613,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v373 completa
+# FIN PARTE 2 DE 2 — v374 completa
 # ============================================================
