@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v374
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v375
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v373", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v374", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -5425,24 +5425,32 @@ else:
 
                 components.html(f"""
                 <style>
+                  * {{ box-sizing:border-box; margin:0; padding:0; }}
+                  body {{ background:transparent; overflow:visible; }}
                   #hu-search-wrap {{ position:relative; width:100%; font-family:sans-serif; }}
                   #hu-search-input {{
-                    width:100%; padding:9px 14px; box-sizing:border-box;
+                    width:100%; padding:9px 14px;
                     background:rgba(79,172,254,0.07); color:#e0e8ff;
                     border:1px solid rgba(79,172,254,0.35); border-radius:8px;
                     font-size:14px; outline:none;
                   }}
-                  #hu-search-input::placeholder {{ color:#556; }}
+                  #hu-search-input::placeholder {{ color:#778; }}
                   #hu-dropdown {{
-                    display:none; position:absolute; top:100%; left:0; right:0; z-index:9999;
-                    background:#1a1f2e; border:1px solid rgba(79,172,254,0.4);
-                    border-radius:0 0 8px 8px; max-height:220px; overflow-y:auto;
+                    display:none;
+                    width:100%;
+                    background:#1a1f2e;
+                    border:1px solid rgba(79,172,254,0.4);
+                    border-top:none;
+                    border-radius:0 0 8px 8px;
+                    max-height:210px;
+                    overflow-y:auto;
                   }}
                   .hu-item {{
                     padding:9px 14px; cursor:pointer; color:#cde; font-size:13px;
                     border-bottom:1px solid rgba(255,255,255,0.05);
                   }}
-                  .hu-item:hover, .hu-item.active {{ background:rgba(79,172,254,0.18); color:#fff; }}
+                  .hu-item:last-child {{ border-bottom:none; }}
+                  .hu-item:hover, .hu-item.active {{ background:rgba(79,172,254,0.2); color:#fff; }}
                   .hu-highlight {{ color:#4facfe; font-weight:700; }}
                 </style>
                 <div id="hu-search-wrap">
@@ -5470,16 +5478,28 @@ else:
                       text.slice(i+q.length);
                   }}
 
+                  function setHeight() {{
+                    const h = document.body.scrollHeight;
+                    window.parent.document.querySelectorAll('iframe').forEach(f => {{
+                      if (f.contentWindow === window) f.style.height = h + 'px';
+                    }});
+                  }}
+
                   function render(q) {{
                     const nq = normalize(q);
                     const matches = q.length < 1 ? [] :
                       NAMES.filter(n => normalize(n).includes(nq));
-                    if (!matches.length) {{ drop.style.display='none'; return; }}
+                    if (!matches.length) {{
+                      drop.style.display = 'none';
+                      setHeight();
+                      return;
+                    }}
                     drop.innerHTML = matches.map((n,i) =>
                       `<div class="hu-item" data-val="${{n}}" data-idx="${{i}}">${{highlight(n,q)}}</div>`
                     ).join('');
                     drop.style.display = 'block';
                     active = -1;
+                    setHeight();
                     drop.querySelectorAll('.hu-item').forEach(el => {{
                       el.addEventListener('mousedown', e => {{
                         e.preventDefault();
@@ -5491,6 +5511,7 @@ else:
                   function select(val) {{
                     input.value = val;
                     drop.style.display = 'none';
+                    setHeight();
                     window.parent.postMessage({{type:'streamlit:sendPrompt', prompt: '__HU_BUSQ__:' + val}}, '*');
                   }}
 
@@ -5511,10 +5532,13 @@ else:
                     e.preventDefault();
                   }});
                   document.addEventListener('click', e => {{
-                    if (!e.target.closest('#hu-search-wrap')) drop.style.display='none';
+                    if (!e.target.closest('#hu-search-wrap')) {{
+                      drop.style.display='none';
+                      setHeight();
+                    }}
                   }});
                 </script>
-                """, height=60)
+                """, height=280, scrolling=False)
 
                 # Capturar selección del componente JS via prompt
                 if st.session_state.get('_last_prompt', '').startswith('__HU_BUSQ__:'):
@@ -5613,5 +5637,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v374 completa
+# FIN PARTE 2 DE 2 — v375 completa
 # ============================================================
