@@ -2417,12 +2417,21 @@ else:
         mapa_cursos, mapa_cursos_data = get_mapa_cursos(u_data['id'])
         st.session_state._invalidar_cursos = False
 
+    # Índices dinámicos según modo universitario
+    # 0-13: fijos (Agenda … Impresión)
+    # 14: Historial Universitario (solo universitario), sino Backup
+    # 14 o 15: Backup
+    # 15 o 16: Mantenimiento
+    idx_backup = 15 if es_universitario else 14
+    idx_mant   = 16 if es_universitario else 15
+    idx_hu     = 14  # solo existe en universitario
+
     # Índice de tabs — si volvemos de "hacer backup antes de salir"
-    tab_default = 14 if st.session_state.get('_ir_a_backup') else 0
+    tab_default = idx_backup if st.session_state.get('_ir_a_backup') else 0
     if st.session_state.get('_ir_a_backup'):
         st.session_state._ir_a_backup = False
 
-    tabs = st.tabs([
+    tabs = st.tabs([\
         "📅 Agenda",
         "⚠️ Clases NO registradas",
         f"📌 Tareas Pendientes{f'  🔴 {total_vencidas_sidebar}' if total_vencidas_sidebar > 0 else ''}",
@@ -2437,9 +2446,10 @@ else:
         "👁️ Observaciones de Clases",
         "🗓️ Calendario Oficial",
         "🖨️ Impresión",
+    ] + (["📚 Historial Universitario"] if es_universitario else []) + [
         "🗄️ Backup",
         "🔧 Mantenimiento",
-    ] + (["📚 Historial Universitario"] if es_universitario else []))
+    ])
 
     # =========================================================
     # RECORDATORIO DE CLASES DE HOY
@@ -4347,9 +4357,9 @@ else:
             st.caption("💡 PDF ideal para enviar por mail · Excel para trabajar los datos · Imprimir abre el diálogo del navegador.")
 
     # =========================================================
-    # TAB 10 — BACKUP
+    # TAB — BACKUP
     # =========================================================
-    with tabs[14]:
+    with tabs[idx_backup]:
         st.subheader("🗄️ Backup y Restauración")
 
         st.markdown('''<div class="backup-aviso">
@@ -4925,9 +4935,9 @@ else:
                 st.error(f"Error al cargar tareas: {e}")
 
     # =========================================================
-    # TAB 12 — MANTENIMIENTO
+    # TAB — MANTENIMIENTO
     # =========================================================
-    with tabs[15]:
+    with tabs[idx_mant]:
         st.subheader("🔧 Mantenimiento de Base de Datos")
 
         # ── SECCIÓN 1: ESTADO DE LA BASE ──────────────────────
@@ -5200,10 +5210,10 @@ else:
         footer()
 
     # =========================================================
-    # TAB 16 — HISTORIAL UNIVERSITARIO (solo modo universitario)
+    # TAB — HISTORIAL UNIVERSITARIO (solo modo universitario)
     # =========================================================
     if es_universitario:
-        with tabs[16]:
+        with tabs[idx_hu]:
             st.subheader("📚 Historial Universitario")
             st.caption("Registro extendido de historial académico por alumno. Solo disponible en modo universitario.")
 
@@ -5280,11 +5290,12 @@ else:
                             with col_h1:
                                 hu_anio = st.number_input("Año *", min_value=2000, max_value=2099, value=datetime.date.today().year, step=1, key="hu_nuevo_anio")
                             with col_h2:
-                                hu_materia = st.text_input("Materia *", placeholder="Ej: Matemática I", key="hu_nuevo_materia")
+                                materias_disponibles = sorted(list(mapa_cursos.keys()))
+                                hu_materia = st.selectbox("Materia *", ["--- Seleccioná una materia ---"] + materias_disponibles, key="hu_nuevo_materia")
                             hu_comentarios = st.text_area("Comentarios", placeholder="Observaciones, condición final, etc.", key="hu_nuevo_comentarios", height=100)
                             if st.form_submit_button("💾 GUARDAR REGISTRO"):
-                                if not hu_materia.strip():
-                                    st.error("La materia es obligatoria.")
+                                if hu_materia == "--- Seleccioná una materia ---":
+                                    st.error("Seleccioná una materia.")
                                 else:
                                     try:
                                         supabase.table("historial_universitario").insert({
@@ -5311,11 +5322,14 @@ else:
                                     with col_e1:
                                         hu_e_anio = st.number_input("Año", min_value=2000, max_value=2099, value=int(reg.get('anio', datetime.date.today().year)), step=1, key=f"hu_e_anio_{reg_id}")
                                     with col_e2:
-                                        hu_e_materia = st.text_input("Materia", value=reg.get('materia', ''), key=f"hu_e_mat_{reg_id}")
+                                        materias_edit = sorted(list(mapa_cursos.keys()))
+                                        mat_actual = reg.get('materia', '')
+                                        mat_idx = materias_edit.index(mat_actual) if mat_actual in materias_edit else 0
+                                        hu_e_materia = st.selectbox("Materia", materias_edit, index=mat_idx, key=f"hu_e_mat_{reg_id}")
                                     hu_e_comentarios = st.text_area("Comentarios", value=reg.get('comentarios', '') or '', key=f"hu_e_com_{reg_id}", height=90)
                                     col_eb1, col_eb2 = st.columns(2)
                                     if col_eb1.form_submit_button("💾 Guardar cambios"):
-                                        if not hu_e_materia.strip():
+                                        if not hu_e_materia:
                                             st.error("La materia es obligatoria.")
                                         else:
                                             try:
@@ -5411,11 +5425,14 @@ else:
                                 with col_ge1:
                                     hu_ge_anio = st.number_input("Año", min_value=2000, max_value=2099, value=int(reg.get('anio', datetime.date.today().year)), step=1, key=f"hu_ge_anio_{reg_id}")
                                 with col_ge2:
-                                    hu_ge_materia = st.text_input("Materia", value=reg.get('materia', ''), key=f"hu_ge_mat_{reg_id}")
+                                    materias_gedit = sorted(list(mapa_cursos.keys()))
+                                    mat_gactual = reg.get('materia', '')
+                                    mat_gidx = materias_gedit.index(mat_gactual) if mat_gactual in materias_gedit else 0
+                                    hu_ge_materia = st.selectbox("Materia", materias_gedit, index=mat_gidx, key=f"hu_ge_mat_{reg_id}")
                                 hu_ge_comentarios = st.text_area("Comentarios", value=reg.get('comentarios', '') or '', key=f"hu_ge_com_{reg_id}", height=80)
                                 col_geb1, col_geb2 = st.columns(2)
                                 if col_geb1.form_submit_button("💾 Guardar cambios"):
-                                    if not hu_ge_materia.strip():
+                                    if not hu_ge_materia:
                                         st.error("La materia es obligatoria.")
                                     else:
                                         try:
