@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v370
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v372
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v370", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v372", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -97,6 +97,7 @@ def init_state():
         'hu_vista': 'ficha',
         'ok_hu_guardado': False,
         'ok_hu_editado': False,
+        'hu_busq_alumno': '',
         'confirmar_borrar_alumno': None,
         'confirmar_borrar_curso': None,
         'ok_calendario_guardado': False,
@@ -5388,6 +5389,24 @@ else:
                     materias_glob = ["Todas"] + hu_get_materias()
                     filtro_mat_glob = st.selectbox("Filtrar por materia:", materias_glob, key="hu_glob_mat")
 
+                def _on_change_hu_busq():
+                    st.session_state.hu_busq_alumno = st.session_state._hu_busq_input
+                col_busq_g, col_limp_g = st.columns([5, 1])
+                with col_busq_g:
+                    st.text_input(
+                        "🔍 Buscar por alumno:",
+                        key="_hu_busq_input",
+                        value=st.session_state.get('hu_busq_alumno', ''),
+                        placeholder="Escribí un apellido para filtrar...",
+                        on_change=_on_change_hu_busq,
+                    )
+                with col_limp_g:
+                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                    if st.button("🧹", key="hu_limpiar_busq", help="Limpiar búsqueda"):
+                        st.session_state.hu_busq_alumno = ""
+                        st.rerun()
+                busq_alumno_glob = st.session_state.get('hu_busq_alumno', '')
+
                 # Cargar datos con filtros
                 try:
                     q = supabase.table("historial_universitario").select(
@@ -5402,6 +5421,17 @@ else:
                 except Exception as e_glob:
                     st.error(f"Error al cargar datos: {e_glob}")
                     registros_glob = []
+
+                # Filtro por apellido en cliente
+                if busq_alumno_glob.strip():
+                    def _match_alumno(reg):
+                        al_r = reg.get('alumnos')
+                        al_d = al_r[0] if isinstance(al_r, list) and al_r else al_r
+                        if not al_d:
+                            return False
+                        texto = f"{al_d.get('apellido','')} {al_d.get('nombre','')}".lower()
+                        return normalizar(busq_alumno_glob) in normalizar(texto)
+                    registros_glob = [r for r in registros_glob if _match_alumno(r)]
 
                 st.caption(f"{len(registros_glob)} registro/s encontrado/s")
 
@@ -5483,5 +5513,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v370 completa
+# FIN PARTE 2 DE 2 — v372 completa
 # ============================================================
