@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v372
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v373
 # ============================================================
 
 import streamlit as st
@@ -5380,7 +5380,7 @@ else:
             else:
                 st.markdown("#### 🌐 Vista global de historial universitario")
 
-                # Filtros
+                # Filtros por año y materia
                 col_gf1, col_gf2 = st.columns(2)
                 with col_gf1:
                     anios_glob = list(range(datetime.date.today().year, 1999, -1))
@@ -5389,25 +5389,7 @@ else:
                     materias_glob = ["Todas"] + hu_get_materias()
                     filtro_mat_glob = st.selectbox("Filtrar por materia:", materias_glob, key="hu_glob_mat")
 
-                def _on_change_hu_busq():
-                    st.session_state.hu_busq_alumno = st.session_state._hu_busq_input
-                col_busq_g, col_limp_g = st.columns([5, 1])
-                with col_busq_g:
-                    st.text_input(
-                        "🔍 Buscar por alumno:",
-                        key="_hu_busq_input",
-                        value=st.session_state.get('hu_busq_alumno', ''),
-                        placeholder="Escribí un apellido para filtrar...",
-                        on_change=_on_change_hu_busq,
-                    )
-                with col_limp_g:
-                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
-                    if st.button("🧹", key="hu_limpiar_busq", help="Limpiar búsqueda"):
-                        st.session_state.hu_busq_alumno = ""
-                        st.rerun()
-                busq_alumno_glob = st.session_state.get('hu_busq_alumno', '')
-
-                # Cargar datos con filtros
+                # Cargar datos con filtros de año y materia
                 try:
                     q = supabase.table("historial_universitario").select(
                         "*, alumnos(nombre, apellido)"
@@ -5422,16 +5404,57 @@ else:
                     st.error(f"Error al cargar datos: {e_glob}")
                     registros_glob = []
 
-                # Filtro por apellido en cliente
+                # Buscador en tiempo real por alumno — mismo patrón que pestaña Alumnos
+                opciones_glob_nombres = sorted(list(dict.fromkeys([
+                    f"{(al_r[0] if isinstance(al_r, list) and al_r else al_r).get('apellido','').upper()}, {(al_r[0] if isinstance(al_r, list) and al_r else al_r).get('nombre','')}"
+                    for reg in registros_glob
+                    for al_r in [reg.get('alumnos')]
+                    if (al_r[0] if isinstance(al_r, list) and al_r else al_r)
+                ])), key=lambda x: normalizar(x))
+                opciones_glob_html = ''.join([f'<option value="{op}">' for op in opciones_glob_nombres])
+
+                col_busq_g, col_limp_g = st.columns([5, 1])
+                with col_busq_g:
+                    def _on_change_hu_glob():
+                        st.session_state.hu_busq_alumno = st.session_state._hu_glob_input
+                    st.text_input(
+                        "🔍 Buscar por alumno:",
+                        key="_hu_glob_input",
+                        value=st.session_state.get('hu_busq_alumno', ''),
+                        placeholder="Escribí una letra para filtrar...",
+                        on_change=_on_change_hu_glob,
+                    )
+                    busq_alumno_glob = st.session_state.get('hu_busq_alumno', '')
+                with col_limp_g:
+                    st.markdown("<div style='height:28px'></div>", unsafe_allow_html=True)
+                    if st.button("🧹 Limpiar", key="hu_limpiar_busq", use_container_width=True):
+                        st.session_state.hu_busq_alumno = ""
+                        st.rerun()
+
+                components.html(f"""
+                <style>
+                    #hu-busq-hint {{
+                        width:100%; padding:8px 12px;
+                        background:rgba(79,172,254,0.07); color:#4facfe;
+                        border:1px solid rgba(79,172,254,0.3); border-radius:8px;
+                        font-size:13px; outline:none; box-sizing:border-box;
+                    }}
+                </style>
+                <input id="hu-busq-hint" list="hu-alumnos-list"
+                    placeholder="💡 Sugerencias: escribí arriba y elegí acá..."
+                    autocomplete="off" />
+                <datalist id="hu-alumnos-list">{opciones_glob_html}</datalist>
+                """, height=44)
+
+                # Filtrar por alumno en cliente
                 if busq_alumno_glob.strip():
-                    def _match_alumno(reg):
+                    def _match_glob(reg):
                         al_r = reg.get('alumnos')
                         al_d = al_r[0] if isinstance(al_r, list) and al_r else al_r
                         if not al_d:
                             return False
-                        texto = f"{al_d.get('apellido','')} {al_d.get('nombre','')}".lower()
-                        return normalizar(busq_alumno_glob) in normalizar(texto)
-                    registros_glob = [r for r in registros_glob if _match_alumno(r)]
+                        return normalizar(busq_alumno_glob) in normalizar(f"{al_d.get('apellido','')} {al_d.get('nombre','')}")
+                    registros_glob = [r for r in registros_glob if _match_glob(r)]
 
                 st.caption(f"{len(registros_glob)} registro/s encontrado/s")
 
@@ -5513,5 +5536,5 @@ else:
 
 
 # ============================================================
-# FIN PARTE 2 DE 2 — v372 completa
+# FIN PARTE 2 DE 2 — v373 completa
 # ============================================================
