@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v376
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v377
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v376", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v377", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -4734,6 +4734,12 @@ else:
                         except Exception as e:
                             st.error(f"Error: {e}")
                 else:
+                    # ── CARGAR NOTA (v377) ──────────────────────────────────────────
+                    # Cambios v377:
+                    # 1. Alumnos ordenados alfabéticamente por apellido
+                    # 2. Casillero de comentario cuando se tilda N/A (editable/borrable)
+                    # 3. Cantidad de alumnos al inicio del listado
+                    # 4. Número de alumno (#1, #2...) al lado de cada casillero
                     c_nt = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_carga_sel")
                     busq_carga = st.text_input("🔍 Buscar alumno:", key="busq_carga_input",
                         value=st.session_state.rt_busq_nota_carga,
@@ -4752,65 +4758,171 @@ else:
                                 no_encontrado("No hay alumnos inscriptos en este curso.")
                             else:
                                 estados_nt = get_estados_alumnos(u_data['id'])
-                                mostrados_carga = 0
+
+                                # ── Armar lista de alumnos activos, ordenada por apellido ──
+                                alumnos_carga = []
                                 for r in res_al_n.data:
                                     al_raw = r.get('alumnos')
                                     al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
-                                    if al:
-                                        if not es_alumno_activo(al['id'], estados_nt): continue
-                                        if busq_carga.strip() and normalizar(busq_carga) not in normalizar(al.get('nombre','')) and normalizar(busq_carga) not in normalizar(al.get('apellido','')): continue
-                                        mostrados_carga += 1
+                                    if al and es_alumno_activo(al['id'], estados_nt):
+                                        alumnos_carga.append((r, al))
+                                alumnos_carga.sort(key=lambda x: (
+                                    normalizar(x[1].get('apellido', '')),
+                                    normalizar(x[1].get('nombre', ''))
+                                ))
+
+                                # ── Calcular total (sin filtro de búsqueda) y mostrarlo ──
+                                total_curso = len(alumnos_carga)
+                                st.markdown(
+                                    f'<div style="background:rgba(79,172,254,0.10);border:1px solid rgba(79,172,254,0.28);'
+                                    f'border-radius:10px;padding:10px 16px;margin:10px 0 14px 0;font-size:0.92rem;">'
+                                    f'👥 <b>Cantidad de alumnos en {c_nt}:</b> '
+                                    f'<span style="font-size:1.05rem;font-weight:700;color:#4facfe;">{total_curso}</span> alumno{"s" if total_curso != 1 else ""}'
+                                    f'</div>',
+                                    unsafe_allow_html=True
+                                )
+
+                                mostrados_carga = 0
+                                numero_alumno = 0  # Contador para numerar solo los mostrados con búsqueda
+
+                                for r, al in alumnos_carga:
+                                    if busq_carga.strip() and normalizar(busq_carga) not in normalizar(al.get('nombre','')) and normalizar(busq_carga) not in normalizar(al.get('apellido','')): continue
+                                    mostrados_carga += 1
+                                    numero_alumno += 1
+
+                                    try:
+                                        res_notas = supabase.table("notas").select("id, calificacion, comentario_na, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
+                                        notas_existentes = res_notas.data if res_notas.data else []
+                                    except:
                                         try:
+                                            # Fallback si columna comentario_na no existe aún en BD
                                             res_notas = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
                                             notas_existentes = res_notas.data if res_notas.data else []
                                         except: notas_existentes = []
-                                        email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
-                                        st.markdown(f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</div>', unsafe_allow_html=True)
-                                        if notas_existentes:
-                                            for i, nt in enumerate(notas_existentes):
-                                                fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
-                                                cal_raw = nt.get('calificacion')
-                                                etiqueta = "N/A" if cal_raw is None else str(cal_raw)
-                                                col_n, col_d = st.columns([6, 1])
-                                                col_n.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{etiqueta}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
-                                                if col_d.button("🗑️", key=f"del_nota_c_{nt['id']}"):
-                                                    st.session_state[f'confirm_nota_c_{nt["id"]}'] = True; st.rerun()
-                                                if st.session_state.get(f'confirm_nota_c_{nt["id"]}'):
-                                                    st.warning(f"⚠️ ¿Borrar Nota {i+1}: {etiqueta}?")
-                                                    c1, c2 = st.columns(2)
-                                                    if c1.button("✅ Sí", key=f"conf_nota_c_{nt['id']}"):
-                                                        supabase.table("notas").delete().eq("id", nt['id']).execute()
-                                                        st.session_state[f'confirm_nota_c_{nt["id"]}'] = False
-                                                        st.success("Nota eliminada."); st.rerun()
-                                                    if c2.button("❌ No", key=f"canc_nota_c_{nt['id']}"):
-                                                        st.session_state[f'confirm_nota_c_{nt["id"]}'] = False; st.rerun()
-                                        with st.form(f"nt_{r['id']}", clear_on_submit=True):
-                                            es_na = st.checkbox("N/A — No aplica (dejar sin nota)", value=False, key=f"na_check_{r['id']}")
-                                            nueva_nota = st.number_input(
-                                                "Calificación (1.00 – 10.00):",
-                                                min_value=1.0, max_value=10.0,
-                                                value=5.0, step=0.01,
-                                                format="%.2f",
-                                                disabled=es_na,
-                                                key=f"ni_{r['id']}"
-                                            )
-                                            if st.form_submit_button("💾 Agregar Nota"):
-                                                try:
-                                                    if es_na:
-                                                        # Guardar NULL en Supabase = N/A
-                                                        supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": None}).execute()
-                                                        st.session_state.ok_nota_agregada = "NA"
+
+                                    email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
+
+                                    # ── Cabecera del alumno con número resaltado ──
+                                    st.markdown(
+                                        f'<div class="planilla-row" style="display:flex;align-items:center;gap:10px;">'
+                                        f'<span style="display:inline-flex;align-items:center;justify-content:center;'
+                                        f'min-width:28px;height:28px;background:rgba(79,172,254,0.18);'
+                                        f'border:1.5px solid rgba(79,172,254,0.45);border-radius:7px;'
+                                        f'font-size:0.82rem;font-weight:700;color:#4facfe;flex-shrink:0;">#{numero_alumno}</span>'
+                                        f'<span>👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</span>'
+                                        f'</div>',
+                                        unsafe_allow_html=True
+                                    )
+
+                                    if notas_existentes:
+                                        for i, nt in enumerate(notas_existentes):
+                                            fecha_fmt = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
+                                            cal_raw = nt.get('calificacion')
+                                            etiqueta = "N/A" if cal_raw is None else str(cal_raw)
+                                            comentario_na = nt.get('comentario_na') or ''
+                                            col_n, col_d = st.columns([6, 1])
+                                            col_n.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{etiqueta}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
+                                            if col_d.button("🗑️", key=f"del_nota_c_{nt['id']}"):
+                                                st.session_state[f'confirm_nota_c_{nt["id"]}'] = True; st.rerun()
+                                            if st.session_state.get(f'confirm_nota_c_{nt["id"]}'):
+                                                st.warning(f"⚠️ ¿Borrar Nota {i+1}: {etiqueta}?")
+                                                c1, c2 = st.columns(2)
+                                                if c1.button("✅ Sí", key=f"conf_nota_c_{nt['id']}"):
+                                                    supabase.table("notas").delete().eq("id", nt['id']).execute()
+                                                    st.session_state[f'confirm_nota_c_{nt["id"]}'] = False
+                                                    st.success("Nota eliminada."); st.rerun()
+                                                if c2.button("❌ No", key=f"canc_nota_c_{nt['id']}"):
+                                                    st.session_state[f'confirm_nota_c_{nt["id"]}'] = False; st.rerun()
+                                            # ── Comentario de N/A: mostrar + botones editar/borrar ──
+                                            if cal_raw is None:
+                                                if st.session_state.get(f'editando_comentario_na_{nt["id"]}'):
+                                                    with st.form(f"edit_com_na_{nt['id']}", clear_on_submit=False):
+                                                        nuevo_com = st.text_input(
+                                                            "✏️ Editar comentario N/A:",
+                                                            value=comentario_na,
+                                                            key=f"edit_com_na_input_{nt['id']}"
+                                                        )
+                                                        col_ec1, col_ec2 = st.columns(2)
+                                                        if col_ec1.form_submit_button("💾 Guardar", use_container_width=True):
+                                                            try:
+                                                                supabase.table("notas").update({"comentario_na": nuevo_com.strip() or None}).eq("id", nt['id']).execute()
+                                                                st.session_state[f'editando_comentario_na_{nt["id"]}'] = False
+                                                                st.rerun()
+                                                            except Exception as e_com_e:
+                                                                st.error(f"Error: {e_com_e}")
+                                                        if col_ec2.form_submit_button("❌ Cancelar", use_container_width=True):
+                                                            st.session_state[f'editando_comentario_na_{nt["id"]}'] = False; st.rerun()
+                                                else:
+                                                    if comentario_na:
+                                                        col_com_txt, col_com_ed, col_com_del = st.columns([5, 1, 1])
+                                                        col_com_txt.markdown(
+                                                            f'<div style="font-size:0.82rem;color:#aab;font-style:italic;'
+                                                            f'background:rgba(255,255,255,0.04);border-radius:6px;'
+                                                            f'padding:4px 10px;margin:2px 0;">💬 {comentario_na}</div>',
+                                                            unsafe_allow_html=True
+                                                        )
+                                                        if col_com_ed.button("✏️", key=f"edit_com_na_btn_{nt['id']}", help="Editar comentario"):
+                                                            st.session_state[f'editando_comentario_na_{nt["id"]}'] = True; st.rerun()
+                                                        if col_com_del.button("🗑️", key=f"del_com_na_btn_{nt['id']}", help="Borrar comentario"):
+                                                            try:
+                                                                supabase.table("notas").update({"comentario_na": None}).eq("id", nt['id']).execute()
+                                                                st.rerun()
+                                                            except Exception as e_com_d:
+                                                                st.error(f"Error: {e_com_d}")
                                                     else:
-                                                        # Validar rango 1-10 con 2 decimales
-                                                        nota_val = round(float(nueva_nota), 2)
-                                                        if nota_val < 1.0 or nota_val > 10.0:
-                                                            st.error("La nota debe estar entre 1.00 y 10.00.")
-                                                        else:
-                                                            supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nota_val}).execute()
-                                                            st.session_state.ok_nota_agregada = nota_val
-                                                    st.rerun()
-                                                except Exception as e_err:
-                                                    st.error(f"Error: {e_err}")
+                                                        col_com_vac, col_com_ag = st.columns([5, 2])
+                                                        col_com_vac.markdown('<span style="font-size:0.8rem;color:#666;">Sin comentario</span>', unsafe_allow_html=True)
+                                                        if col_com_ag.button("➕ Agregar comentario", key=f"add_com_na_btn_{nt['id']}", use_container_width=True):
+                                                            st.session_state[f'editando_comentario_na_{nt["id"]}'] = True; st.rerun()
+
+                                    with st.form(f"nt_{r['id']}", clear_on_submit=True):
+                                        es_na = st.checkbox("N/A — No aplica (dejar sin nota)", value=False, key=f"na_check_{r['id']}")
+                                        nueva_nota = st.number_input(
+                                            "Calificación (1.00 – 10.00):",
+                                            min_value=1.0, max_value=10.0,
+                                            value=5.0, step=0.01,
+                                            format="%.2f",
+                                            disabled=es_na,
+                                            key=f"ni_{r['id']}"
+                                        )
+                                        # ── Comentario opcional cuando es N/A ──
+                                        comentario_nuevo_na = st.text_input(
+                                            "💬 Comentario para N/A (opcional):",
+                                            placeholder="Ej: alumno ausente, dispensado, etc.",
+                                            key=f"com_na_{r['id']}",
+                                            disabled=not es_na
+                                        )
+                                        if st.form_submit_button("💾 Agregar Nota"):
+                                            try:
+                                                if es_na:
+                                                    # Guardar NULL en Supabase = N/A, con comentario opcional
+                                                    comentario_guardar = comentario_nuevo_na.strip() if comentario_nuevo_na.strip() else None
+                                                    try:
+                                                        supabase.table("notas").insert({
+                                                            "inscripcion_id": r['id'],
+                                                            "alumno_id": al['id'],
+                                                            "calificacion": None,
+                                                            "comentario_na": comentario_guardar
+                                                        }).execute()
+                                                    except:
+                                                        # Fallback si la columna comentario_na no existe aún
+                                                        supabase.table("notas").insert({
+                                                            "inscripcion_id": r['id'],
+                                                            "alumno_id": al['id'],
+                                                            "calificacion": None
+                                                        }).execute()
+                                                    st.session_state.ok_nota_agregada = "NA"
+                                                else:
+                                                    # Validar rango 1-10 con 2 decimales
+                                                    nota_val = round(float(nueva_nota), 2)
+                                                    if nota_val < 1.0 or nota_val > 10.0:
+                                                        st.error("La nota debe estar entre 1.00 y 10.00.")
+                                                    else:
+                                                        supabase.table("notas").insert({"inscripcion_id": r['id'], "alumno_id": al['id'], "calificacion": nota_val}).execute()
+                                                        st.session_state.ok_nota_agregada = nota_val
+                                                st.rerun()
+                                            except Exception as e_err:
+                                                st.error(f"Error: {e_err}")
                                 if mostrados_carga == 0:
                                     no_encontrado("No hay alumnos que coincidan.")
                         except Exception as e:
@@ -5613,5 +5725,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v376 (menú reorganizado en 5 secciones)
+# FIN PARTE 2 DE 2 — v377 (Cargar Notas: orden alfabético, comentario N/A, contador alumnos, numeración)
 # ============================================================
