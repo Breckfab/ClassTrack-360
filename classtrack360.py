@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v380
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v381
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v380", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v381", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -4734,7 +4734,7 @@ else:
                                                 st.error(f"Error al exportar: {e_exp}")
                         except Exception as e:
                             st.error(f"Error: {e}")
-                else:
+                elif sub_nt == "✏️ Cargar Nota":
                     # ── CARGAR NOTA (v380) ──────────────────────────────────────────
                     # Cambios v380:
                     # 1. Alumnos ordenados alfabéticamente por apellido
@@ -5877,5 +5877,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v380 (tres modos en Notas: Ver / Cargar / Modificar)
+# FIN PARTE 2 DE 2 — v381 (fix SyntaxError: else→elif en Cargar Nota)
 # ============================================================
