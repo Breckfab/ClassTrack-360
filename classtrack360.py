@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v378
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v379
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v378", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v379", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -87,6 +87,7 @@ def init_state():
         'ok_alumno_registrado': None,
         'ok_alumno_editado': False,
         'ok_nota_agregada': None,
+        'ok_nota_editada': None,
         'ok_bitacora_editada': False,
         'confirmar_borrar_clase': None,
         # Historial Universitario
@@ -4734,8 +4735,8 @@ else:
                         except Exception as e:
                             st.error(f"Error: {e}")
                 else:
-                    # ── CARGAR NOTA (v378) ──────────────────────────────────────────
-                    # Cambios v378:
+                    # ── CARGAR NOTA (v379) ──────────────────────────────────────────
+                    # Cambios v379:
                     # 1. Alumnos ordenados alfabéticamente por apellido
                     # 2. Casillero de comentario cuando se tilda N/A (editable/borrable)
                     # 3. Cantidad de alumnos al inicio del listado
@@ -4751,6 +4752,9 @@ else:
                         msg_ok = "N/A (no aplica)" if val_ok == "NA" else f"Nota {val_ok}"
                         st.success(f"✅ {msg_ok} agregada satisfactoriamente.")
                         st.session_state.ok_nota_agregada = None
+                    if st.session_state.get('ok_nota_editada') is not None:
+                        st.success(f"✅ {st.session_state.ok_nota_editada} editada satisfactoriamente.")
+                        st.session_state.ok_nota_editada = None
                     if c_nt != "---":
                         try:
                             res_al_n = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_nt).not_.is_("alumno_id", "null").execute()
@@ -4826,60 +4830,85 @@ else:
                                             cal_raw = nt.get('calificacion')
                                             etiqueta = "N/A" if cal_raw is None else str(cal_raw)
                                             comentario_na = nt.get('comentario_na') or ''
-                                            col_n, col_d = st.columns([6, 1])
-                                            col_n.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{etiqueta}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
-                                            if col_d.button("🗑️", key=f"del_nota_c_{nt['id']}"):
-                                                st.session_state[f'confirm_nota_c_{nt["id"]}'] = True; st.rerun()
-                                            if st.session_state.get(f'confirm_nota_c_{nt["id"]}'):
-                                                st.warning(f"⚠️ ¿Borrar Nota {i+1}: {etiqueta}?")
-                                                c1, c2 = st.columns(2)
-                                                if c1.button("✅ Sí", key=f"conf_nota_c_{nt['id']}"):
-                                                    supabase.table("notas").delete().eq("id", nt['id']).execute()
-                                                    st.session_state[f'confirm_nota_c_{nt["id"]}'] = False
-                                                    st.success("Nota eliminada."); st.rerun()
-                                                if c2.button("❌ No", key=f"canc_nota_c_{nt['id']}"):
-                                                    st.session_state[f'confirm_nota_c_{nt["id"]}'] = False; st.rerun()
-                                            # ── Comentario de N/A: mostrar + botones editar/borrar ──
-                                            if cal_raw is None:
-                                                if st.session_state.get(f'editando_comentario_na_{nt["id"]}'):
-                                                    with st.form(f"edit_com_na_{nt['id']}", clear_on_submit=False):
-                                                        nuevo_com = st.text_input(
-                                                            "✏️ Editar comentario N/A:",
-                                                            value=comentario_na,
-                                                            key=f"edit_com_na_input_{nt['id']}"
-                                                        )
-                                                        col_ec1, col_ec2 = st.columns(2)
-                                                        if col_ec1.form_submit_button("💾 Guardar", use_container_width=True):
+                                            editando_esta_nota = st.session_state.get(f'editando_nota_{nt["id"]}', False)
+
+                                            if editando_esta_nota:
+                                                # ── Formulario de edición inline ──
+                                                with st.form(f"edit_nota_{nt['id']}", clear_on_submit=False):
+                                                    st.markdown(f'<p style="font-size:0.85rem;color:#aaa;margin:0 0 8px 0;">✏️ Editando <b>Nota {i+1}</b> ({fecha_fmt})</p>', unsafe_allow_html=True)
+                                                    nuevo_es_na = st.checkbox("N/A — No aplica", value=(cal_raw is None), key=f"edit_na_{nt['id']}")
+                                                    valor_actual = float(cal_raw) if cal_raw is not None else 5.0
+                                                    nueva_cal = st.number_input(
+                                                        "Nueva calificación (1.00 – 10.00):",
+                                                        min_value=1.0, max_value=10.0,
+                                                        value=valor_actual, step=0.01, format="%.2f",
+                                                        disabled=nuevo_es_na,
+                                                        key=f"edit_cal_{nt['id']}"
+                                                    )
+                                                    nuevo_com_na = st.text_input(
+                                                        "💬 Comentario N/A (opcional):",
+                                                        value=comentario_na,
+                                                        placeholder="Ej: ausente, dispensado...",
+                                                        disabled=not nuevo_es_na,
+                                                        key=f"edit_com_{nt['id']}"
+                                                    )
+                                                    col_eg1, col_eg2 = st.columns(2)
+                                                    if col_eg1.form_submit_button("💾 Guardar cambio", use_container_width=True, type="primary"):
+                                                        try:
+                                                            if nuevo_es_na:
+                                                                upd = {"calificacion": None, "comentario_na": nuevo_com_na.strip() or None}
+                                                            else:
+                                                                nota_ed = round(float(nueva_cal), 2)
+                                                                if nota_ed < 1.0 or nota_ed > 10.0:
+                                                                    st.error("La nota debe estar entre 1.00 y 10.00.")
+                                                                    st.stop()
+                                                                upd = {"calificacion": nota_ed, "comentario_na": None}
                                                             try:
-                                                                supabase.table("notas").update({"comentario_na": nuevo_com.strip() or None}).eq("id", nt['id']).execute()
-                                                                st.session_state[f'editando_comentario_na_{nt["id"]}'] = False
-                                                                st.rerun()
-                                                            except Exception as e_com_e:
-                                                                st.error(f"Error: {e_com_e}")
-                                                        if col_ec2.form_submit_button("❌ Cancelar", use_container_width=True):
-                                                            st.session_state[f'editando_comentario_na_{nt["id"]}'] = False; st.rerun()
-                                                else:
+                                                                supabase.table("notas").update(upd).eq("id", nt['id']).execute()
+                                                            except:
+                                                                # Fallback si comentario_na no existe en BD
+                                                                upd.pop("comentario_na", None)
+                                                                supabase.table("notas").update(upd).eq("id", nt['id']).execute()
+                                                            st.session_state[f'editando_nota_{nt["id"]}'] = False
+                                                            st.session_state.ok_nota_editada = f"Nota {i+1}"
+                                                            st.rerun()
+                                                        except Exception as e_edit:
+                                                            st.error(f"Error al guardar: {e_edit}")
+                                                    if col_eg2.form_submit_button("❌ Cancelar", use_container_width=True):
+                                                        st.session_state[f'editando_nota_{nt["id"]}'] = False; st.rerun()
+                                            else:
+                                                # ── Vista normal: etiqueta + botones Editar / Borrar ──
+                                                col_n, col_e, col_d = st.columns([6, 1, 1])
+                                                col_n.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{etiqueta}</b> · {fecha_fmt}</p>', unsafe_allow_html=True)
+                                                if col_e.button("✏️", key=f"edit_nota_btn_{nt['id']}", help="Editar nota"):
+                                                    st.session_state[f'editando_nota_{nt["id"]}'] = True; st.rerun()
+                                                if col_d.button("🗑️", key=f"del_nota_c_{nt['id']}", help="Borrar nota"):
+                                                    st.session_state[f'confirm_nota_c_{nt["id"]}'] = True; st.rerun()
+                                                if st.session_state.get(f'confirm_nota_c_{nt["id"]}'):
+                                                    st.warning(f"⚠️ ¿Borrar Nota {i+1}: {etiqueta}?")
+                                                    c1, c2 = st.columns(2)
+                                                    if c1.button("✅ Sí", key=f"conf_nota_c_{nt['id']}"):
+                                                        supabase.table("notas").delete().eq("id", nt['id']).execute()
+                                                        st.session_state[f'confirm_nota_c_{nt["id"]}'] = False
+                                                        st.success("Nota eliminada."); st.rerun()
+                                                    if c2.button("❌ No", key=f"canc_nota_c_{nt['id']}"):
+                                                        st.session_state[f'confirm_nota_c_{nt["id"]}'] = False; st.rerun()
+                                                # ── Comentario de N/A: mostrar + botones editar/borrar ──
+                                                if cal_raw is None:
                                                     if comentario_na:
-                                                        col_com_txt, col_com_ed, col_com_del = st.columns([5, 1, 1])
+                                                        col_com_txt, col_com_del = st.columns([6, 1])
                                                         col_com_txt.markdown(
                                                             f'<div style="font-size:0.82rem;color:#aab;font-style:italic;'
                                                             f'background:rgba(255,255,255,0.04);border-radius:6px;'
                                                             f'padding:4px 10px;margin:2px 0;">💬 {comentario_na}</div>',
                                                             unsafe_allow_html=True
                                                         )
-                                                        if col_com_ed.button("✏️", key=f"edit_com_na_btn_{nt['id']}", help="Editar comentario"):
-                                                            st.session_state[f'editando_comentario_na_{nt["id"]}'] = True; st.rerun()
                                                         if col_com_del.button("🗑️", key=f"del_com_na_btn_{nt['id']}", help="Borrar comentario"):
                                                             try:
                                                                 supabase.table("notas").update({"comentario_na": None}).eq("id", nt['id']).execute()
                                                                 st.rerun()
                                                             except Exception as e_com_d:
                                                                 st.error(f"Error: {e_com_d}")
-                                                    else:
-                                                        col_com_vac, col_com_ag = st.columns([5, 2])
-                                                        col_com_vac.markdown('<span style="font-size:0.8rem;color:#666;">Sin comentario</span>', unsafe_allow_html=True)
-                                                        if col_com_ag.button("➕ Agregar comentario", key=f"add_com_na_btn_{nt['id']}", use_container_width=True):
-                                                            st.session_state[f'editando_comentario_na_{nt["id"]}'] = True; st.rerun()
 
                                     with st.form(f"nt_{r['id']}", clear_on_submit=True):
                                         es_na = st.checkbox("N/A — No aplica (dejar sin nota)", value=False, key=f"na_check_{r['id']}")
@@ -5731,5 +5760,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v378 (fix: sort seguro por apellido + número grande de orden)
+# FIN PARTE 2 DE 2 — v379 (botón Editar nota con formulario inline)
 # ============================================================
