@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v381
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v382
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v381", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v382", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -58,6 +58,9 @@ def init_state():
         'rt_busq_nota_ver': '',
         'rt_busq_nota_carga': '',
         'rt_busq_asistencia': '',
+        'rt_busq_ppa': '',
+        'ppa_calculado': False,
+        'ppa_curso': None,
         # Observaciones de Clases
         'obs_editando': None,
         'obs_confirmar_borrar': None,
@@ -4592,7 +4595,7 @@ else:
             if not mapa_cursos:
                 no_encontrado("No hay cursos creados.")
             else:
-                sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota", "📝 Modificar Nota"], horizontal=True)
+                sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota", "📝 Modificar Nota", "📊 Promedio por Alumno"], horizontal=True)
                 if sub_nt == "📋 Ver Notas por Curso":
                     col_f1, col_f2 = st.columns([2, 1])
                     c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver_sel")
@@ -5079,6 +5082,139 @@ else:
                                     st.info("💡 No hay alumnos con notas cargadas en este curso aún." if not busq_mod.strip() else "No hay alumnos que coincidan con la búsqueda.")
                         except Exception as e_mod:
                             st.error(f"Error: {e_mod}")
+
+                elif sub_nt == "📊 Promedio por Alumno":
+                    # ── PROMEDIO POR ALUMNO ─────────────────────────────────────
+                    st.markdown("#### 📊 Promedio por Alumno")
+                    st.caption("Calculá el promedio de cada alumno en un rango de fechas. Los N/A no se cuentan como 0.")
+
+                    c_ppa = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="ppa_curso_sel")
+
+                    col_ppa1, col_ppa2 = st.columns(2)
+                    fecha_ppa_desde = col_ppa1.date_input(
+                        "Desde:",
+                        value=datetime.date(ANIO_ACTUAL, 1, 1),
+                        format="DD/MM/YYYY",
+                        key="ppa_desde"
+                    )
+                    fecha_ppa_hasta = col_ppa2.date_input(
+                        "Hasta:",
+                        value=datetime.date.today(),
+                        format="DD/MM/YYYY",
+                        key="ppa_hasta"
+                    )
+
+                    busq_ppa = st.text_input(
+                        "🔍 Buscar alumno:",
+                        key="busq_ppa_input",
+                        value=st.session_state.get('rt_busq_ppa', ''),
+                        placeholder="Escribí para filtrar...",
+                        on_change=lambda: st.session_state.update({'rt_busq_ppa': st.session_state.busq_ppa_input})
+                    )
+                    busq_ppa = st.session_state.get('rt_busq_ppa', '')
+
+                    if st.button("📊 Calcular promedios", key="btn_ppa_calcular", type="primary", use_container_width=True):
+                        if fecha_ppa_desde > fecha_ppa_hasta:
+                            st.error("La fecha de inicio debe ser anterior a la fecha fin.")
+                        elif c_ppa == "---":
+                            st.warning("Seleccioná un curso para calcular los promedios.")
+                        else:
+                            st.session_state['ppa_calculado'] = True
+                            st.session_state['ppa_curso'] = c_ppa
+                            st.session_state['ppa_desde_val'] = fecha_ppa_desde
+                            st.session_state['ppa_hasta_val'] = fecha_ppa_hasta
+                            st.rerun()
+
+                    if st.session_state.get('ppa_calculado') and st.session_state.get('ppa_curso') == c_ppa:
+                        curso_ppa = st.session_state['ppa_curso']
+                        desde_ppa = st.session_state['ppa_desde_val']
+                        hasta_ppa = st.session_state['ppa_hasta_val']
+
+                        try:
+                            res_ppa = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", curso_ppa).not_.is_("alumno_id", "null").execute()
+
+                            if not res_ppa.data:
+                                st.info("No hay alumnos inscriptos en este curso.")
+                            else:
+                                filas_ppa = []
+                                for r_ppa in (res_ppa.data or []):
+                                    al_raw_ppa = r_ppa.get('alumnos')
+                                    al_ppa = al_raw_ppa[0] if isinstance(al_raw_ppa, list) and al_raw_ppa else al_raw_ppa
+                                    if not al_ppa:
+                                        continue
+                                    nombre_ppa = f"{al_ppa.get('apellido','').upper()}, {al_ppa.get('nombre','')}"
+                                    # Filtro de búsqueda
+                                    if busq_ppa.strip() and normalizar(busq_ppa) not in normalizar(al_ppa.get('nombre','')) and normalizar(busq_ppa) not in normalizar(al_ppa.get('apellido','')):
+                                        continue
+                                    # Traer notas del período
+                                    res_np_ppa = supabase.table("notas").select("calificacion, created_at").eq("inscripcion_id", r_ppa['id']).gte("created_at", str(desde_ppa)).lte("created_at", str(hasta_ppa) + "T23:59:59").execute()
+                                    todas_notas = res_np_ppa.data or []
+                                    total_registros = len(todas_notas)
+                                    # Solo notas numéricas (N/A = calificacion IS NULL → no cuenta)
+                                    vals_num = [float(n['calificacion']) for n in todas_notas if n.get('calificacion') is not None]
+                                    cant_na = total_registros - len(vals_num)
+                                    prom_ppa = round(sum(vals_num) / len(vals_num), 2) if vals_num else None
+                                    filas_ppa.append({
+                                        'nombre': nombre_ppa,
+                                        'notas': vals_num,
+                                        'cant_na': cant_na,
+                                        'total': total_registros,
+                                        'promedio': prom_ppa,
+                                    })
+
+                                filas_ppa.sort(key=lambda x: x['nombre'])
+
+                                desde_fmt_ppa = desde_ppa.strftime('%d/%m/%Y')
+                                hasta_fmt_ppa = hasta_ppa.strftime('%d/%m/%Y')
+                                con_notas = [f for f in filas_ppa if f['promedio'] is not None]
+                                prom_general = round(sum(f['promedio'] for f in con_notas) / len(con_notas), 2) if con_notas else None
+                                prom_gral_txt = f"<b style='color:#4facfe'>{prom_general}</b>" if prom_general is not None else "<span style='color:#556'>Sin notas en el período</span>"
+
+                                st.markdown(f'''<div style="background:rgba(79,172,254,0.08);border:1px solid rgba(79,172,254,0.25);border-radius:12px;padding:16px 20px;margin:12px 0;">
+                                    <div style="font-size:0.78rem;color:#556;margin-bottom:6px;text-transform:uppercase;letter-spacing:0.08em;">📅 Período analizado</div>
+                                    <div style="font-size:0.95rem;color:#cdd;margin-bottom:10px;">{desde_fmt_ppa} → {hasta_fmt_ppa}</div>
+                                    <div style="font-size:0.85rem;color:#99a;">
+                                        👥 Alumnos con resultado: <b style="color:#cdd">{len(filas_ppa)}</b>
+                                        &nbsp;·&nbsp;
+                                        Promedio general del curso: {prom_gral_txt}
+                                        &nbsp;·&nbsp;
+                                        <span style="color:#556;font-size:0.8rem">({len(con_notas)} con notas numéricas)</span>
+                                    </div>
+                                </div>''', unsafe_allow_html=True)
+
+                                if not filas_ppa:
+                                    st.info("No hay alumnos que coincidan con la búsqueda.")
+                                else:
+                                    for idx_ppa, fila in enumerate(filas_ppa, 1):
+                                        prom_val = fila['promedio']
+                                        if prom_val is None:
+                                            badge_prom = "<span style='color:#556;background:rgba(255,255,255,0.05);border:1px solid rgba(255,255,255,0.08);padding:2px 10px;border-radius:5px;font-size:0.85rem;'>Sin notas</span>"
+                                        else:
+                                            color_clase = color_nota(prom_val)
+                                            badge_prom = f'<span class="nota-badge {color_clase}">{prom_val:.2f}</span>'
+
+                                        notas_str = " · ".join([str(v) for v in fila['notas']]) if fila['notas'] else "—"
+                                        na_str = f' &nbsp;<span style="color:#556;font-size:0.78rem">({fila["cant_na"]} N/A)</span>' if fila['cant_na'] > 0 else ''
+                                        total_str = f'<span style="color:#556;font-size:0.78rem">{fila["total"]} registro{"s" if fila["total"] != 1 else ""}</span>'
+
+                                        st.markdown(f'''<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:10px;padding:12px 16px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+                                            <div style="display:flex;align-items:center;gap:12px;">
+                                                <span style="font-size:1.2rem;font-weight:900;color:#4facfe;min-width:28px;">{idx_ppa}</span>
+                                                <div>
+                                                    <div style="font-weight:600;color:#cdd;font-size:0.92rem;">👤 {fila["nombre"]}</div>
+                                                    <div style="font-size:0.78rem;color:#556;margin-top:3px;">{notas_str}{na_str} &nbsp;·&nbsp; {total_str}</div>
+                                                </div>
+                                            </div>
+                                            <div style="font-size:0.85rem;display:flex;align-items:center;gap:8px;">
+                                                <span style="color:#556;font-size:0.8rem;">Promedio:</span>
+                                                {badge_prom}
+                                            </div>
+                                        </div>''', unsafe_allow_html=True)
+
+                                    st.caption(f"💡 Los registros N/A no se incluyen en el cálculo del promedio.")
+
+                        except Exception as e_ppa:
+                            st.error(f"Error al calcular promedios: {e_ppa}")
 
         with sub_seg[2]:
             render_tab_estadisticas(u_data['id'], mapa_cursos, mapa_cursos_data)
@@ -5877,5 +6013,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v381 (fix SyntaxError: else→elif en Cargar Nota)
+# FIN PARTE 2 DE 2 — v382 (agrega Promedio por Alumno en Notas)
 # ============================================================
