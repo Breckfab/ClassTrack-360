@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v382
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v383
 # ============================================================
 
 import streamlit as st
@@ -4595,7 +4595,7 @@ else:
             if not mapa_cursos:
                 no_encontrado("No hay cursos creados.")
             else:
-                sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota", "📝 Modificar Nota", "📊 Promedio por Alumno"], horizontal=True)
+                sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota", "📝 Modificar Nota", "📊 Promedio por Alumno"], horizontal=False)
                 if sub_nt == "📋 Ver Notas por Curso":
                     col_f1, col_f2 = st.columns([2, 1])
                     c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver_sel")
@@ -6013,5 +6013,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v382 (agrega Promedio por Alumno en Notas)
+# FIN PARTE 2 DE 2 — v383 (agrega Promedio por Alumno en Notas)
 # ============================================================
