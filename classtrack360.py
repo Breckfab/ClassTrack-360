@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v379
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v380
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v379", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v380", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -4592,7 +4592,7 @@ else:
             if not mapa_cursos:
                 no_encontrado("No hay cursos creados.")
             else:
-                sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota"], horizontal=True)
+                sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota", "📝 Modificar Nota"], horizontal=True)
                 if sub_nt == "📋 Ver Notas por Curso":
                     col_f1, col_f2 = st.columns([2, 1])
                     c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver_sel")
@@ -4735,8 +4735,8 @@ else:
                         except Exception as e:
                             st.error(f"Error: {e}")
                 else:
-                    # ── CARGAR NOTA (v379) ──────────────────────────────────────────
-                    # Cambios v379:
+                    # ── CARGAR NOTA (v380) ──────────────────────────────────────────
+                    # Cambios v380:
                     # 1. Alumnos ordenados alfabéticamente por apellido
                     # 2. Casillero de comentario cuando se tilda N/A (editable/borrable)
                     # 3. Cantidad de alumnos al inicio del listado
@@ -4962,6 +4962,123 @@ else:
                                     no_encontrado("No hay alumnos que coincidan.")
                         except Exception as e:
                             st.error(f"Error: {e}")
+
+                elif sub_nt == "📝 Modificar Nota":
+                    # ── MODIFICAR NOTA (v380) ─────────────────────────────────────────
+                    c_mod = st.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_mod_sel")
+                    busq_mod = st.text_input("🔍 Buscar alumno:", key="busq_mod_input",
+                        value=st.session_state.get('rt_busq_nota_mod', ''),
+                        placeholder="Escribí para filtrar...",
+                        on_change=lambda: st.session_state.update({'rt_busq_nota_mod': st.session_state.busq_mod_input}))
+                    busq_mod = st.session_state.get('rt_busq_nota_mod', '')
+                    if st.session_state.get('ok_nota_editada') is not None:
+                        st.success(f"✅ {st.session_state.ok_nota_editada} modificada satisfactoriamente.")
+                        st.session_state.ok_nota_editada = None
+                    if c_mod != "---":
+                        try:
+                            res_al_mod = supabase.table("inscripciones").select("id, alumnos(id, nombre, apellido, email)").eq("profesor_id", u_data['id']).eq("nombre_curso_materia", c_mod).not_.is_("alumno_id", "null").execute()
+                            if not res_al_mod.data:
+                                no_encontrado("No hay alumnos inscriptos en este curso.")
+                            else:
+                                estados_mod = get_estados_alumnos(u_data['id'])
+                                # Armar y ordenar lista alfabéticamente por apellido
+                                alumnos_mod = []
+                                for r in res_al_mod.data:
+                                    al_raw = r.get('alumnos')
+                                    al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
+                                    if al and es_alumno_activo(al['id'], estados_mod):
+                                        alumnos_mod.append((r, al))
+                                alumnos_mod.sort(key=lambda x: (
+                                    normalizar(str(x[1].get('apellido') or '')),
+                                    normalizar(str(x[1].get('nombre') or ''))
+                                ))
+                                mostrados_mod = 0
+                                num_mod = 0
+                                for r, al in alumnos_mod:
+                                    if busq_mod.strip() and normalizar(busq_mod) not in normalizar(str(al.get('nombre') or '')) and normalizar(busq_mod) not in normalizar(str(al.get('apellido') or '')): continue
+                                    try:
+                                        res_notas_mod = supabase.table("notas").select("id, calificacion, comentario_na, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
+                                        notas_mod = res_notas_mod.data if res_notas_mod.data else []
+                                    except:
+                                        try:
+                                            res_notas_mod = supabase.table("notas").select("id, calificacion, created_at").eq("inscripcion_id", r['id']).order("created_at", desc=False).execute()
+                                            notas_mod = res_notas_mod.data if res_notas_mod.data else []
+                                        except: notas_mod = []
+                                    if not notas_mod:
+                                        continue  # Solo mostrar alumnos que tienen al menos una nota
+                                    mostrados_mod += 1
+                                    num_mod += 1
+                                    email_display_mod = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
+                                    col_num_m, col_al_m = st.columns([1, 12])
+                                    with col_num_m:
+                                        st.markdown(
+                                            f'<div style="display:flex;align-items:center;justify-content:center;'
+                                            f'height:100%;min-height:54px;font-size:1.6rem;font-weight:900;'
+                                            f'color:#4facfe;text-align:center;line-height:1;">{num_mod}</div>',
+                                            unsafe_allow_html=True
+                                        )
+                                    with col_al_m:
+                                        st.markdown(
+                                            f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display_mod}</div>',
+                                            unsafe_allow_html=True
+                                        )
+                                    for i, nt in enumerate(notas_mod):
+                                        fecha_fmt_m = datetime.datetime.fromisoformat(nt['created_at'][:10]).strftime('%d/%m/%Y')
+                                        cal_raw_m = nt.get('calificacion')
+                                        etiqueta_m = "N/A" if cal_raw_m is None else str(cal_raw_m)
+                                        comentario_na_m = nt.get('comentario_na') or ''
+                                        editando_m = st.session_state.get(f'mod_editando_{nt["id"]}', False)
+                                        if editando_m:
+                                            with st.form(f"mod_form_{nt['id']}", clear_on_submit=False):
+                                                st.markdown(f'<p style="font-size:0.85rem;color:#aaa;margin:0 0 8px 0;">✏️ Editando <b>Nota {i+1}</b> de {al.get("apellido","").upper()}, {al.get("nombre","")} ({fecha_fmt_m})</p>', unsafe_allow_html=True)
+                                                nuevo_es_na_m = st.checkbox("N/A — No aplica", value=(cal_raw_m is None), key=f"mod_na_{nt['id']}")
+                                                valor_actual_m = float(cal_raw_m) if cal_raw_m is not None else 5.0
+                                                nueva_cal_m = st.number_input(
+                                                    "Nueva calificación (1.00 – 10.00):",
+                                                    min_value=1.0, max_value=10.0,
+                                                    value=valor_actual_m, step=0.01, format="%.2f",
+                                                    disabled=nuevo_es_na_m,
+                                                    key=f"mod_cal_{nt['id']}"
+                                                )
+                                                nuevo_com_m = st.text_input(
+                                                    "💬 Comentario N/A (opcional):",
+                                                    value=comentario_na_m,
+                                                    placeholder="Ej: ausente, dispensado...",
+                                                    disabled=not nuevo_es_na_m,
+                                                    key=f"mod_com_{nt['id']}"
+                                                )
+                                                col_mg1, col_mg2 = st.columns(2)
+                                                if col_mg1.form_submit_button("💾 Guardar cambio", use_container_width=True, type="primary"):
+                                                    try:
+                                                        if nuevo_es_na_m:
+                                                            upd_m = {"calificacion": None, "comentario_na": nuevo_com_m.strip() or None}
+                                                        else:
+                                                            nota_ed_m = round(float(nueva_cal_m), 2)
+                                                            if nota_ed_m < 1.0 or nota_ed_m > 10.0:
+                                                                st.error("La nota debe estar entre 1.00 y 10.00.")
+                                                                st.stop()
+                                                            upd_m = {"calificacion": nota_ed_m, "comentario_na": None}
+                                                        try:
+                                                            supabase.table("notas").update(upd_m).eq("id", nt['id']).execute()
+                                                        except:
+                                                            upd_m.pop("comentario_na", None)
+                                                            supabase.table("notas").update(upd_m).eq("id", nt['id']).execute()
+                                                        st.session_state[f'mod_editando_{nt["id"]}'] = False
+                                                        st.session_state.ok_nota_editada = f"Nota {i+1} de {al.get('apellido','').upper()}, {al.get('nombre','')}"
+                                                        st.rerun()
+                                                    except Exception as e_mod_edit:
+                                                        st.error(f"Error al guardar: {e_mod_edit}")
+                                                if col_mg2.form_submit_button("❌ Cancelar", use_container_width=True):
+                                                    st.session_state[f'mod_editando_{nt["id"]}'] = False; st.rerun()
+                                        else:
+                                            col_mn, col_me = st.columns([7, 1])
+                                            col_mn.markdown(f'<p class="nota-existente">Nota {i+1}: <b>{etiqueta_m}</b> · {fecha_fmt_m}{(" · 💬 " + comentario_na_m) if comentario_na_m else ""}</p>', unsafe_allow_html=True)
+                                            if col_me.button("✏️", key=f"mod_btn_{nt['id']}", help=f"Modificar nota {i+1}"):
+                                                st.session_state[f'mod_editando_{nt["id"]}'] = True; st.rerun()
+                                if mostrados_mod == 0:
+                                    st.info("💡 No hay alumnos con notas cargadas en este curso aún." if not busq_mod.strip() else "No hay alumnos que coincidan con la búsqueda.")
+                        except Exception as e_mod:
+                            st.error(f"Error: {e_mod}")
 
         with sub_seg[2]:
             render_tab_estadisticas(u_data['id'], mapa_cursos, mapa_cursos_data)
@@ -5760,5 +5877,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v379 (botón Editar nota con formulario inline)
+# FIN PARTE 2 DE 2 — v380 (tres modos en Notas: Ver / Cargar / Modificar)
 # ============================================================
