@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v377
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v378
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v377", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v378", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -4734,8 +4734,8 @@ else:
                         except Exception as e:
                             st.error(f"Error: {e}")
                 else:
-                    # ── CARGAR NOTA (v377) ──────────────────────────────────────────
-                    # Cambios v377:
+                    # ── CARGAR NOTA (v378) ──────────────────────────────────────────
+                    # Cambios v378:
                     # 1. Alumnos ordenados alfabéticamente por apellido
                     # 2. Casillero de comentario cuando se tilda N/A (editable/borrable)
                     # 3. Cantidad de alumnos al inicio del listado
@@ -4766,9 +4766,10 @@ else:
                                     al = al_raw[0] if isinstance(al_raw, list) and al_raw else al_raw
                                     if al and es_alumno_activo(al['id'], estados_nt):
                                         alumnos_carga.append((r, al))
+                                # Sort seguro: str() evita crash si apellido/nombre viene None desde Supabase
                                 alumnos_carga.sort(key=lambda x: (
-                                    normalizar(x[1].get('apellido', '')),
-                                    normalizar(x[1].get('nombre', ''))
+                                    normalizar(str(x[1].get('apellido') or '')),
+                                    normalizar(str(x[1].get('nombre') or ''))
                                 ))
 
                                 # ── Calcular total (sin filtro de búsqueda) y mostrarlo ──
@@ -4802,17 +4803,22 @@ else:
 
                                     email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
 
-                                    # ── Cabecera del alumno con número resaltado ──
-                                    st.markdown(
-                                        f'<div class="planilla-row" style="display:flex;align-items:center;gap:10px;">'
-                                        f'<span style="display:inline-flex;align-items:center;justify-content:center;'
-                                        f'min-width:28px;height:28px;background:rgba(79,172,254,0.18);'
-                                        f'border:1.5px solid rgba(79,172,254,0.45);border-radius:7px;'
-                                        f'font-size:0.82rem;font-weight:700;color:#4facfe;flex-shrink:0;">#{numero_alumno}</span>'
-                                        f'<span>👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</span>'
-                                        f'</div>',
-                                        unsafe_allow_html=True
-                                    )
+                                    # ── Cabecera del alumno: número GRANDE + cuadrado de nombre ──
+                                    # Se usan dos columnas: col izq = número, col der = planilla-row
+                                    col_num, col_al = st.columns([1, 12])
+                                    with col_num:
+                                        st.markdown(
+                                            f'<div style="display:flex;align-items:center;justify-content:center;'
+                                            f'height:100%;min-height:54px;'
+                                            f'font-size:1.6rem;font-weight:900;color:#4facfe;'
+                                            f'text-align:center;line-height:1;">{numero_alumno}</div>',
+                                            unsafe_allow_html=True
+                                        )
+                                    with col_al:
+                                        st.markdown(
+                                            f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</div>',
+                                            unsafe_allow_html=True
+                                        )
 
                                     if notas_existentes:
                                         for i, nt in enumerate(notas_existentes):
@@ -5725,5 +5731,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v377 (Cargar Notas: orden alfabético, comentario N/A, contador alumnos, numeración)
+# FIN PARTE 2 DE 2 — v378 (fix: sort seguro por apellido + número grande de orden)
 # ============================================================
