@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v383
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v384
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v382", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v384", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -2602,10 +2602,11 @@ else:
                                 clase_fmt = datetime.date.fromisoformat(tp['clase_fecha']).strftime('%d/%m/%Y') if tp['clase_fecha'] else "-"
                                 key_edit = f"{tp['bit_id']}_{tp['num']}"
                                 if st.session_state.editando_tarea == key_edit:
-                                    with st.form(f"edit_tarea_v_{key_edit}", clear_on_submit=True):
+                                    with st.form(f"edit_tarea_v_{key_edit}", clear_on_submit=False):
                                         st.markdown(f"**✏️ Editando Tarea {tp['num']} · Clase del {clase_fmt}**")
                                         nuevo_texto = st.text_area("Descripción:", value=tp['texto'], key=f"etv_txt_{key_edit}")
-                                        nueva_fecha = st.date_input("Nueva fecha de entrega:", value=f_hoy, key=f"etv_fch_{key_edit}")
+                                        val_fecha_v = datetime.date.fromisoformat(tp['fecha']) if tp['fecha'] else f_hoy
+                                        nueva_fecha = st.date_input("Nueva fecha de entrega:", value=val_fecha_v, min_value=datetime.date(2020, 1, 1), key=f"etv_fch_{key_edit}")
                                         col_g, col_c = st.columns(2)
                                         if col_g.form_submit_button("💾 Guardar"):
                                             guardar_edicion_tarea(tp['bit_id'], tp['num'], nuevo_texto, nueva_fecha)
@@ -2634,10 +2635,10 @@ else:
                                 clase_fmt = datetime.date.fromisoformat(tp['clase_fecha']).strftime('%d/%m/%Y') if tp['clase_fecha'] else "-"
                                 key_edit = f"{tp['bit_id']}_{tp['num']}"
                                 if st.session_state.editando_tarea == key_edit:
-                                    with st.form(f"edit_tarea_{key_edit}", clear_on_submit=True):
+                                    with st.form(f"edit_tarea_{key_edit}", clear_on_submit=False):
                                         st.markdown(f"**✏️ Editando Tarea {tp['num']} · Clase del {clase_fmt}**")
                                         nuevo_texto = st.text_area("Descripción:", value=tp['texto'], key=f"et_txt_{key_edit}")
-                                        nueva_fecha = st.date_input("Fecha de entrega:", value=datetime.date.fromisoformat(tp['fecha']) if tp['fecha'] else f_hoy, key=f"et_fch_{key_edit}")
+                                        nueva_fecha = st.date_input("Fecha de entrega:", value=datetime.date.fromisoformat(tp['fecha']) if tp['fecha'] else f_hoy, min_value=datetime.date(2020, 1, 1), key=f"et_fch_{key_edit}")
                                         col_g, col_c = st.columns(2)
                                         if col_g.form_submit_button("💾 Guardar"):
                                             guardar_edicion_tarea(tp['bit_id'], tp['num'], nuevo_texto, nueva_fecha)
@@ -3212,11 +3213,11 @@ else:
                             clase_fmt = datetime.date.fromisoformat(t['clase_fecha']).strftime('%d/%m/%Y') if t['clase_fecha'] else "-"
 
                             if st.session_state.get('editando_tarea_tp') == key_edit:
-                                with st.form(f"form_tp_{key_edit}", clear_on_submit=True):
+                                with st.form(f"form_tp_{key_edit}", clear_on_submit=False):
                                     st.markdown(f"**✏️ Editando Tarea {t['num']} · {t['curso']} · Clase del {clase_fmt}**")
                                     nuevo_texto = st.text_area("Descripción:", value=t['tarea'], key=f"tp_txt_{key_edit}")
                                     val_fecha = datetime.date.fromisoformat(t['fecha']) if t['fecha'] else f_hoy
-                                    nueva_fecha = st.date_input("Fecha de entrega:", value=val_fecha, key=f"tp_fch_{key_edit}")
+                                    nueva_fecha = st.date_input("Fecha de entrega:", value=val_fecha, min_value=datetime.date(2020, 1, 1), key=f"tp_fch_{key_edit}")
                                     col_g, col_c = st.columns(2)
                                     if col_g.form_submit_button("💾 Guardar"):
                                         guardar_edicion_tarea(t['bit_id'], t['num'], nuevo_texto, nueva_fecha)
@@ -6013,5 +6014,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v383 (agrega Promedio por Alumno en Notas)
+# FIN PARTE 2 DE 2 — v384 (fix edición fecha tareas vencidas)
 # ============================================================
