@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v384
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v385
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v384", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v385", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -4811,9 +4811,32 @@ else:
 
                                     email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
 
-                                    # ── Cabecera del alumno: número GRANDE + cuadrado de nombre ──
-                                    # Se usan dos columnas: col izq = número, col der = planilla-row
-                                    col_num, col_al = st.columns([1, 12])
+                                    # ── Calcular promedio provisorio (solo notas numéricas) ──
+                                    notas_numericas = [float(nt['calificacion']) for nt in notas_existentes if nt.get('calificacion') is not None]
+                                    if notas_numericas:
+                                        prom_prov = round(sum(notas_numericas) / len(notas_numericas), 2)
+                                        prom_color = "#4facfe" if prom_prov >= 6.0 else "#ffc107" if prom_prov >= 4.0 else "#ff4d6d"
+                                        prom_html = (
+                                            f'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
+                                            f'height:100%;min-height:54px;background:rgba(79,172,254,0.07);'
+                                            f'border:1px solid rgba(79,172,254,0.25);border-radius:10px;padding:6px 10px;text-align:center;">'
+                                            f'<span style="font-size:0.68rem;color:#aaa;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Prom.</span>'
+                                            f'<span style="font-size:1.25rem;font-weight:900;color:{prom_color};line-height:1.1;">{prom_prov:.2f}</span>'
+                                            f'<span style="font-size:0.65rem;color:#aaa;">({len(notas_numericas)} nota{"s" if len(notas_numericas) != 1 else ""})</span>'
+                                            f'</div>'
+                                        )
+                                    else:
+                                        prom_html = (
+                                            f'<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;'
+                                            f'height:100%;min-height:54px;background:rgba(255,255,255,0.03);'
+                                            f'border:1px solid rgba(255,255,255,0.08);border-radius:10px;padding:6px 10px;text-align:center;">'
+                                            f'<span style="font-size:0.68rem;color:#aaa;text-transform:uppercase;letter-spacing:0.08em;font-weight:600;">Prom.</span>'
+                                            f'<span style="font-size:0.85rem;font-weight:700;color:#556;">—</span>'
+                                            f'</div>'
+                                        )
+
+                                    # ── Cabecera del alumno: número GRANDE + cuadrado de nombre + promedio ──
+                                    col_num, col_al, col_prom = st.columns([1, 10, 2])
                                     with col_num:
                                         st.markdown(
                                             f'<div style="display:flex;align-items:center;justify-content:center;'
@@ -4827,6 +4850,8 @@ else:
                                             f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</div>',
                                             unsafe_allow_html=True
                                         )
+                                    with col_prom:
+                                        st.markdown(prom_html, unsafe_allow_html=True)
 
                                     if notas_existentes:
                                         for i, nt in enumerate(notas_existentes):
@@ -6014,5 +6039,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v384 (fix edición fecha tareas vencidas)
+# FIN PARTE 2 DE 2 — v385 (promedio provisorio en Cargar Notas + forzar 2 decimales)
 # ============================================================
