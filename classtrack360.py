@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v385
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v386
 # ============================================================
 
 import streamlit as st
@@ -30,7 +30,7 @@ try:
 except ImportError:
     PLOTLY_OK = False
 
-st.set_page_config(page_title="ClassTrack 360 v385", layout="wide")
+st.set_page_config(page_title="ClassTrack 360 v386", layout="wide")
 
 SUPABASE_URL = "https://tzevdylabtradqmcqldx.supabase.co"
 SUPABASE_KEY = "sb_publishable_SVgeWB2OpcuC3rd6L6b8sg_EcYfgUir"
@@ -2803,7 +2803,10 @@ else:
                             if st.session_state.es_suplente:
                                 suplente_nombre = st.text_input("Apellido y Nombre del profesor suplente:", placeholder="Ej: García, María")
                             with st.form("f_agenda", clear_on_submit=True):
-                                temas = st.text_area("Contenido dictado hoy")
+                                sin_alumnos = st.checkbox("🚫 SIN ALUMNOS — La clase no se realizó por falta de alumnos", value=False, key="f_agenda_sin_alumnos")
+                                if sin_alumnos:
+                                    st.info("La clase quedará registrada como **SIN ALUMNOS**. No es necesario completar el contenido.")
+                                temas = st.text_area("Contenido dictado hoy", disabled=sin_alumnos)
                                 observaciones = st.text_area("📝 Observaciones (opcional)", placeholder="Notas internas, incidencias, comentarios sobre la clase...", height=80)
                                 st.markdown("---")
                                 st.markdown("**📌 Tareas** (podés completar hasta 3, ninguna es obligatoria)")
@@ -2826,16 +2829,17 @@ else:
                                     st.session_state.mostrar_form_clase = False
                                     st.rerun()
                                 if col_btn_g.form_submit_button("💾 Guardar Clase", use_container_width=True):
-                                    if not temas.strip():
+                                    if not sin_alumnos and not temas.strip():
                                         st.error("El contenido de la clase no puede estar vacío.")
                                     elif st.session_state.es_suplente and not suplente_nombre.strip():
                                         st.error("Ingresá el apellido y nombre del profesor suplente.")
                                     else:
                                         with st.spinner("Guardando clase..."):
                                             try:
+                                                contenido_guardar = "SIN ALUMNOS" if sin_alumnos else temas
                                                 supabase.table("bitacora").insert({
                                                     "inscripcion_id": inscripcion_id, "fecha": str(fecha_clase),
-                                                    "contenido_clase": temas,
+                                                    "contenido_clase": contenido_guardar,
                                                     "observaciones": observaciones.strip() or None,
                                                     "profesor_suplente": suplente_nombre.strip() if st.session_state.es_suplente else None,
                                                     "tarea_proxima": tarea1 or tarea2 or tarea3 or None,
@@ -4951,10 +4955,9 @@ else:
                                         )
                                         # ── Comentario opcional cuando es N/A ──
                                         comentario_nuevo_na = st.text_input(
-                                            "💬 Comentario para N/A (opcional):",
+                                            "💬 Comentario (opcional, para N/A: ausente, dispensado, etc.):",
                                             placeholder="Ej: alumno ausente, dispensado, etc.",
-                                            key=f"com_na_{r['id']}",
-                                            disabled=not es_na
+                                            key=f"com_na_{r['id']}"
                                         )
                                         if st.form_submit_button("💾 Agregar Nota"):
                                             try:
@@ -6039,5 +6042,5 @@ else:
 
             footer()
 
-# FIN PARTE 2 DE 2 — v385 (promedio provisorio en Cargar Notas + forzar 2 decimales)
+# FIN PARTE 2 DE 2 — v386 (SIN ALUMNOS en form clase + fix comentario N/A en carga de nota)
 # ============================================================
