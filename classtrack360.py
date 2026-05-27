@@ -1,5 +1,5 @@
 # ============================================================
-# INICIO PARTE 1 DE 2 — ClassTrack 360 v386
+# INICIO PARTE 1 DE 2 — ClassTrack 360 v387
 # ============================================================
 
 import streamlit as st
@@ -667,6 +667,208 @@ def set_url_calendario_oficial(sede, url):
         st.error(f"Error guardando URL: {e}")
         return False
 
+# ── MODALIDADES PRESENCIAL / VIRTUAL ────────────────────────
+@st.cache_data(ttl=300, show_spinner=False)
+def get_modalidades_sede(sede):
+    """Retorna lista de dicts {tipo, fecha_inicio, fecha_fin} ordenados por fecha_inicio."""
+    try:
+        res = supabase.table("calendario_sede").select("modalidades_json").eq("sede", sede).execute()
+        if res.data and res.data[0].get("modalidades_json"):
+            raw = res.data[0]["modalidades_json"]
+            if isinstance(raw, str):
+                data = json.loads(raw)
+            else:
+                data = raw
+            return sorted(data, key=lambda x: x.get("fecha_inicio", ""))
+        return []
+    except:
+        return []
+
+def set_modalidades_sede(sede, modalidades):
+    """Guarda lista de modalidades en calendario_sede.modalidades_json."""
+    try:
+        existing = get_calendario_sede(sede)
+        payload = json.dumps(modalidades)
+        if existing:
+            supabase.table("calendario_sede").update({"modalidades_json": payload}).eq("sede", sede).execute()
+        else:
+            supabase.table("calendario_sede").insert({"sede": sede, "modalidades_json": payload}).execute()
+        get_modalidades_sede.clear()
+        get_calendario_sede.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error guardando modalidades: {e}")
+        return False
+
+def render_almanaque_modalidades(fecha_inicio, fecha_fin, modalidades):
+    """
+    Muestra un almanaque mensual con semanas coloreadas:
+      - Azul   (#4facfe) → Presencial
+      - Amarillo (#ffc107) → Virtual
+    Solo se muestran los meses que solapan con [fecha_inicio, fecha_fin].
+    """
+    if not fecha_inicio or not fecha_fin:
+        return
+    DIAS_ABREV = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sa", "Do"]
+
+    # Construir lookup: fecha → tipo
+    fecha_tipo = {}
+    for m in modalidades:
+        try:
+            fi = datetime.date.fromisoformat(m["fecha_inicio"])
+            ff = datetime.date.fromisoformat(m["fecha_fin"])
+            tipo = m.get("tipo", "presencial")
+            d = fi
+            while d <= ff:
+                if fecha_inicio <= d <= fecha_fin:
+                    fecha_tipo[d] = tipo
+                d += datetime.timedelta(days=1)
+        except:
+            pass
+
+    # Leyenda
+    st.markdown(
+        '<div style="display:flex;gap:20px;margin-bottom:12px;flex-wrap:wrap;">'
+        '<span style="background:#1a3a5c;border:1.5px solid #4facfe;color:#4facfe;border-radius:6px;'
+        'padding:4px 14px;font-size:0.82rem;font-weight:700;">🟦 Presencial</span>'
+        '<span style="background:#3a2e00;border:1.5px solid #ffc107;color:#ffc107;border-radius:6px;'
+        'padding:4px 14px;font-size:0.82rem;font-weight:700;">🟨 Virtual</span>'
+        '<span style="background:rgba(255,255,255,0.04);border:1.5px solid #334;color:#556;border-radius:6px;'
+        'padding:4px 14px;font-size:0.82rem;">Sin asignar</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+
+    # Iterar meses
+    anio_ini = fecha_inicio.year; mes_ini = fecha_inicio.month
+    anio_fin = fecha_fin.year;   mes_fin = fecha_fin.month
+
+    cur_anio = anio_ini; cur_mes = mes_ini
+    while (cur_anio, cur_mes) <= (anio_fin, mes_fin):
+        _, ultimo_dia = calendar.monthrange(cur_anio, cur_mes)
+        primer_dia_mes = datetime.date(cur_anio, cur_mes, 1)
+        ultimo_dia_mes = datetime.date(cur_anio, cur_mes, ultimo_dia)
+
+        nombre_mes = MESES_ES_LARGO[cur_mes - 1].capitalize()
+        # Encabezado del mes
+        html = (
+            f'<div style="margin-bottom:18px;">'
+            f'<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:0.95rem;'
+            f'color:#e8eaf0;margin-bottom:8px;letter-spacing:0.04em;">'
+            f'{nombre_mes} {cur_anio}</div>'
+            f'<table style="border-collapse:collapse;width:100%;max-width:360px;">'
+            f'<tr>'
+        )
+        for d in DIAS_ABREV:
+            html += (
+                f'<th style="text-align:center;width:14.2%;padding:3px 0;'
+                f'font-size:0.72rem;color:#445;font-family:\'DM Mono\',monospace;">{d}</th>'
+            )
+        html += '</tr><tr>'
+
+        # Espacios vacíos hasta el primer día
+        primer_dow = primer_dia_mes.weekday()  # 0=Lunes
+        for _ in range(primer_dow):
+            html += '<td></td>'
+
+        dow = primer_dow
+        d = primer_dia_mes
+        while d <= ultimo_dia_mes:
+            # Color de fondo de la celda
+            if d < fecha_inicio or d > fecha_fin:
+                bg = "transparent"; color_txt = "#334"; border = "1px solid transparent"
+            else:
+                tipo = fecha_tipo.get(d)
+                if tipo == "presencial":
+                    bg = "#1a3a5c"; color_txt = "#4facfe"; border = "1.5px solid #4facfe44"
+                elif tipo == "virtual":
+                    bg = "#3a2e00"; color_txt = "#ffc107"; border = "1.5px solid #ffc10744"
+                else:
+                    bg = "rgba(255,255,255,0.03)"; color_txt = "#556"; border = "1px solid #223"
+
+            # Indicar hoy
+            hoy = datetime.date.today()
+            if d == hoy:
+                border = "2px solid #ff4d6d"
+                color_txt = "#ff4d6d"
+
+            html += (
+                f'<td style="text-align:center;padding:4px 2px;">'
+                f'<span style="display:inline-block;width:28px;height:28px;line-height:28px;'
+                f'border-radius:6px;background:{bg};color:{color_txt};font-size:0.78rem;'
+                f'font-family:\'DM Mono\',monospace;border:{border};">'
+                f'{d.day}</span></td>'
+            )
+            dow += 1
+            if dow == 7:
+                html += '</tr><tr>'
+                dow = 0
+            d += datetime.timedelta(days=1)
+
+        # Completar última fila
+        while dow % 7 != 0:
+            html += '<td></td>'
+            dow += 1
+
+        html += '</tr></table></div>'
+        st.markdown(html, unsafe_allow_html=True)
+
+        # Avanzar mes
+        if cur_mes == 12:
+            cur_mes = 1; cur_anio += 1
+        else:
+            cur_mes += 1
+
+def render_editor_modalidades(sede, fecha_inicio, fecha_fin):
+    """Panel para agregar / eliminar rangos de modalidad."""
+    modalidades = get_modalidades_sede(sede)
+
+    st.markdown("**📋 Rangos configurados:**")
+    if not modalidades:
+        st.caption("No hay rangos definidos todavía.")
+    else:
+        for idx, m in enumerate(modalidades):
+            tipo = m.get("tipo", "presencial")
+            fi_s = m.get("fecha_inicio", "")
+            ff_s = m.get("fecha_fin", "")
+            color = "#4facfe" if tipo == "presencial" else "#ffc107"
+            etiqueta = "🟦 Presencial" if tipo == "presencial" else "🟨 Virtual"
+            col_m1, col_m2 = st.columns([5, 1])
+            col_m1.markdown(
+                f'<div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:6px 12px;'
+                f'border-left:3px solid {color};margin-bottom:4px;font-size:0.85rem;">'
+                f'<span style="color:{color};font-weight:700;">{etiqueta}</span>'
+                f'&nbsp;&nbsp;{fi_s} → {ff_s}</div>',
+                unsafe_allow_html=True
+            )
+            if col_m2.button("🗑️", key=f"del_mod_{idx}_{sede}", help="Eliminar este rango"):
+                nueva_lista = [x for i, x in enumerate(modalidades) if i != idx]
+                if set_modalidades_sede(sede, nueva_lista):
+                    st.rerun()
+
+    st.markdown("**➕ Agregar nuevo rango:**")
+    with st.form(f"form_mod_{sede}", clear_on_submit=True):
+        col_t, col_fi, col_ff = st.columns([2, 2, 2])
+        tipo_new = col_t.selectbox(
+            "Modalidad:",
+            ["presencial", "virtual"],
+            format_func=lambda x: "🟦 Presencial" if x == "presencial" else "🟨 Virtual",
+            key=f"tipo_mod_{sede}"
+        )
+        default_fi = fecha_inicio if fecha_inicio else datetime.date(ANIO_ACTUAL, 3, 1)
+        default_ff = fecha_fin if fecha_fin else datetime.date(ANIO_ACTUAL, 11, 30)
+        fi_new = col_fi.date_input("Desde:", value=default_fi, format="DD/MM/YYYY", key=f"fi_mod_{sede}")
+        ff_new = col_ff.date_input("Hasta:", value=default_fi, format="DD/MM/YYYY", key=f"ff_mod_{sede}")
+        if st.form_submit_button("💾 Agregar rango", use_container_width=True):
+            if fi_new > ff_new:
+                st.error("La fecha de inicio debe ser anterior o igual a la fecha de fin.")
+            else:
+                nuevo = {"tipo": tipo_new, "fecha_inicio": str(fi_new), "fecha_fin": str(ff_new)}
+                nueva_lista = modalidades + [nuevo]
+                nueva_lista = sorted(nueva_lista, key=lambda x: x.get("fecha_inicio", ""))
+                if set_modalidades_sede(sede, nueva_lista):
+                    st.rerun()
+
 def render_cronograma_visor(url, nombre, titulo):
     if not url: return
     ext = nombre.split('.')[-1].lower() if nombre else ''
@@ -909,6 +1111,26 @@ def render_seccion_calendario(sede, es_admin=False):
         url_2c = cal.get('cronograma_2c_url'); nombre_2c = cal.get('cronograma_2c_nombre')
         if url_1c: render_cronograma_visor(url_1c, nombre_1c, "Cronograma 1° Cuatrimestre")
         if url_2c: render_cronograma_visor(url_2c, nombre_2c, "Cronograma 2° Cuatrimestre")
+
+    # ── ALMANAQUE DE MODALIDADES (Presencial / Virtual) ──────
+    st.markdown("---")
+    st.markdown(
+        '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:1rem;'
+        'color:#e8eaf0;margin-bottom:8px;letter-spacing:0.03em;">📅 Almanaque de Modalidades</div>',
+        unsafe_allow_html=True
+    )
+    modalidades = get_modalidades_sede(sede)
+    if fecha_inicio and fecha_fin:
+        render_almanaque_modalidades(fecha_inicio, fecha_fin, modalidades)
+    else:
+        st.info("💡 Configurá las fechas del año lectivo para ver el almanaque.")
+    with st.expander("✏️ Editar modalidades (Presencial / Virtual)", expanded=(not modalidades and bool(fecha_inicio))):
+        if not fecha_inicio or not fecha_fin:
+            st.warning("Primero configurá las fechas del año lectivo en el panel de abajo.")
+        else:
+            render_editor_modalidades(sede, fecha_inicio, fecha_fin)
+    st.markdown("---")
+
     with st.expander("✏️ Editar calendario y cronogramas", expanded=not fecha_inicio):
         with st.form(f"cal_form_{sede}", clear_on_submit=False):
             col1, col2 = st.columns(2)
