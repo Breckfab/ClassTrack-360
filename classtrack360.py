@@ -700,6 +700,107 @@ def set_modalidades_sede(sede, modalidades):
         st.error(f"Error guardando modalidades: {e}")
         return False
 
+@st.cache_data(ttl=300, show_spinner=False)
+def get_trimestres_sede(sede):
+    """Retorna lista de dicts {nombre, fecha_inicio, fecha_fin} de trimestres configurados."""
+    try:
+        res = supabase.table("calendario_sede").select("trimestres_json").eq("sede", sede).execute()
+        if res.data and res.data[0].get("trimestres_json"):
+            raw = res.data[0]["trimestres_json"]
+            if isinstance(raw, str):
+                data = json.loads(raw)
+            else:
+                data = raw
+            return sorted(data, key=lambda x: x.get("fecha_inicio", ""))
+        return []
+    except:
+        return []
+
+def set_trimestres_sede(sede, trimestres):
+    """Guarda la lista de trimestres en calendario_sede.trimestres_json."""
+    try:
+        existing = get_calendario_sede(sede)
+        payload = json.dumps(trimestres)
+        if existing:
+            supabase.table("calendario_sede").update({"trimestres_json": payload}).eq("sede", sede).execute()
+        else:
+            supabase.table("calendario_sede").insert({"sede": sede, "trimestres_json": payload}).execute()
+        get_trimestres_sede.clear()
+        get_calendario_sede.clear()
+        return True
+    except Exception as e:
+        st.error(f"Error guardando trimestres: {e}")
+        return False
+
+def render_editor_trimestres(sede, fecha_inicio_lectivo, fecha_fin_lectivo):
+    """UI para configurar los trimestres del año lectivo."""
+    trimestres = get_trimestres_sede(sede)
+    NOMBRES_DEFAULT = ["1° Trimestre", "2° Trimestre", "3° Trimestre"]
+    if trimestres:
+        st.markdown(
+            '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:0.95rem;'
+            'color:#e8eaf0;margin-bottom:10px;">📊 Trimestres configurados</div>',
+            unsafe_allow_html=True
+        )
+        for t in trimestres:
+            fi_t = datetime.date.fromisoformat(t["fecha_inicio"]) if t.get("fecha_inicio") else None
+            ff_t = datetime.date.fromisoformat(t["fecha_fin"]) if t.get("fecha_fin") else None
+            fi_fmt = fi_t.strftime("%d/%m/%Y") if fi_t else "—"
+            ff_fmt = ff_t.strftime("%d/%m/%Y") if ff_t else "—"
+            hoy = datetime.date.today()
+            activo = fi_t and ff_t and fi_t <= hoy <= ff_t
+            badge = '<span style="background:rgba(79,172,254,0.2);color:#4facfe;border-radius:4px;padding:1px 7px;font-size:0.75rem;font-weight:700;">EN CURSO</span>' if activo else ''
+            st.markdown(
+                f'<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);'
+                f'border-radius:8px;padding:10px 14px;margin-bottom:6px;font-size:0.88rem;">'
+                f'<b>{t["nombre"]}</b> {badge}<br>'
+                f'<span style="color:#99a;">🗓 {fi_fmt} → {ff_fmt}</span>'
+                f'</div>',
+                unsafe_allow_html=True
+            )
+    else:
+        st.info("💡 Aún no hay trimestres configurados para esta sede.")
+    with st.expander("✏️ Configurar trimestres", expanded=not bool(trimestres)):
+        st.caption("Definí las fechas de inicio y fin de cada trimestre del año lectivo.")
+        nuevos = []
+        for i in range(3):
+            nombre_default = NOMBRES_DEFAULT[i]
+            if i < len(trimestres):
+                fi_prev = datetime.date.fromisoformat(trimestres[i]["fecha_inicio"]) if trimestres[i].get("fecha_inicio") else fecha_inicio_lectivo
+                ff_prev = datetime.date.fromisoformat(trimestres[i]["fecha_fin"]) if trimestres[i].get("fecha_fin") else fecha_fin_lectivo
+                nombre_prev = trimestres[i].get("nombre", nombre_default)
+            else:
+                fi_prev = fecha_inicio_lectivo
+                ff_prev = fecha_fin_lectivo
+                nombre_prev = nombre_default
+            st.markdown(f"**{nombre_default}**")
+            col_n, col_fi, col_ff = st.columns([2, 1.5, 1.5])
+            nombre_val = col_n.text_input("Nombre:", value=nombre_prev, key=f"trim_nom_{i}_{sede}", max_chars=40)
+            fi_val = col_fi.date_input("Desde:", value=fi_prev, format="DD/MM/YYYY", key=f"trim_fi_{i}_{sede}")
+            ff_val = col_ff.date_input("Hasta:", value=ff_prev, format="DD/MM/YYYY", key=f"trim_ff_{i}_{sede}")
+            nuevos.append({"nombre": nombre_val, "fecha_inicio": str(fi_val), "fecha_fin": str(ff_val)})
+        col_g1, col_g2 = st.columns(2)
+        if col_g1.button("💾 Guardar trimestres", key=f"btn_guardar_trim_{sede}", use_container_width=True, type="primary"):
+            errores = []
+            for t in nuevos:
+                fi_t = datetime.date.fromisoformat(t["fecha_inicio"])
+                ff_t = datetime.date.fromisoformat(t["fecha_fin"])
+                if fi_t >= ff_t:
+                    errores.append(f"{t['nombre']}: la fecha de inicio debe ser anterior a la de fin.")
+            if errores:
+                for e in errores:
+                    st.error(e)
+            else:
+                ok = set_trimestres_sede(sede, nuevos)
+                if ok:
+                    st.success("✅ Trimestres guardados correctamente.")
+                    st.rerun()
+        if trimestres and col_g2.button("🗑️ Borrar trimestres", key=f"btn_borrar_trim_{sede}", use_container_width=True):
+            ok = set_trimestres_sede(sede, [])
+            if ok:
+                st.success("Trimestres eliminados.")
+                st.rerun()
+
 def render_almanaque_modalidades(fecha_inicio, fecha_fin, modalidades):
     """
     Muestra un almanaque mensual con semanas coloreadas:
@@ -1129,6 +1230,18 @@ def render_seccion_calendario(sede, es_admin=False):
             st.warning("Primero configurá las fechas del año lectivo en el panel de abajo.")
         else:
             render_editor_modalidades(sede, fecha_inicio, fecha_fin)
+    st.markdown("---")
+
+    # ── TRIMESTRES ─────────────────────────────────────────────
+    st.markdown(
+        '<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:1rem;'
+        'color:#e8eaf0;margin-bottom:8px;letter-spacing:0.03em;">🗓️ Trimestres del Año Lectivo</div>',
+        unsafe_allow_html=True
+    )
+    if fecha_inicio and fecha_fin:
+        render_editor_trimestres(sede, fecha_inicio, fecha_fin)
+    else:
+        st.info("💡 Configurá las fechas del año lectivo para poder definir los trimestres.")
     st.markdown("---")
 
     with st.expander("✏️ Editar calendario y cronogramas", expanded=not fecha_inicio):
@@ -4822,7 +4935,7 @@ else:
             if not mapa_cursos:
                 no_encontrado("No hay cursos creados.")
             else:
-                sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "✏️ Cargar Nota", "📝 Modificar Nota", "📊 Promedio por Alumno"], horizontal=False)
+                sub_nt = st.radio("Acción:", ["📋 Ver Notas por Curso", "📅 Ver Notas por Trimestre", "✏️ Cargar Nota", "📝 Modificar Nota", "📊 Promedio por Alumno"], horizontal=False)
                 if sub_nt == "📋 Ver Notas por Curso":
                     col_f1, col_f2 = st.columns([2, 1])
                     c_ver = col_f1.selectbox("Seleccione Curso:", ["---"] + list(mapa_cursos.keys()), key="nt_ver_sel")
@@ -4964,6 +5077,190 @@ else:
                                                 st.error(f"Error al exportar: {e_exp}")
                         except Exception as e:
                             st.error(f"Error: {e}")
+                elif sub_nt == "📅 Ver Notas por Trimestre":
+                    trimestres_disp = get_trimestres_sede(sede_actual)
+                    if not trimestres_disp:
+                        st.info("💡 No hay trimestres configurados. Podés hacerlo en **📆 Planificación → Calendario Académico**.")
+                    else:
+                        hoy_trim = datetime.date.today()
+                        idx_default_trim = 0
+                        for _i, _t in enumerate(trimestres_disp):
+                            _fi = datetime.date.fromisoformat(_t["fecha_inicio"]) if _t.get("fecha_inicio") else None
+                            _ff = datetime.date.fromisoformat(_t["fecha_fin"]) if _t.get("fecha_fin") else None
+                            if _fi and _ff and _fi <= hoy_trim <= _ff:
+                                idx_default_trim = _i
+                                break
+                        nombres_trim_disp = [t["nombre"] for t in trimestres_disp]
+                        trim_sel_nombre = st.selectbox("Seleccioná el trimestre:", nombres_trim_disp, index=idx_default_trim, key="trim_sel_notas")
+                        trim_sel = next((t for t in trimestres_disp if t["nombre"] == trim_sel_nombre), None)
+                        if trim_sel:
+                            fecha_desde_trim = datetime.date.fromisoformat(trim_sel["fecha_inicio"])
+                            fecha_hasta_trim = datetime.date.fromisoformat(trim_sel["fecha_fin"])
+                            st.markdown(
+                                f'<div style="background:rgba(79,172,254,0.07);border:1px solid rgba(79,172,254,0.2);'
+                                f'border-radius:8px;padding:10px 16px;margin:8px 0 14px 0;font-size:0.88rem;">'
+                                f'📅 <b>{trim_sel_nombre}</b> &nbsp;·&nbsp; '
+                                f'{fecha_desde_trim.strftime("%d/%m/%Y")} → {fecha_hasta_trim.strftime("%d/%m/%Y")}'
+                                f'</div>', unsafe_allow_html=True
+                            )
+                            col_tc1, col_tc2 = st.columns([2, 1])
+                            opciones_curso_trim = ["— Todos los cursos —"] + list(mapa_cursos.keys())
+                            curso_trim_sel = col_tc1.selectbox("Curso:", opciones_curso_trim, key="trim_curso_sel")
+                            filtro_trim_est = col_tc2.selectbox("Estado:", ["Todos", "✅ Aprobados", "❌ Desaprobados"], key="trim_filtro_est")
+                            busq_trim_al = st.text_input("🔍 Buscar alumno:", placeholder="Escribí para filtrar...", key="trim_busq_al")
+                            try:
+                                q_trim = supabase.table("inscripciones").select(
+                                    "id, nombre_curso_materia, nota_aprobacion, alumnos(id, nombre, apellido, email)"
+                                ).eq("profesor_id", u_data['id']).not_.is_("alumno_id", "null")
+                                if curso_trim_sel != "— Todos los cursos —":
+                                    q_trim = q_trim.eq("nombre_curso_materia", curso_trim_sel)
+                                res_insc_trim = q_trim.execute()
+                            except Exception as e_trim:
+                                st.error(f"Error al cargar inscripciones: {e_trim}")
+                                res_insc_trim = None
+                            if res_insc_trim and res_insc_trim.data:
+                                por_curso_trim = {}
+                                for r_trim in res_insc_trim.data:
+                                    cn_trim = r_trim["nombre_curso_materia"]
+                                    if cn_trim not in por_curso_trim:
+                                        por_curso_trim[cn_trim] = {"nota_aprobacion": r_trim.get("nota_aprobacion"), "inscripciones": []}
+                                    por_curso_trim[cn_trim]["inscripciones"].append(r_trim)
+                                total_mostrados_trim = 0
+                                resumen_export_trim = []
+                                for nombre_curso_trim, data_curso_trim in sorted(por_curso_trim.items()):
+                                    nota_ap_trim = data_curso_trim["nota_aprobacion"]
+                                    filas_curso_trim = []
+                                    for r_t in data_curso_trim["inscripciones"]:
+                                        al_raw_t = r_t.get("alumnos")
+                                        al_t = al_raw_t[0] if isinstance(al_raw_t, list) and al_raw_t else al_raw_t
+                                        if not al_t:
+                                            continue
+                                        nombre_al_t = f"{al_t.get('apellido','').upper()}, {al_t.get('nombre','')}"
+                                        if busq_trim_al.strip() and normalizar(busq_trim_al) not in normalizar(nombre_al_t):
+                                            continue
+                                        try:
+                                            res_n_t = supabase.table("notas").select("calificacion, created_at").eq(
+                                                "inscripcion_id", r_t["id"]
+                                            ).gte("created_at", str(fecha_desde_trim)).lte(
+                                                "created_at", str(fecha_hasta_trim) + "T23:59:59"
+                                            ).order("created_at").execute()
+                                            notas_trim_al = res_n_t.data or []
+                                        except:
+                                            notas_trim_al = []
+                                        vals_t = [float(n["calificacion"]) for n in notas_trim_al if n.get("calificacion") is not None]
+                                        prom_t = round(sum(vals_t) / len(vals_t), 2) if vals_t else None
+                                        es_aprobado_t = nota_ap_trim is not None and prom_t is not None and prom_t >= float(nota_ap_trim)
+                                        if filtro_trim_est == "✅ Aprobados" and (prom_t is None or not es_aprobado_t):
+                                            continue
+                                        if filtro_trim_est == "❌ Desaprobados" and (prom_t is None or es_aprobado_t):
+                                            continue
+                                        filas_curso_trim.append((nombre_al_t, vals_t, prom_t, es_aprobado_t, al_t.get("email", "")))
+                                    if not filas_curso_trim:
+                                        continue
+                                    prom_vals_curso = [f[2] for f in filas_curso_trim if f[2] is not None]
+                                    prom_curso_trim = round(sum(prom_vals_curso) / len(prom_vals_curso), 2) if prom_vals_curso else None
+                                    aprobados_ct = sum(1 for f in filas_curso_trim if f[3])
+                                    desaprobados_ct = sum(1 for f in filas_curso_trim if f[2] is not None and not f[3])
+                                    sin_notas_ct = sum(1 for f in filas_curso_trim if f[2] is None)
+                                    st.markdown(
+                                        f'<div style="font-family:\'Syne\',sans-serif;font-weight:700;font-size:1rem;'
+                                        f'color:#4facfe;margin:16px 0 6px 0;letter-spacing:0.03em;">'
+                                        f'📚 {nombre_curso_trim}'
+                                        f'<span style="font-size:0.78rem;font-weight:400;color:#99a;margin-left:10px;">'
+                                        f'Prom. curso: {prom_curso_trim if prom_curso_trim else "—"} &nbsp;·&nbsp; '
+                                        f'✅ {aprobados_ct} &nbsp;·&nbsp; ❌ {desaprobados_ct} &nbsp;·&nbsp; ➖ {sin_notas_ct} sin notas'
+                                        f'</span></div>', unsafe_allow_html=True
+                                    )
+                                    for nombre_al_t, vals_t, prom_t, es_aprobado_t, email_t in sorted(filas_curso_trim, key=lambda x: x[0]):
+                                        notas_str_t = "  ·  ".join([str(v) for v in vals_t]) if vals_t else "Sin notas en el período"
+                                        if prom_t is not None:
+                                            badge_t = color_nota(prom_t)
+                                            estado_t = estado_aprobacion(prom_t, nota_ap_trim)
+                                            prom_html_t = f'<span class="nota-badge {badge_t}" style="margin-left:8px;">{prom_t}</span> {estado_t}'
+                                        else:
+                                            prom_html_t = '<span style="color:#556;font-size:0.8rem;">Sin calificaciones</span>'
+                                        email_html_t = f'<span style="color:#99a;font-size:0.78rem;"> · ✉️ {email_t}</span>' if email_t else ""
+                                        st.markdown(
+                                            f'<div style="background:rgba(255,255,255,0.02);border:1px solid rgba(255,255,255,0.05);'
+                                            f'border-radius:7px;padding:8px 12px;margin-bottom:5px;font-size:0.86rem;">'
+                                            f'<b>👤 {nombre_al_t}</b>{email_html_t}<br>'
+                                            f'<span style="color:#99a;">Notas: {notas_str_t}</span><br>'
+                                            f'Promedio: {prom_html_t}'
+                                            f'</div>', unsafe_allow_html=True
+                                        )
+                                        total_mostrados_trim += 1
+                                    resumen_export_trim.append({
+                                        "curso": nombre_curso_trim, "alumnos": filas_curso_trim,
+                                        "nota_ap": nota_ap_trim, "prom_curso": prom_curso_trim
+                                    })
+                                if total_mostrados_trim == 0:
+                                    st.info("No hay alumnos que coincidan con los filtros aplicados.")
+                                else:
+                                    st.caption(f"Mostrando {total_mostrados_trim} alumno/s")
+                                    if EXCEL_OK and resumen_export_trim:
+                                        st.markdown("---")
+                                        if st.button("📥 Exportar a Excel", key="btn_export_trim", use_container_width=True):
+                                            try:
+                                                wb_trim = openpyxl.Workbook()
+                                                ws_trim = wb_trim.active
+                                                ws_trim.title = trim_sel_nombre[:31]
+                                                hf = Font(bold=True, color="FFFFFF")
+                                                hfill = PatternFill("solid", fgColor="1a2535")
+                                                tfill = PatternFill("solid", fgColor="0d3a5c")
+                                                afill = PatternFill("solid", fgColor="0a3d1f")
+                                                dfill = PatternFill("solid", fgColor="3d0a0a")
+                                                ctr = Alignment(horizontal="center")
+                                                thin_s = Side(style="thin", color="333333")
+                                                brd = Border(left=thin_s, right=thin_s, top=thin_s, bottom=thin_s)
+                                                ws_trim.merge_cells("A1:H1")
+                                                ws_trim["A1"] = f"{trim_sel_nombre}  |  {fecha_desde_trim.strftime('%d/%m/%Y')} → {fecha_hasta_trim.strftime('%d/%m/%Y')}"
+                                                ws_trim["A1"].font = Font(bold=True, color="4facfe", size=13)
+                                                ws_trim["A1"].fill = PatternFill("solid", fgColor="080b10")
+                                                ws_trim["A1"].alignment = ctr
+                                                ws_trim.row_dimensions[1].height = 22
+                                                fila_trim = 3
+                                                for bloque_trim in resumen_export_trim:
+                                                    ws_trim.merge_cells(f"A{fila_trim}:H{fila_trim}")
+                                                    ws_trim[f"A{fila_trim}"] = f"📚 {bloque_trim['curso']}  —  Promedio del curso: {bloque_trim['prom_curso'] or '—'}"
+                                                    ws_trim[f"A{fila_trim}"].font = Font(bold=True, color="FFFFFF", size=11)
+                                                    ws_trim[f"A{fila_trim}"].fill = tfill
+                                                    ws_trim[f"A{fila_trim}"].alignment = Alignment(horizontal="left", indent=1)
+                                                    ws_trim.row_dimensions[fila_trim].height = 18
+                                                    fila_trim += 1
+                                                    for col_idx, h in enumerate(["Apellido y Nombre", "Email", "Notas del período", "Cant. notas", "Promedio", "Nota mín.", "Nota máx.", "Estado"], 1):
+                                                        cell = ws_trim.cell(row=fila_trim, column=col_idx, value=h)
+                                                        cell.font = hf; cell.fill = hfill; cell.alignment = ctr; cell.border = brd
+                                                    ws_trim.row_dimensions[fila_trim].height = 16
+                                                    fila_trim += 1
+                                                    for n_al, v_al, p_al, ap_al, em_al in sorted(bloque_trim["alumnos"], key=lambda x: x[0]):
+                                                        notas_str_x = " | ".join([str(v) for v in v_al]) if v_al else ""
+                                                        est_x = "APROBADO" if p_al is not None and ap_al else ("DESAPROBADO" if p_al is not None else "Sin notas")
+                                                        row_d = [n_al, em_al, notas_str_x, len(v_al), p_al, min(v_al) if v_al else "", max(v_al) if v_al else "", est_x]
+                                                        for col_idx, val in enumerate(row_d, 1):
+                                                            cell = ws_trim.cell(row=fila_trim, column=col_idx, value=val)
+                                                            cell.border = brd
+                                                            if col_idx in (5, 6, 7): cell.alignment = ctr
+                                                        if p_al is not None:
+                                                            for col_idx in range(1, 9):
+                                                                ws_trim.cell(row=fila_trim, column=col_idx).fill = afill if ap_al else dfill
+                                                        fila_trim += 1
+                                                    fila_trim += 1
+                                                for i_col, ancho in enumerate([30, 28, 35, 12, 12, 12, 12, 14], 1):
+                                                    ws_trim.column_dimensions[openpyxl.utils.get_column_letter(i_col)].width = ancho
+                                                buf_trim = io.BytesIO()
+                                                wb_trim.save(buf_trim)
+                                                buf_trim.seek(0)
+                                                st.download_button(
+                                                    label="⬇️ Descargar Excel",
+                                                    data=buf_trim.getvalue(),
+                                                    file_name=f"Notas_{trim_sel_nombre.replace(' ', '_')}.xlsx",
+                                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                                                    use_container_width=True
+                                                )
+                                            except Exception as e_exp_trim:
+                                                st.error(f"Error al generar Excel: {e_exp_trim}")
+                            else:
+                                st.info("No hay alumnos inscriptos.")
                 elif sub_nt == "✏️ Cargar Nota":
                     # ── CARGAR NOTA (v380) ──────────────────────────────────────────
                     # Cambios v380:
@@ -6266,3 +6563,4 @@ else:
 
 # FIN PARTE 2 DE 2 — v386 (SIN ALUMNOS en form clase + fix comentario N/A en carga de nota)
 # ============================================================
+
