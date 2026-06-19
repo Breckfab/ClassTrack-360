@@ -321,7 +321,7 @@ def aplicar_tema(modo_claro=False):
     .contador-card .cc-info {{ color: #4facfe; font-size: 0.78rem; margin-bottom: 4px; }}
     .contador-card .cc-clases {{ color: #a0c4ff; font-size: 0.82rem; margin-top: 6px; }}
     .asist-card {{ background: {alumno_bg}; border: 1px solid {border_color}; border-radius: 12px; padding: 14px 18px; margin-bottom: 8px; display: flex; align-items: center; justify-content: space-between; }}
-    .asist-nombre {{ color: {color_texto}; font-size: 0.9rem; font-weight: 600; }}
+    .asist-nombre {{ color: #ffd166; font-size: 0.9rem; font-weight: 700; }}
     .asist-presente {{ color: #4facfe; background: rgba(79,172,254,0.1); border: 1px solid rgba(79,172,254,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }}
     .asist-tarde {{ color: #ffc107; background: rgba(255,193,7,0.1); border: 1px solid rgba(255,193,7,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }}
     .asist-ausente {{ color: #ff4d6d; background: rgba(255,77,109,0.1); border: 1px solid rgba(255,77,109,0.3); padding: 3px 12px; border-radius: 20px; font-size: 0.78rem; font-weight: 700; }}
@@ -332,7 +332,7 @@ def aplicar_tema(modo_claro=False):
     .stat-card {{ background: {card_bg}; border: 1px solid {stat_border}; padding: 10px; border-radius: 8px; text-align: center; margin-bottom: 10px; }}
     .nota-existente {{ color: #4facfe; font-size: 0.85rem; margin-top: 4px; }}
     .alumno-block {{ background: {alumno_bg}; border: 1px solid {border_color}; border-radius: 12px; padding: 14px 18px; margin-bottom: 12px; }}
-    .alumno-block .nombre {{ font-weight: 600; color: {color_texto}; font-size: 0.95rem; margin-bottom: 10px; }}
+    .alumno-block .nombre {{ font-weight: 700; color: #ffd166; font-size: 0.95rem; margin-bottom: 10px; letter-spacing: 0.02em; }}
     .nota-linea {{ display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid {fila_border}; font-size: 0.85rem; color: {fila_color}; }}
     .nota-linea:last-of-type {{ border-bottom: none; }}
     .nota-badge {{ font-family: 'Syne', sans-serif; font-weight: 700; font-size: 0.85rem; padding: 2px 8px; border-radius: 5px; }}
@@ -4879,7 +4879,7 @@ else:
                                         curso_badge = f' &nbsp;<span style="color:#4facfe;font-size:0.78rem">📖 {r.get("nombre_curso_materia","")}</span>' if c_v == "Todos" else ''
                                         email_display = f'<br><span class="email-tag">✉️ {al.get("email","")}</span>' if al.get('email') else ''
                                         inactivo_badge = ' &nbsp;<span style="background:rgba(255,77,109,0.15);border:1px solid rgba(255,77,109,0.4);border-radius:5px;padding:2px 8px;color:#ff4d6d;font-size:0.75rem;font-weight:700;">INACTIVO</span>' if not activo else ''
-                                        st.markdown(f'<div class="planilla-row" style="opacity:{"0.5" if not activo else "1"};">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{inactivo_badge}{curso_badge}{email_display}</div>', unsafe_allow_html=True)
+                                        st.markdown(f'<div class="planilla-row" style="opacity:{"0.5" if not activo else "1"};">👤 <span style="color:#ffd166;font-weight:700;">{al.get("apellido","").upper()}, {al.get("nombre","")}</span>{inactivo_badge}{curso_badge}{email_display}</div>', unsafe_allow_html=True)
                                         ab1, ab2, ab3, ab4 = st.columns(4)
                                         if ab1.button("✏️ Editar", key=f"eal_{r['id']}"):
                                             st.session_state.editando_alumno = r['id']; st.rerun()
@@ -5370,7 +5370,7 @@ else:
                                         )
                                     with col_al:
                                         st.markdown(
-                                            f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display}</div>',
+                                            f'<div class="planilla-row">👤 <span style="color:#ffd166;font-weight:700;">{al.get("apellido","").upper()}, {al.get("nombre","")}</span>{email_display}</div>',
                                             unsafe_allow_html=True
                                         )
                                     with col_prom:
@@ -5570,7 +5570,7 @@ else:
                                         )
                                     with col_al_m:
                                         st.markdown(
-                                            f'<div class="planilla-row">👤 {al.get("apellido","").upper()}, {al.get("nombre","")}{email_display_mod}</div>',
+                                            f'<div class="planilla-row">👤 <span style="color:#ffd166;font-weight:700;">{al.get("apellido","").upper()}, {al.get("nombre","")}</span>{email_display_mod}</div>',
                                             unsafe_allow_html=True
                                         )
                                     for i, nt in enumerate(notas_mod):
