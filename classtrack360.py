@@ -257,6 +257,48 @@ def get_clases_no_registradas(profesor_id, mapa_cursos, mapa_cursos_data, cal_se
     pendientes.sort(key=lambda x: x['fecha'], reverse=True)
     return pendientes
 
+def get_resumen_tareas_global(mapa_cursos, f_hoy=None):
+    """Junta las tareas pendientes de TODOS los cursos del profesor en una sola consulta,
+    sin necesidad de entrar a ningún curso en particular. Se usa para mostrar un resumen
+    apenas se ingresa al sistema, independiente del curso que corresponda en el día de hoy."""
+    if f_hoy is None:
+        f_hoy = datetime.date.today()
+    if not mapa_cursos:
+        return {'vencidas': [], 'proximas': [], 'sin_fecha': [], 'total': 0}
+    try:
+        res_bk = supabase.table("bitacora").select(
+            "id, fecha, tarea1, tarea1_fecha, tarea1_completada, tarea2, tarea2_fecha, tarea2_completada, tarea3, tarea3_fecha, tarea3_completada, inscripcion_id"
+        ).in_("inscripcion_id", list(mapa_cursos.values())).execute()
+    except Exception:
+        return {'vencidas': [], 'proximas': [], 'sin_fecha': [], 'total': 0}
+
+    id_a_curso = {v: k for k, v in mapa_cursos.items()}
+    vencidas, proximas, sin_fecha = [], [], []
+    for reg in (res_bk.data or []):
+        curso_nombre = id_a_curso.get(reg['inscripcion_id'], 'Curso desconocido')
+        for i in range(1, 4):
+            txt = reg.get(f'tarea{i}')
+            fecha_t = reg.get(f'tarea{i}_fecha')
+            completada = reg.get(f'tarea{i}_completada', False)
+            if not txt or completada:
+                continue
+            item = {
+                'bit_id': reg['id'], 'num': i, 'curso': curso_nombre,
+                'tarea': txt, 'fecha': fecha_t, 'clase_fecha': reg.get('fecha'),
+            }
+            if not fecha_t:
+                sin_fecha.append(item)
+            elif datetime.date.fromisoformat(fecha_t) < f_hoy:
+                vencidas.append(item)
+            else:
+                proximas.append(item)
+
+    vencidas.sort(key=lambda x: x['fecha'])
+    proximas.sort(key=lambda x: x['fecha'])
+    total = len(vencidas) + len(proximas) + len(sin_fecha)
+    return {'vencidas': vencidas, 'proximas': proximas, 'sin_fecha': sin_fecha, 'total': total}
+
+
 def footer():
     st.markdown('<div class="footer-cr">&#174; Sistema diseñado y realizado por Fabián Belledi &nbsp;·&nbsp; 2026</div>', unsafe_allow_html=True)
 
@@ -2820,6 +2862,49 @@ else:
                         </div>
                     </div>''', unsafe_allow_html=True)
     except: pass
+
+    # =========================================================
+    # RESUMEN GLOBAL DE TAREAS PENDIENTES (todos los cursos)
+    # Visible apenas se ingresa al sistema, independiente del
+    # curso que corresponda en el día de hoy.
+    # =========================================================
+    resumen_tp_global = get_resumen_tareas_global(mapa_cursos, f_hoy)
+    if resumen_tp_global['total'] > 0:
+        _venc_g = resumen_tp_global['vencidas']
+        _prox_g = resumen_tp_global['proximas']
+        _sinf_g = resumen_tp_global['sin_fecha']
+        _titulo_resumen = f"📌 Tareas pendientes en tus cursos — {resumen_tp_global['total']} en total"
+        if _venc_g:
+            _titulo_resumen += f" · 🔴 {len(_venc_g)} vencida{'s' if len(_venc_g) > 1 else ''}"
+        with st.expander(_titulo_resumen, expanded=bool(_venc_g)):
+            st.caption("Este resumen junta las tareas pendientes de todos tus cursos, sin necesidad de entrar a cada uno.")
+            if _venc_g:
+                st.markdown('<div class="vencidas-header">⚠️ VENCIDAS</div>', unsafe_allow_html=True)
+                for tg in _venc_g:
+                    fecha_fmt_g = datetime.date.fromisoformat(tg['fecha']).strftime('%d/%m/%Y')
+                    dias_v_g = (f_hoy - datetime.date.fromisoformat(tg['fecha'])).days
+                    st.markdown(f'''<div class="resumen-asist" style="border-color:rgba(255,77,109,0.4);">
+                        <div class="resumen-asist-titulo">{tg["curso"]}</div>
+                        <div class="resumen-fila"><span>{tg["tarea"]}</span></div>
+                        <div class="resumen-fila"><span>Venció: {fecha_fmt_g}</span><span style="color:#ff4d6d;font-weight:700">Hace {dias_v_g} día/s</span></div>
+                    </div>''', unsafe_allow_html=True)
+            if _prox_g:
+                st.markdown('<div class="tareas-pendientes-header">📌 PRÓXIMAS A VENCER</div>', unsafe_allow_html=True)
+                for tg in _prox_g[:8]:
+                    fecha_fmt_g = datetime.date.fromisoformat(tg['fecha']).strftime('%d/%m/%Y')
+                    dias_g = (datetime.date.fromisoformat(tg['fecha']) - f_hoy).days
+                    color_g = "#ffc107" if dias_g <= 3 else "#4facfe"
+                    dias_lbl_g = "Hoy" if dias_g == 0 else ("Mañana" if dias_g == 1 else f"En {dias_g} días")
+                    st.markdown(f'''<div class="resumen-asist">
+                        <div class="resumen-asist-titulo">{tg["curso"]}</div>
+                        <div class="resumen-fila"><span>{tg["tarea"]}</span></div>
+                        <div class="resumen-fila"><span>Vence: {fecha_fmt_g}</span><span style="color:{color_g};font-weight:700">{dias_lbl_g}</span></div>
+                    </div>''', unsafe_allow_html=True)
+                if len(_prox_g) > 8:
+                    st.caption(f"...y {len(_prox_g) - 8} más. Vé a 📅 Inicio → 📌 Tareas Pendientes para ver el listado completo.")
+            if _sinf_g:
+                st.markdown(f'<div style="color:#888;font-size:0.85rem;margin-top:6px;">📎 {len(_sinf_g)} tarea/s sin fecha asignada.</div>', unsafe_allow_html=True)
+            st.caption("💡 Podés editar o marcar tareas como hechas desde 📅 Inicio → 📌 Tareas Pendientes.")
 
     # =========================================================
     # SECCIÓN 0 — INICIO (Agenda · Clases sin reg. · Tareas)
