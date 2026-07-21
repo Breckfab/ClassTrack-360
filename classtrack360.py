@@ -504,6 +504,7 @@ def generar_codigo():
 def marcar_tarea(bit_id, num_tarea, completada):
     try:
         supabase.table("bitacora").update({f"tarea{num_tarea}_completada": completada}).eq("id", bit_id).execute()
+        get_tareas_vencidas_count.clear()
         st.rerun()
     except Exception as e:
         st.error(f"Error: {e}")
@@ -515,6 +516,7 @@ def borrar_tarea(bit_id, num_tarea):
             f"tarea{num_tarea}_fecha": None,
             f"tarea{num_tarea}_completada": False,
         }).eq("id", bit_id).execute()
+        get_tareas_vencidas_count.clear()
         st.rerun()
     except Exception as e:
         st.error(f"Error: {e}")
@@ -522,6 +524,7 @@ def borrar_tarea(bit_id, num_tarea):
 def marcar_tarea_proxima(bit_id, completada):
     try:
         supabase.table("bitacora").update({"tarea_proxima_completada": completada}).eq("id", bit_id).execute()
+        get_tareas_vencidas_count.clear()
         st.rerun()
     except Exception as e:
         st.error(f"Error: {e}")
@@ -532,6 +535,7 @@ def guardar_edicion_tarea(bit_id, num_tarea, nuevo_texto, nueva_fecha):
             f"tarea{num_tarea}": nuevo_texto.strip() or None,
             f"tarea{num_tarea}_fecha": str(nueva_fecha) if nuevo_texto.strip() else None,
         }).eq("id", bit_id).execute()
+        get_tareas_vencidas_count.clear()
         st.session_state.editando_tarea = None
         st.rerun()
     except Exception as e:
@@ -542,6 +546,7 @@ def guardar_edicion_tarea_legacy(bit_id, nuevo_texto):
         supabase.table("bitacora").update({
             "tarea_proxima": nuevo_texto.strip() or None,
         }).eq("id", bit_id).execute()
+        get_tareas_vencidas_count.clear()
         st.session_state.editando_tarea_legacy = None
         st.rerun()
     except Exception as e:
@@ -2903,8 +2908,8 @@ else:
                     nueva_fecha_g = st.date_input("Fecha de entrega:", value=val_fecha_g, min_value=datetime.date(2020, 1, 1), key=f"glob_fch_{key_g}")
                     col_gg, col_cc = st.columns(2)
                     if col_gg.form_submit_button("💾 Guardar"):
-                        guardar_edicion_tarea(tg['bit_id'], tg['num'], nuevo_texto_g, nueva_fecha_g)
                         st.session_state.tp_glob_editando = None
+                        guardar_edicion_tarea(tg['bit_id'], tg['num'], nuevo_texto_g, nueva_fecha_g)
                     if col_cc.form_submit_button("❌ Cancelar"):
                         st.session_state.tp_glob_editando = None; st.rerun()
                 return
