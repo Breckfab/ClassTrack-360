@@ -71,6 +71,8 @@ def init_state():
         'editando_tarea': None,
         'editando_tarea_legacy': None,
         'editando_tarea_tp': None,
+        'tp_glob_editando': None,
+        'tp_glob_borrar': None,
         'hist_curso': 'Todos',
         'hist_contenido': '',
         'hist_tipo_prof': 'Todos',
@@ -502,6 +504,17 @@ def generar_codigo():
 def marcar_tarea(bit_id, num_tarea, completada):
     try:
         supabase.table("bitacora").update({f"tarea{num_tarea}_completada": completada}).eq("id", bit_id).execute()
+        st.rerun()
+    except Exception as e:
+        st.error(f"Error: {e}")
+
+def borrar_tarea(bit_id, num_tarea):
+    try:
+        supabase.table("bitacora").update({
+            f"tarea{num_tarea}": None,
+            f"tarea{num_tarea}_fecha": None,
+            f"tarea{num_tarea}_completada": False,
+        }).eq("id", bit_id).execute()
         st.rerun()
     except Exception as e:
         st.error(f"Error: {e}")
@@ -2876,22 +2889,48 @@ else:
         _titulo_resumen = f"📌 Tareas pendientes en tus cursos — {resumen_tp_global['total']} en total"
         if _venc_g:
             _titulo_resumen += f" · 🔴 {len(_venc_g)} vencida{'s' if len(_venc_g) > 1 else ''}"
-        with st.expander(_titulo_resumen, expanded=bool(_venc_g)):
-            st.caption("Este resumen junta las tareas pendientes de todos tus cursos, sin necesidad de entrar a cada uno.")
-            if _venc_g:
-                st.markdown('<div class="vencidas-header">⚠️ VENCIDAS</div>', unsafe_allow_html=True)
-                for tg in _venc_g:
-                    fecha_fmt_g = datetime.date.fromisoformat(tg['fecha']).strftime('%d/%m/%Y')
+
+        def render_tarea_global(tg, seccion):
+            key_g = f"glob_{tg['bit_id']}_{tg['num']}"
+            fecha_fmt_g = datetime.date.fromisoformat(tg['fecha']).strftime('%d/%m/%Y') if tg['fecha'] else "-"
+
+            # ── Modo edición ──
+            if st.session_state.get('tp_glob_editando') == key_g:
+                with st.form(f"form_glob_{key_g}", clear_on_submit=False):
+                    st.markdown(f"**✏️ Editando · {tg['curso']}**")
+                    nuevo_texto_g = st.text_area("Descripción:", value=tg['tarea'], key=f"glob_txt_{key_g}")
+                    val_fecha_g = datetime.date.fromisoformat(tg['fecha']) if tg['fecha'] else f_hoy
+                    nueva_fecha_g = st.date_input("Fecha de entrega:", value=val_fecha_g, min_value=datetime.date(2020, 1, 1), key=f"glob_fch_{key_g}")
+                    col_gg, col_cc = st.columns(2)
+                    if col_gg.form_submit_button("💾 Guardar"):
+                        guardar_edicion_tarea(tg['bit_id'], tg['num'], nuevo_texto_g, nueva_fecha_g)
+                        st.session_state.tp_glob_editando = None
+                    if col_cc.form_submit_button("❌ Cancelar"):
+                        st.session_state.tp_glob_editando = None; st.rerun()
+                return
+
+            # ── Modo confirmación de borrado ──
+            if st.session_state.get('tp_glob_borrar') == key_g:
+                st.markdown(f'''<div class="advertencia-box">⚠️ ¿Borrar la tarea <b>"{tg["tarea"][:60]}{"..." if len(tg["tarea"]) > 60 else ""}"</b> de <b>{tg["curso"]}</b>?</div>''', unsafe_allow_html=True)
+                col_sb, col_nb = st.columns(2)
+                if col_sb.button("🗑️ Sí, borrar", key=f"glob_conf_del_{key_g}", type="primary", use_container_width=True):
+                    st.session_state.tp_glob_borrar = None
+                    borrar_tarea(tg['bit_id'], tg['num'])
+                if col_nb.button("❌ Cancelar", key=f"glob_canc_del_{key_g}", use_container_width=True):
+                    st.session_state.tp_glob_borrar = None; st.rerun()
+                return
+
+            # ── Modo normal: tarjeta + botones ──
+            col_t, col_e, col_d = st.columns([6, 1, 1])
+            with col_t:
+                if seccion == "vencidas":
                     dias_v_g = (f_hoy - datetime.date.fromisoformat(tg['fecha'])).days
                     st.markdown(f'''<div class="resumen-asist" style="border-color:rgba(255,77,109,0.4);">
                         <div class="resumen-asist-titulo">{tg["curso"]}</div>
                         <div class="resumen-fila"><span>{tg["tarea"]}</span></div>
                         <div class="resumen-fila"><span>Venció: {fecha_fmt_g}</span><span style="color:#ff4d6d;font-weight:700">Hace {dias_v_g} día/s</span></div>
                     </div>''', unsafe_allow_html=True)
-            if _prox_g:
-                st.markdown('<div class="tareas-pendientes-header">📌 PRÓXIMAS A VENCER</div>', unsafe_allow_html=True)
-                for tg in _prox_g[:8]:
-                    fecha_fmt_g = datetime.date.fromisoformat(tg['fecha']).strftime('%d/%m/%Y')
+                elif seccion == "proximas":
                     dias_g = (datetime.date.fromisoformat(tg['fecha']) - f_hoy).days
                     color_g = "#ffc107" if dias_g <= 3 else "#4facfe"
                     dias_lbl_g = "Hoy" if dias_g == 0 else ("Mañana" if dias_g == 1 else f"En {dias_g} días")
@@ -2900,11 +2939,37 @@ else:
                         <div class="resumen-fila"><span>{tg["tarea"]}</span></div>
                         <div class="resumen-fila"><span>Vence: {fecha_fmt_g}</span><span style="color:{color_g};font-weight:700">{dias_lbl_g}</span></div>
                     </div>''', unsafe_allow_html=True)
+                else:
+                    st.markdown(f'''<div class="resumen-asist" style="border-color:rgba(255,255,255,0.1);">
+                        <div class="resumen-asist-titulo">{tg["curso"]}</div>
+                        <div class="resumen-fila"><span>{tg["tarea"]}</span><span style="color:#556">Sin fecha</span></div>
+                    </div>''', unsafe_allow_html=True)
+            with col_e:
+                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                if st.button("✏️", key=f"glob_edit_{key_g}", help="Editar tarea"):
+                    st.session_state.tp_glob_editando = key_g; st.rerun()
+            with col_d:
+                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                if st.button("🗑️", key=f"glob_del_{key_g}", help="Borrar tarea"):
+                    st.session_state.tp_glob_borrar = key_g; st.rerun()
+
+        with st.expander(_titulo_resumen, expanded=bool(_venc_g)):
+            st.caption("Este resumen junta las tareas pendientes de todos tus cursos, sin necesidad de entrar a cada uno.")
+            if _venc_g:
+                st.markdown('<div class="vencidas-header">⚠️ VENCIDAS</div>', unsafe_allow_html=True)
+                for tg in _venc_g:
+                    render_tarea_global(tg, "vencidas")
+            if _prox_g:
+                st.markdown('<div class="tareas-pendientes-header">📌 PRÓXIMAS A VENCER</div>', unsafe_allow_html=True)
+                for tg in _prox_g[:8]:
+                    render_tarea_global(tg, "proximas")
                 if len(_prox_g) > 8:
                     st.caption(f"...y {len(_prox_g) - 8} más. Vé a 📅 Inicio → 📌 Tareas Pendientes para ver el listado completo.")
             if _sinf_g:
-                st.markdown(f'<div style="color:#888;font-size:0.85rem;margin-top:6px;">📎 {len(_sinf_g)} tarea/s sin fecha asignada.</div>', unsafe_allow_html=True)
-            st.caption("💡 Podés editar o marcar tareas como hechas desde 📅 Inicio → 📌 Tareas Pendientes.")
+                st.markdown('<div style="color:#888;font-size:0.85rem;margin-top:6px;">📎 SIN FECHA ASIGNADA:</div>', unsafe_allow_html=True)
+                for tg in _sinf_g[:8]:
+                    render_tarea_global(tg, "sin_fecha")
+            st.caption("💡 Los cambios y borrados hechos acá se reflejan también en 📅 Inicio → 📌 Tareas Pendientes.")
 
     # =========================================================
     # SECCIÓN 0 — INICIO (Agenda · Clases sin reg. · Tareas)
