@@ -1,3 +1,4 @@
+
 # ============================================================
 # INICIO PARTE 1 DE 2 — ClassTrack 360 v388
 # ============================================================
@@ -3293,10 +3294,22 @@ else:
                             if st.session_state.es_suplente:
                                 suplente_nombre = st.text_input("Apellido y Nombre del profesor suplente:", placeholder="Ej: García, María")
                             with st.form("f_agenda", clear_on_submit=True):
-                                sin_alumnos = st.checkbox("🚫 SIN ALUMNOS — La clase no se realizó por falta de alumnos", value=False, key="f_agenda_sin_alumnos")
+                                tipo_registro_ag = st.radio(
+                                    "Tipo de registro:",
+                                    ["📖 Clase dictada", "🚫 Sin alumnos", "🗓️ Feriado", "🏖️ Vacaciones"],
+                                    horizontal=True, key="f_agenda_tipo_registro"
+                                )
+                                sin_alumnos = tipo_registro_ag == "🚫 Sin alumnos"
+                                es_feriado_ag = tipo_registro_ag == "🗓️ Feriado"
+                                es_vacaciones_ag = tipo_registro_ag == "🏖️ Vacaciones"
+                                no_hubo_clase_ag = sin_alumnos or es_feriado_ag or es_vacaciones_ag
                                 if sin_alumnos:
                                     st.info("La clase quedará registrada como **SIN ALUMNOS**. No es necesario completar el contenido.")
-                                temas = st.text_area("Contenido dictado hoy", disabled=sin_alumnos)
+                                elif es_feriado_ag:
+                                    st.info("El día quedará registrado como **FERIADO**. No es necesario completar el contenido.")
+                                elif es_vacaciones_ag:
+                                    st.info("El día quedará registrado como **VACACIONES**. No es necesario completar el contenido.")
+                                temas = st.text_area("Contenido dictado hoy", disabled=no_hubo_clase_ag)
                                 observaciones = st.text_area("📝 Observaciones (opcional)", placeholder="Notas internas, incidencias, comentarios sobre la clase...", height=80)
                                 st.markdown("---")
                                 st.markdown("**📌 Tareas** (podés completar hasta 3, ninguna es obligatoria)")
@@ -3319,14 +3332,21 @@ else:
                                     st.session_state.mostrar_form_clase = False
                                     st.rerun()
                                 if col_btn_g.form_submit_button("💾 Guardar Clase", use_container_width=True):
-                                    if not sin_alumnos and not temas.strip():
+                                    if not no_hubo_clase_ag and not temas.strip():
                                         st.error("El contenido de la clase no puede estar vacío.")
                                     elif st.session_state.es_suplente and not suplente_nombre.strip():
                                         st.error("Ingresá el apellido y nombre del profesor suplente.")
                                     else:
                                         with st.spinner("Guardando clase..."):
                                             try:
-                                                contenido_guardar = "SIN ALUMNOS" if sin_alumnos else temas
+                                                if sin_alumnos:
+                                                    contenido_guardar = "SIN ALUMNOS"
+                                                elif es_feriado_ag:
+                                                    contenido_guardar = "FERIADO"
+                                                elif es_vacaciones_ag:
+                                                    contenido_guardar = "VACACIONES"
+                                                else:
+                                                    contenido_guardar = temas
                                                 supabase.table("bitacora").insert({
                                                     "inscripcion_id": inscripcion_id, "fecha": str(fecha_clase),
                                                     "contenido_clase": contenido_guardar,
@@ -3529,7 +3549,22 @@ else:
                                 if st.session_state.es_suplente:
                                     suplente_cnr = st.text_input("Apellido y Nombre del suplente:", placeholder="Ej: García, María", key=f"cnr_sup_nom_{key_cnr}")
                                 with st.form(f"form_cnr_{key_cnr}", clear_on_submit=True):
-                                    temas_cnr = st.text_area("Contenido dictado:", key=f"cnr_temas_{key_cnr}")
+                                    tipo_registro_cnr = st.radio(
+                                        "Tipo de registro:",
+                                        ["📖 Clase dictada", "🚫 Sin alumnos", "🗓️ Feriado", "🏖️ Vacaciones"],
+                                        horizontal=True, key=f"cnr_tipo_{key_cnr}"
+                                    )
+                                    sin_alumnos_cnr = tipo_registro_cnr == "🚫 Sin alumnos"
+                                    es_feriado_cnr = tipo_registro_cnr == "🗓️ Feriado"
+                                    es_vacaciones_cnr = tipo_registro_cnr == "🏖️ Vacaciones"
+                                    no_hubo_clase_cnr = sin_alumnos_cnr or es_feriado_cnr or es_vacaciones_cnr
+                                    if sin_alumnos_cnr:
+                                        st.info("La clase quedará registrada como **SIN ALUMNOS**. No es necesario completar el contenido.")
+                                    elif es_feriado_cnr:
+                                        st.info("El día quedará registrado como **FERIADO**. No es necesario completar el contenido.")
+                                    elif es_vacaciones_cnr:
+                                        st.info("El día quedará registrado como **VACACIONES**. No es necesario completar el contenido.")
+                                    temas_cnr = st.text_area("Contenido dictado:", key=f"cnr_temas_{key_cnr}", disabled=no_hubo_clase_cnr)
                                     obs_cnr = st.text_area("Observaciones (opcional):", height=80, key=f"cnr_obs_{key_cnr}")
                                     st.markdown("**📌 Tareas** (opcional)")
                                     col_ct1, col_ct2, col_ct3 = st.columns(3)
@@ -3551,16 +3586,24 @@ else:
                                         st.session_state.es_suplente = False
                                         st.rerun()
                                     if col_g_cnr.form_submit_button("💾 Guardar Clase", use_container_width=True, type="primary"):
-                                        if not temas_cnr.strip():
+                                        if not no_hubo_clase_cnr and not temas_cnr.strip():
                                             st.error("El contenido de la clase no puede estar vacío.")
                                         elif st.session_state.es_suplente and not suplente_cnr.strip():
                                             st.error("Ingresá el nombre del profesor suplente.")
                                         else:
+                                            if sin_alumnos_cnr:
+                                                contenido_guardar_cnr = "SIN ALUMNOS"
+                                            elif es_feriado_cnr:
+                                                contenido_guardar_cnr = "FERIADO"
+                                            elif es_vacaciones_cnr:
+                                                contenido_guardar_cnr = "VACACIONES"
+                                            else:
+                                                contenido_guardar_cnr = temas_cnr
                                             try:
                                                 supabase.table("bitacora").insert({
                                                     "inscripcion_id": item_cnr['inscripcion_id'],
                                                     "fecha": item_cnr['fecha_str'],
-                                                    "contenido_clase": temas_cnr,
+                                                    "contenido_clase": contenido_guardar_cnr,
                                                     "observaciones": obs_cnr.strip() or None,
                                                     "profesor_suplente": suplente_cnr.strip() if st.session_state.es_suplente else None,
                                                     "tarea_proxima": t1_cnr or t2_cnr or t3_cnr or None,
@@ -3582,13 +3625,15 @@ else:
                             elif st.session_state.get('cnr_ignorando') == key_cnr:
                                 st.markdown(f"**🚫 Ignorar clase del {dia_nombre_cnr} {fecha_fmt_cnr} — {item_cnr['nombre_limpio']}**")
                                 st.caption("Seleccioná el motivo por el que no hubo clase:")
-                                col_m1, col_m2, col_m3 = st.columns(3)
+                                col_m1, col_m2, col_m3, col_m4 = st.columns(4)
                                 motivo_sel_cnr = None
                                 if col_m1.button("🗓️ Feriado", key=f"cnr_fer_{key_cnr}", use_container_width=True):
                                     motivo_sel_cnr = "FERIADO"
-                                if col_m2.button("🤒 Enfermedad", key=f"cnr_par_{key_cnr}", use_container_width=True):
+                                if col_m2.button("🏖️ Vacaciones", key=f"cnr_vac_{key_cnr}", use_container_width=True):
+                                    motivo_sel_cnr = "VACACIONES"
+                                if col_m3.button("🤒 Enfermedad", key=f"cnr_par_{key_cnr}", use_container_width=True):
                                     motivo_sel_cnr = "ENFERMEDAD"
-                                if col_m3.button("📝 Otro motivo", key=f"cnr_otro_btn_{key_cnr}", use_container_width=True):
+                                if col_m4.button("📝 Otro motivo", key=f"cnr_otro_btn_{key_cnr}", use_container_width=True):
                                     st.session_state[f'cnr_otro_{key_cnr}'] = True
                                     st.rerun()
                                 if st.session_state.get(f'cnr_otro_{key_cnr}'):
