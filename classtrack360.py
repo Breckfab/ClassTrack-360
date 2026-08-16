@@ -43,6 +43,26 @@ SEDES_UNIVERSITARIO = ['daguerre']
 def es_sistema_universitario(sede):
     return sede.lower() in SEDES_UNIVERSITARIO
 
+def fecha_trabajo():
+    """Devuelve la fecha 'de trabajo' actual: si el profesor activó el modo
+    'Viajar en el tiempo' (fecha simulada), devuelve esa fecha; si no, la fecha real de hoy.
+    Se usa en toda la app para decidir qué se hizo / qué falta hacer, agenda, vencimientos, etc.
+    NO se usa para timestamps de auditoría reales (backups, 'generado el', historial de cambios),
+    que siempre deben reflejar el momento real en que ocurrió la acción.
+    NOTA: se llama 'fecha_trabajo' (y no 'hoy') a propósito, para no chocar con las muchas
+    variables locales llamadas 'hoy' que ya existen en el código."""
+    try:
+        fs = st.session_state.get('fecha_simulada')
+    except Exception:
+        fs = None
+    return fs if fs else datetime.date.today()
+
+def en_modo_simulado():
+    try:
+        return bool(st.session_state.get('fecha_simulada'))
+    except Exception:
+        return False
+
 def init_state():
     defaults = {
         'user': None, 'sede_admin': None,
@@ -133,6 +153,8 @@ def init_state():
         'cnr_confirmar_masivo': False,
         '_invalidar_cursos': False,
         '_confirmar_cambio_sede': None,
+        # Viajar en el tiempo (fecha simulada de trabajo)
+        'fecha_simulada': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -172,7 +194,7 @@ def get_clases_hoy(profesor_id, mapa_cursos, mapa_cursos_data):
     """Devuelve lista de cursos con clase hoy.
     Busca los dias en el nombre completo guardado en BD (nombre_curso_materia),
     que siempre tiene el formato: Nombre (Dia1, Dia2) | HH:MM -> HH:MM"""
-    hoy = datetime.date.today()
+    hoy = fecha_trabajo()
     dia_hoy = hoy.weekday()
     clases = []
     for nombre_curso, inscripcion_id in mapa_cursos.items():
@@ -204,7 +226,7 @@ def get_clases_no_registradas(profesor_id, mapa_cursos, mapa_cursos_data, cal_se
     """Devuelve lista de fechas pasadas con clase programada pero sin registro en bitácora.
     Requiere que el calendario de la sede tenga fecha_inicio configurada.
     Si no está configurada, devuelve None para mostrar aviso al profesor."""
-    hoy = datetime.date.today()
+    hoy = fecha_trabajo()
 
     # Verificar que haya fecha de inicio configurada
     if not cal_sede or not cal_sede.get('fecha_inicio'):
@@ -265,7 +287,7 @@ def get_resumen_tareas_global(mapa_cursos, f_hoy=None):
     sin necesidad de entrar a ningún curso en particular. Se usa para mostrar un resumen
     apenas se ingresa al sistema, independiente del curso que corresponda en el día de hoy."""
     if f_hoy is None:
-        f_hoy = datetime.date.today()
+        f_hoy = fecha_trabajo()
     if not mapa_cursos:
         return {'vencidas': [], 'proximas': [], 'sin_fecha': [], 'total': 0}
     try:
@@ -554,8 +576,10 @@ def guardar_edicion_tarea_legacy(bit_id, nuevo_texto):
         st.error(f"Error: {e}")
 
 @st.cache_data(ttl=300, show_spinner=False)
-def get_tareas_vencidas_count(profesor_id):
-    hoy = str(datetime.date.today())
+def get_tareas_vencidas_count(profesor_id, fecha_ref=None):
+    # fecha_ref se recibe como parámetro (y no se calcula acá adentro) para que el
+    # caché de Streamlit se invalide correctamente cuando cambia la fecha de trabajo simulada.
+    hoy = str(fecha_ref) if fecha_ref else str(datetime.date.today())
     try:
         res_insc = supabase.table("inscripciones").select("id").eq("profesor_id", profesor_id).is_("alumno_id", "null").execute()
         if not res_insc.data: return 0
@@ -632,7 +656,7 @@ def extraer_dias_curso(nombre_curso):
 def get_proxima_clase(nombre_curso, hora_inicio, hora_fin):
     dias = extraer_dias_curso(nombre_curso)
     if not dias: return None
-    hoy = datetime.date.today()
+    hoy = fecha_trabajo()
     for offset in range(1, 8):
         candidato = hoy + datetime.timedelta(days=offset)
         if candidato.weekday() in dias:
@@ -643,7 +667,7 @@ def get_proxima_clase(nombre_curso, hora_inicio, hora_fin):
     return None
 
 def render_calendario(mes, anio):
-    hoy = datetime.date.today()
+    hoy = fecha_trabajo()
     cal = calendar.monthcalendar(anio, mes)
     filas = ""
     for semana in cal:
@@ -808,7 +832,7 @@ def render_editor_trimestres(sede, fecha_inicio_lectivo, fecha_fin_lectivo):
             ff_t = datetime.date.fromisoformat(t["fecha_fin"]) if t.get("fecha_fin") else None
             fi_fmt = fi_t.strftime("%d/%m/%Y") if fi_t else "—"
             ff_fmt = ff_t.strftime("%d/%m/%Y") if ff_t else "—"
-            hoy = datetime.date.today()
+            hoy = fecha_trabajo()
             activo = fi_t and ff_t and fi_t <= hoy <= ff_t
             badge = '<span style="background:rgba(79,172,254,0.2);color:#4facfe;border-radius:4px;padding:1px 7px;font-size:0.75rem;font-weight:700;">EN CURSO</span>' if activo else ''
             st.markdown(
@@ -949,7 +973,7 @@ def render_almanaque_modalidades(fecha_inicio, fecha_fin, modalidades):
                     bg = "rgba(255,255,255,0.03)"; color_txt = "#556"; border = "1px solid #223"
 
             # Indicar hoy
-            hoy = datetime.date.today()
+            hoy = fecha_trabajo()
             if d == hoy:
                 border = "2px solid #ff4d6d"
                 color_txt = "#ff4d6d"
@@ -1065,7 +1089,7 @@ def reset_completo_sede(sede_nombre):
 # --- FUNCIONES DE ASISTENCIA ---
 # =========================================================
 def get_cuatrimestre_actual():
-    mes = datetime.date.today().month
+    mes = fecha_trabajo().month
     return 1 if mes <= 6 else 2
 
 def guardar_asistencia_instituto(inscripcion_id, fecha, estados_dict):
@@ -1257,7 +1281,7 @@ def render_seccion_calendario(sede, es_admin=False):
         st.success("✅ Calendario actualizado correctamente.")
         st.session_state.ok_calendario_guardado = False
     if fecha_inicio and fecha_fin:
-        hoy = datetime.date.today()
+        hoy = fecha_trabajo()
         total_dias = (fecha_fin - fecha_inicio).days
         dias_transcurridos = max(0, (hoy - fecha_inicio).days)
         dias_restantes = max(0, (fecha_fin - hoy).days)
@@ -2610,11 +2634,11 @@ elif st.session_state.user.get('sede', '').lower() == 'admin':
 # =========================================================
 else:
     u_data = st.session_state.user
-    f_hoy = datetime.date.today()
+    f_hoy = fecha_trabajo()
     sede_actual = u_data['sede'].lower()
     es_universitario = es_sistema_universitario(sede_actual)
 
-    total_vencidas_sidebar = get_tareas_vencidas_count(u_data['id'])
+    total_vencidas_sidebar = get_tareas_vencidas_count(u_data['id'], f_hoy)
     total_clases_sidebar = get_total_clases_sidebar(u_data['id'])
 
     # Cargar preferencia de tema si no está en sesión
@@ -2665,8 +2689,38 @@ else:
         st.header(f"Sede: {u_data['sede'].upper()}")
         tipo_sistema = "🎓 Universitario" if es_universitario else "🏫 Instituto"
         st.caption(tipo_sistema)
-        st.write(f"📅 {f_hoy.strftime('%d/%m/%Y')}")
+        if en_modo_simulado():
+            st.write(f"📅 {f_hoy.strftime('%d/%m/%Y')} · 🕓 simulado")
+        else:
+            st.write(f"📅 {f_hoy.strftime('%d/%m/%Y')}")
         components.html("""<div style="color:#4facfe;font-family:monospace;font-size:24px;text-align:center;"><div id="c">00:00:00</div></div><script>setInterval(()=>{document.getElementById('c').innerText=new Date().toLocaleTimeString('es-AR',{hour12:false})},1000);</script>""", height=50)
+
+        # ── VIAJAR EN EL TIEMPO (fecha de trabajo simulada) ──────────
+        with st.expander("🕓 Viajar en el tiempo", expanded=en_modo_simulado()):
+            st.caption("Elegí una fecha pasada o futura para ver/trabajar la app como si ese día fuera hoy (agenda, tareas, clases sin registrar, etc.).")
+            fecha_sim_input = st.date_input(
+                "Trabajar como si hoy fuera:",
+                value=f_hoy,
+                format="DD/MM/YYYY",
+                key="fecha_simulada_input",
+            )
+            col_sim1, col_sim2 = st.columns(2)
+            if col_sim1.button("🕓 Aplicar", key="btn_aplicar_fecha_sim", use_container_width=True, type="primary"):
+                nueva_fecha = fecha_sim_input if fecha_sim_input != datetime.date.today() else None
+                st.session_state.fecha_simulada = nueva_fecha
+                st.session_state.cal_mes = fecha_sim_input.month
+                st.session_state.cal_anio = fecha_sim_input.year
+                get_tareas_vencidas_count.clear()
+                st.rerun()
+            if col_sim2.button("↩️ Volver a hoy real", key="btn_reset_fecha_sim", use_container_width=True, disabled=not en_modo_simulado()):
+                hoy_real = datetime.date.today()
+                st.session_state.fecha_simulada = None
+                st.session_state.cal_mes = hoy_real.month
+                st.session_state.cal_anio = hoy_real.year
+                get_tareas_vencidas_count.clear()
+                st.rerun()
+            if en_modo_simulado():
+                st.markdown(f'<div class="badge-vencidas" style="margin-top:6px;">🕓 Estás viendo ClassTrack como si hoy fuera <b>{f_hoy.strftime("%d/%m/%Y")}</b></div>', unsafe_allow_html=True)
         # Keep-alive: ping cada 4 minutos para evitar cierre de sesión por inactividad
         components.html("""<script>
         (function(){
@@ -2990,13 +3044,14 @@ else:
             if not mapa_cursos:
                 no_encontrado("No tenés cursos creados. Andá a la pestaña 🏗️ Cursos para crear uno.")
             else:
-                _hoy_agenda = datetime.date.today()
+                _hoy_agenda = f_hoy
                 _dia_nombre = DIAS_SEMANA_ES[_hoy_agenda.weekday()]
                 _mes_nombre = MESES_ES_LARGO[_hoy_agenda.month - 1]
+                _sufijo_sim = " 🕓 <span style=\"color:#f97316;font-size:0.8rem;\">(fecha simulada)</span>" if en_modo_simulado() else ""
                 st.markdown(
                     f'<div style="color:#4facfe;font-family:\'Syne\',sans-serif;font-weight:700;font-size:1rem;'
                     f'margin-bottom:14px;letter-spacing:0.03em;">'
-                    f'Hoy es {_dia_nombre} {_hoy_agenda.day} de {_mes_nombre} de {_hoy_agenda.year}'
+                    f'Hoy es {_dia_nombre} {_hoy_agenda.day} de {_mes_nombre} de {_hoy_agenda.year}{_sufijo_sim}'
                     f'</div>',
                     unsafe_allow_html=True
                 )
@@ -4254,7 +4309,7 @@ else:
                     col_o1, col_o2 = st.columns(2)
                     completar_fecha = col_o1.checkbox("📆 Completar fecha ahora", value=False, key="obs_check_fecha")
                     dia_obs = col_o2.selectbox("📅 Día:", ["—", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"], key="obs_dia")
-                    fecha_obs = col_o1.date_input("Fecha de la observación:", value=datetime.date.today(), format="DD/MM/YYYY", key="obs_fecha") if completar_fecha else None
+                    fecha_obs = col_o1.date_input("Fecha de la observación:", value=fecha_trabajo(), format="DD/MM/YYYY", key="obs_fecha") if completar_fecha else None
                     col_o3, col_o4 = st.columns(2)
                     horario_obs = col_o3.text_input("🕐 Horario (opcional):", placeholder="Ej: 08:00 → 10:00", key="obs_horario")
                     opciones_cuatri = ["— Elegí el cuatrimestre —", "1° Cuatrimestre (Mar–Jun)", "2° Cuatrimestre (Jul–Nov)"]
@@ -4356,7 +4411,7 @@ else:
                             with st.form(f"form_obs_edit_{obs_id}", clear_on_submit=False):
                                 st.markdown(f"**✏️ Editando: {obs.get('prof_observado','—')}**")
                                 col_e1, col_e2 = st.columns(2)
-                                fecha_val_e = datetime.date.fromisoformat(obs['fecha']) if obs.get('fecha') else datetime.date.today()
+                                fecha_val_e = datetime.date.fromisoformat(obs['fecha']) if obs.get('fecha') else fecha_trabajo()
                                 fecha_e = col_e1.date_input("Fecha:", value=fecha_val_e, format="DD/MM/YYYY", key=f"oe_fecha_{obs_id}")
                                 dia_e = col_e2.selectbox("Día:", ["—", "Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"],
                                     index=(["—","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"].index(obs.get('dia','—')) if obs.get('dia') in ["—","Lunes","Martes","Miércoles","Jueves","Viernes","Sábado"] else 0),
@@ -4505,7 +4560,7 @@ else:
                             with st.form("hu_nuevo_form", clear_on_submit=True):
                                 col_h1, col_h2 = st.columns(2)
                                 with col_h1:
-                                    hu_anio = st.number_input("Año *", min_value=2000, max_value=2099, value=datetime.date.today().year, step=1, key="hu_nuevo_anio")
+                                    hu_anio = st.number_input("Año *", min_value=2000, max_value=2099, value=fecha_trabajo().year, step=1, key="hu_nuevo_anio")
                                 with col_h2:
                                     materias_disponibles = sorted(list(mapa_cursos.keys()))
                                     hu_materia = st.selectbox("Materia *", ["--- Seleccioná una materia ---"] + materias_disponibles, key="hu_nuevo_materia")
@@ -4537,7 +4592,7 @@ else:
                                         st.markdown(f"**✏️ Editando registro #{reg_id}**")
                                         col_e1, col_e2 = st.columns(2)
                                         with col_e1:
-                                            hu_e_anio = st.number_input("Año", min_value=2000, max_value=2099, value=int(reg.get('anio', datetime.date.today().year)), step=1, key=f"hu_e_anio_{reg_id}")
+                                            hu_e_anio = st.number_input("Año", min_value=2000, max_value=2099, value=int(reg.get('anio', fecha_trabajo().year)), step=1, key=f"hu_e_anio_{reg_id}")
                                         with col_e2:
                                             materias_edit = sorted(list(mapa_cursos.keys()))
                                             mat_actual = reg.get('materia', '')
@@ -4599,7 +4654,7 @@ else:
                     # Filtros por año y materia
                     col_gf1, col_gf2 = st.columns(2)
                     with col_gf1:
-                        anios_glob = list(range(datetime.date.today().year, 1999, -1))
+                        anios_glob = list(range(fecha_trabajo().year, 1999, -1))
                         filtro_anio_glob = st.selectbox("Filtrar por año:", ["Todos"] + [str(a) for a in anios_glob], key="hu_glob_anio")
                     with col_gf2:
                         materias_glob = ["Todas"] + hu_get_materias()
@@ -4792,7 +4847,7 @@ else:
                                     st.markdown(f"**✏️ Editando — {nombre_al}**")
                                     col_ge1, col_ge2 = st.columns(2)
                                     with col_ge1:
-                                        hu_ge_anio = st.number_input("Año", min_value=2000, max_value=2099, value=int(reg.get('anio', datetime.date.today().year)), step=1, key=f"hu_ge_anio_{reg_id}")
+                                        hu_ge_anio = st.number_input("Año", min_value=2000, max_value=2099, value=int(reg.get('anio', fecha_trabajo().year)), step=1, key=f"hu_ge_anio_{reg_id}")
                                     with col_ge2:
                                         materias_gedit = sorted(list(mapa_cursos.keys()))
                                         mat_gactual = reg.get('materia', '')
@@ -5153,7 +5208,7 @@ else:
                         with st.expander("📅 Calcular promedio del curso por rango de fechas", expanded=False):
                             col_fd1, col_fd2 = st.columns(2)
                             fecha_desde_prom = col_fd1.date_input("Desde:", value=datetime.date(ANIO_ACTUAL, 1, 1), format="DD/MM/YYYY", key="prom_desde")
-                            fecha_hasta_prom = col_fd2.date_input("Hasta:", value=datetime.date.today(), format="DD/MM/YYYY", key="prom_hasta")
+                            fecha_hasta_prom = col_fd2.date_input("Hasta:", value=fecha_trabajo(), format="DD/MM/YYYY", key="prom_hasta")
                             if st.button("📊 Calcular promedio del curso", key="btn_prom_curso", use_container_width=True):
                                 if fecha_desde_prom > fecha_hasta_prom:
                                     st.error("La fecha de inicio debe ser anterior a la fecha fin.")
@@ -5282,7 +5337,7 @@ else:
                     if not trimestres_disp:
                         st.info("💡 No hay trimestres configurados. Podés hacerlo en **📆 Planificación → Calendario Académico**.")
                     else:
-                        hoy_trim = datetime.date.today()
+                        hoy_trim = fecha_trabajo()
                         idx_default_trim = 0
                         for _i, _t in enumerate(trimestres_disp):
                             _fi = datetime.date.fromisoformat(_t["fecha_inicio"]) if _t.get("fecha_inicio") else None
@@ -5847,7 +5902,7 @@ else:
                     )
                     fecha_ppa_hasta = col_ppa2.date_input(
                         "Hasta:",
-                        value=datetime.date.today(),
+                        value=fecha_trabajo(),
                         format="DD/MM/YYYY",
                         key="ppa_hasta"
                     )
