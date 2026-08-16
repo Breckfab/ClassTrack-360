@@ -2981,7 +2981,7 @@ else:
                 return
 
             # ── Modo normal: tarjeta + botones ──
-            col_t, col_e, col_d = st.columns([6, 1, 1])
+            col_t, col_h, col_e, col_d = st.columns([5, 1, 1, 1])
             with col_t:
                 if seccion == "vencidas":
                     dias_v_g = (f_hoy - datetime.date.fromisoformat(tg['fecha'])).days
@@ -3008,6 +3008,10 @@ else:
                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
                 if st.button("✏️", key=f"glob_edit_{key_g}", help="Editar tarea"):
                     st.session_state.tp_glob_editando = key_g; st.rerun()
+            with col_h:
+                st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
+                if st.button("✅", key=f"glob_hecha_{key_g}", help="Marcar como hecha"):
+                    marcar_tarea(tg['bit_id'], tg['num'], True)
             with col_d:
                 st.markdown("<div style='height:14px'></div>", unsafe_allow_html=True)
                 if st.button("🗑️", key=f"glob_del_{key_g}", help="Borrar tarea"):
